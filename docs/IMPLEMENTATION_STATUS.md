@@ -26,7 +26,19 @@
 
 ## Current Work
 
-- [ ] Verify the Phase 1 shell on a real iPhone (install to home screen, offline launch)
+- [ ] Wire the wizard/elf spell-slot chooser + halfling trait picker into creation UI (engine validates them today; UI uses defaults)
+
+## Completed Work (Phase 2 — character system)
+
+- [x] Seeded RNG engine (mulberry32, serialized state, d3/d66/dice-formula parser, roll log) — PROJECT_SPEC §8
+- [x] Zod schemas: ClassDef, TraitDef, Character, Party (rulesets/schema)
+- [x] Core-8 class data pack with full trait tables, page-cited (rulesets/expanded/coreClasses.ts)
+- [x] Character/party creation engine: Life formulas (both L+N and N+L orders), class kits, halfling rations + 2-trait rule, spell-slot assignment with list validation, per-adventure counters modeled (prayers/rage/luck)
+- [x] Dexie schema v2: full Character records + campaign RNG state; v1 stub migration clears (never shipped)
+- [x] Campaign repo: transactional create/save/load/delete, lastModified bump
+- [x] Zustand campaign store; campaign dashboard with New-campaign flow; party screen; 4-class creation form; character sheet (Life/XP/gp/traits/spells/equipment/abilities)
+- [x] Tests: 30 passing (rng 7, class data 6, creation 10, navigation 4, persistence 3) — includes fake-indexeddb save/reload/continue
+- [x] Browser smoke test on the dev server: campaign → party creation → reload persistence → character sheet, all live-verified
 
 ## Pending Work
 
@@ -43,7 +55,10 @@
 - [x] Procedural placeholder icons (192/512/apple-touch) — original shapes
 - [x] Vitest: 4 passing navigation tests
 - [x] `npm run build` passes (tsc clean; 168.6 kB js / 6.9 kB css)
-- [ ] Zod — installed, first schemas arrive with the rules data model (Phase 2)
+### Phase 2 (Character System) — code complete, engine tests green
+- [x] Zod schemas installed and first schemas shipped (ClassDef/TraitDef/Character/Party)
+- [x] Core-8 class definitions + creation + party management + persistence
+- [ ] Wire the spell-slot/trait pickers into the creation UI (engine-validated, UI defaults today)
 - [ ] iPhone device verification (install, offline launch, touch nav)
 
 ### Phase 2-7
@@ -70,4 +85,4 @@ None.
 
 ## Next Recommended Task
 
-Phase 2: character system — Zod schemas + class data pack for the 8 core classes (page-cited from RULES_VERIFICATION Part 3), party creation, Dexie persistence, unit tests. Do not touch the 13 non-core classes until Release 0.5.
+Phase 3: dungeon generation — tile-shape verification pass first (OQ-2), then seeded generation, SVG map, fog of war, exploration.

@@ -1,35 +1,29 @@
 import Dexie, { type EntityTable } from 'dexie'
+import type { Character } from '../rulesets/schema/character'
 
 /**
- * Local database (Part VI §18): IndexedDB via Dexie, schema-versioned from day
- * one. Phase 1 scope is the shell only — the campaign tables below are the
- * minimal landing shape for Phase 2 (characters/party) and Phase 3+ (dungeon,
- * events, generator state). Migrations: bump SCHEMA_VERSION and add a numbered
- * upgrade path; never drop columns implicitly.
+ * Local database (PROJECT_SPEC Part VI §18): IndexedDB via Dexie, schema-
+ * versioned from day one. Characters store full validated Character records;
+ * campaigns carry the seed + serialized RNG state so every roll stays
+ * reproducible. Migrations: bump SCHEMA_VERSION with an upgrade path; never
+ * drop columns implicitly.
  */
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
 export interface CampaignMeta {
   id: string
   name: string
   ruleset: string
   seed: number
+  /** Serialized Rng state (engine/core/rng.ts) — restored on load. */
+  rngState: string
   createdAt: number
   lastModified: number
   saveVersion: number
 }
 
-export interface CharacterRecord {
-  id: string
-  campaignId: string
-  name: string
-  classId: string
-  level: number
-  experience: number
-  currentHP: number
-  maximumHP: number
-  status: 'active' | 'incapacitated' | 'dead'
-}
+/** Full Character record (rulesets/schema/character.ts), indexed by campaign. */
+export type CharacterRecord = Character & { campaignId: string }
 
 export interface EventRecord {
   id: string
@@ -46,11 +40,23 @@ export class FourADDatabase extends Dexie {
 
   constructor() {
     super('four-against-darkness')
-    this.version(SCHEMA_VERSION).stores({
+    this.version(1).stores({
       campaigns: 'id, name, lastModified',
       characters: 'id, campaignId, classId',
       events: 'id, campaignId, timestamp',
     })
+    // v2: characters now hold the full validated record (same keys/indexes).
+    this.version(SCHEMA_VERSION)
+      .stores({
+        campaigns: 'id, name, lastModified',
+        characters: 'id, campaignId, classId',
+        events: 'id, campaignId, timestamp',
+      })
+      .upgrade(async (tx) => {
+        // v1 rows were conceptual stubs and never shipped to users; clear
+        // rather than guess at migration semantics (PROJECT_SPEC Rule 4).
+        await tx.table('characters').clear()
+      })
   }
 }
 

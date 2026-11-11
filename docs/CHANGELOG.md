@@ -18,7 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copyright and content policy
 - Deployment guide
 
-### Added — App Shell (2026-11-10)
+### Added — Phase 2 character system (2026-11-10)
+- Seeded RNG engine with serialized state, dice formulas, d3/d66, roll log
+- Zod schemas + core-8 class data pack (page-cited FADEE pp.24-65)
+- Character/party creation engine with verified book stats and validation
+- Dexie schema v2 (full character records, campaign RNG state) + campaign repo
+- Campaign dashboard flow, party screen, 4-class creation form, character sheet
+- 30 passing tests (unit + fake-indexeddb persistence); build green
+- Live browser smoke test: create → persist → reload → sheet all verified
 - Phase 1 app shell: Vite + React 18 + TypeScript + Tailwind + react-router
 - 5-tab navigation with honest Phase-labelled stub screens (no fake features)
 - Zustand settings store; Dexie database (schema v1: campaigns, characters, events)
