@@ -8,7 +8,7 @@ import type { Character } from '../rulesets/schema/character'
  * reproducible. Migrations: bump SCHEMA_VERSION with an upgrade path; never
  * drop columns implicitly.
  */
-export const SCHEMA_VERSION = 3
+export const SCHEMA_VERSION = 4
 
 export interface CampaignMeta {
   id: string
@@ -44,6 +44,7 @@ export class FourADDatabase extends Dexie {
   characters!: EntityTable<CharacterRecord, 'id'>
   events!: EntityTable<EventRecord, 'id'>
   dungeons!: EntityTable<DungeonRecord, 'id'>
+  checkpoints!: EntityTable<CheckpointRecord, 'id'>
 
   constructor() {
     super('four-against-darkness')
@@ -65,13 +66,31 @@ export class FourADDatabase extends Dexie {
         await tx.table('characters').clear()
       })
     // v3: dungeon state per campaign (JSON blob, keyed by campaign id).
-    this.version(SCHEMA_VERSION).stores({
+    this.version(3).stores({
       campaigns: 'id, name, lastModified',
       characters: 'id, campaignId, classId',
       events: 'id, campaignId, timestamp',
       dungeons: 'id',
     })
+    // v4: named checkpoints for save management (PROJECT_SPEC §18).
+    this.version(SCHEMA_VERSION).stores({
+      campaigns: 'id, name, lastModified',
+      characters: 'id, campaignId, classId',
+      events: 'id, campaignId, timestamp',
+      dungeons: 'id',
+      checkpoints: '++id, campaignId, ts',
+    })
   }
+}
+
+/** Named manual checkpoint (PROJECT_SPEC §18). */
+export interface CheckpointRecord {
+  id?: number
+  campaignId: string
+  name: string
+  ts: number
+  /** Full snapshot: dungeon + party + campaign meta patch. */
+  payload: unknown
 }
 
 /** Serialized DungeonState (engine/dungeon/generate.ts). */

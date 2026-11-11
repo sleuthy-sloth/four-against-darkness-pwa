@@ -26,6 +26,16 @@ export async function saveEvent(
   void rng
 }
 
+/** Journal rollback for undo (PROJECT_SPEC §19): drop events at/after cutoff. */
+export async function deleteEventsAfter(campaignId: string, cutoff: number): Promise<void> {
+  const db = getDb()
+  if (cutoff <= 0) return
+  const doomed = (await db.events.where('campaignId').equals(campaignId).toArray())
+    .filter((e) => e.timestamp >= cutoff)
+    .map((e) => e.id)
+  await db.events.bulkDelete(doomed)
+}
+
 export async function loadJournal(campaignId: string): Promise<EventRecord[]> {
   const db = getDb()
   return db.events.where('campaignId').equals(campaignId).reverse().sortBy('timestamp')

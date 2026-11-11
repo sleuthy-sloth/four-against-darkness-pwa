@@ -18,7 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copyright and content policy
 - Deployment guide
 
-### Added — Phase 5f: quests + Epic Rewards; Phase 5 COMPLETE (2026-11-10)
+### Added — Phase 6: campaign systems; Phase 6 COMPLETE (2026-11-10)
+- Undo: pre-action snapshots before every mutating action with an explicit confirmation dialog; full reversal of dungeon, party, RNG state and journal
+- Named checkpoints (Dexie v4) with restore confirmation; full-campaign JSON export/import as new campaigns; campaign duplicate
+- Multi-campaign dashboard list with confirmed deletion of every campaign row (fixed orphaned dungeon/event rows on delete)
+- Real Settings screen: save management, ruleset note, credits & licensing
+- 111 tests including archive round-trip integration; live-verified undo (journal reversal), checkpoint save, campaign list
 - Lady in White: accept/decline, Quest Table roll, refusal tracking (pp.153, 161)
 - Quest types 1/2/5/6 with progress tracking and giver-tile claims; types 3/4 accepted and flagged pending subdual/retrieval mechanics
 - Epic Rewards (pp.162-163): Book of Skalitos (6 scrolls), Gold of Kerrak Dar, Enchanted weapon (best-of-2 dice), Shield of Warning, Arrow of slaying (destined target rolled), Holy symbol (+2 Healing)

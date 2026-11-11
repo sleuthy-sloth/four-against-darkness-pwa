@@ -28,6 +28,16 @@
 
 - [ ] Release 0.5 scope: environments (caverns/grottoes tables + secret passages), quest types 3/4 (subdual capture, item retrieval), trinket magic-item effects, light/darkness, more XP systems
 
+## Completed Work (Phase 6 — campaign systems; Phase 6 COMPLETE)
+
+- [x] Undo (§19): pre-action snapshots (dungeon JSON, party, RNG/clues/secrets/epic meta, journal cutoff) before all 22 mutating actions; ⟲ button with explicit confirm dialog; restores Dexie + store, deletes journal events after the cutoff — verified live (journal 3→4→3)
+- [x] Named checkpoints (§18): Dexie v4 `checkpoints` table; save/restore/delete with per-campaign scoping and restore confirmation (Settings screen)
+- [x] Export/import (§17): full-campaign JSON archives (campaign + party + dungeon + journal) — download from Settings, import as a NEW campaign (fresh ids, no clobbering); duplicate via archive round-trip
+- [x] Multi-campaign management (§17): dashboard lists all campaigns with open/copy/delete; destructive delete requires explicit confirmation and removes ALL rows (fix: old deleteCampaign left dungeon+events rows orphaned)
+- [x] Real Settings screen (§27): save management, ruleset note, credits & licensing (MIT code, CC BY 3.0 icons, publisher non-affiliation)
+- [x] Migrations: Dexie chain 1→4 with upgrade paths; VersionError recovery (earlier)
+- [x] Integration tests for archives/checkpoints/deletion (111 total); build clean; live-verified end-to-end
+
 ## Completed Work (Graphics overhaul — map + characters)
 
 - [x] Map: patterned parchment/stone floors (torch-lit current tile, darker corridors), carved two-layer walls, door leaf + swing-arc glyphs, content iconography on tiles (chest/monsters/fountain/temple/altar/statue/puzzle box), party banner token

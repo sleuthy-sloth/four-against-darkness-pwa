@@ -73,7 +73,7 @@ function MapIcon({ frag, x, y, size = 0.62, className = 'fill-parchment/25' }: {
  * pinch/buttons to zoom, recenter on the party. Collapsible bottom panel.
  */
 export default function DungeonScreen() {
-  const { dungeon, log, busy, error, ensureDungeon, explore, search, pendingFind, claimFind, clearError, beginCombat, beginSecretReveal, beginSecretItem, useTreasureLocation, rest, claimQuest } =
+  const { dungeon, log, busy, error, ensureDungeon, explore, search, pendingFind, claimFind, clearError, beginCombat, beginSecretReveal, beginSecretItem, useTreasureLocation, rest, claimQuest, requestUndo, cancelUndo, performUndo, confirmUndo } =
     useDungeonStore()
   const { campaign, party, loadLastCampaign } = useCampaignStore()
   const [panelOpen, setPanelOpen] = useState(true)
@@ -332,6 +332,13 @@ export default function DungeonScreen() {
           >
             ◎
           </button>
+          <button
+            onClick={requestUndo}
+            title="Undo the last action (PROJECT_SPEC §19)"
+            className="rounded bg-stone-800/90 px-2 py-1 text-xs text-parchment"
+          >
+            ⟲
+          </button>
         </div>
       </div>
 
@@ -493,6 +500,28 @@ export default function DungeonScreen() {
             )}
           </div>
         )}
+        </div>
+      )}
+      {/* undo (PROJECT_SPEC §19): confirm before reversing the last action */}
+      {confirmUndo && (
+        <div className="fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
+          <div className="w-full rounded-lg border border-ember/50 bg-stone-900 p-4">
+            <p className="text-sm text-torch">Undo “{confirmUndo.label}”?</p>
+            <p className="mt-1 text-[10px] text-parchment/50">
+              Restores dice, Life, inventory, rooms and the Journal exactly as they were before that action.
+            </p>
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => void performUndo()}
+                className="rounded border border-ember/50 bg-ember/10 px-3 py-2 text-sm text-ember"
+              >
+                Undo it
+              </button>
+              <button onClick={() => void cancelUndo()} className="rounded bg-stone-700 px-3 py-2 text-sm text-parchment">
+                Keep
+              </button>
+            </div>
+          </div>
         </div>
       )}
       <ChoiceDialog />
