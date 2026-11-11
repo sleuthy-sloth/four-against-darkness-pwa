@@ -12,9 +12,9 @@ encounters, dice, combat math, treasure, XP — while the player keeps the meani
 
 | Mobile (iPhone, portrait) | Desktop |
 | --- | --- |
-| ![Dungeon map, mobile](docs/screenshots/dungeon-mobile.png) | ![Dungeon map, desktop](docs/screenshots/dungeon-desktop.png) |
-| ![Party, mobile](docs/screenshots/party-mobile.png) | ![Campaign dashboard, desktop](docs/screenshots/campaign-desktop.png) |
-| | ![Journal, desktop](docs/screenshots/journal-desktop.png) |
+| ![Combat on the dungeon map, mobile](docs/screenshots/dungeon-mobile.png) | ![Dungeon map, desktop](docs/screenshots/dungeon-desktop.png) |
+| ![Dungeon map, mobile](docs/screenshots/dungeon-map-mobile.png) | ![Campaign list with copy/delete, desktop](docs/screenshots/campaign-desktop.png) |
+| ![Party with class portraits, mobile](docs/screenshots/party-mobile.png) | ![Settings: save management, desktop](docs/screenshots/settings-desktop.png) |
 
 Icon art: [game-icons.net](https://game-icons.net) (CC BY 3.0) — see
 `src/assets/icons/ATTRIBUTION.md`. All map floors, walls and door glyphs are
