@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useDungeonStore } from '../../state/dungeonStore'
 import { useCampaignStore } from '../../state/campaignStore'
-import { describeEnemies } from '../../engine/combat/combat'
+import { describeEnemies, clericPrayersLeft } from '../../engine/combat/combat'
 
 /**
  * Combat interface (PROJECT_SPEC §13): party health, enemy group, actions,
@@ -9,7 +9,7 @@ import { describeEnemies } from '../../engine/combat/combat'
  * the player picks targets, waits for reactions, pays bribes, or flees.
  */
 export default function CombatPanel() {
-  const { dungeon, combatAttack, combatWait, combatPayBribe, combatFlee, spendXpRoll, pendingXp } =
+  const { dungeon, combatAttack, combatCast, combatHeal, combatWait, combatPayBribe, combatFlee, spendXpRoll, pendingXp } =
     useDungeonStore()
   const { party } = useCampaignStore()
   const [targetId, setTargetId] = useState<string | null>(null)
@@ -135,6 +135,45 @@ export default function CombatPanel() {
           >
             Attack {targetId ?? active?.profile.name ?? '— pick a target'}
           </button>
+          {/* spellcaster actions (FADEE pp.67-69) */}
+          {(() => {
+            const casters = living.filter(
+              (p) => (p.classId === 'wizard' || p.classId === 'elf') && p.spells.length > 0,
+            )
+            const cleric = living.find((p) => p.classId === 'cleric')
+            const wounded = [...living].sort((a, b) => a.currentLife - b.currentLife)[0]
+            if (!casters.length && !cleric) return null
+            return (
+              <div className="flex flex-wrap gap-1">
+                {casters.map((p) =>
+                  p.spells.map((s) => (
+                    <button
+                      key={`${p.id}-${s}`}
+                      disabled={s === 'protection' || s === 'escape' ? false : !targetId && !active}
+                      onClick={() => {
+                        void combatCast(
+                          p.id,
+                          s as 'sleep' | 'fireball' | 'lightning' | 'protection' | 'escape',
+                          s === 'protection' || s === 'escape' ? null : (targetId ?? active!.id),
+                        )
+                      }}
+                      className="rounded bg-stone-800 px-2 py-1 text-xs text-parchment"
+                    >
+                      {p.name}: {s}
+                    </button>
+                  )),
+                )}
+                {cleric && clericPrayersLeft(cleric).healing > 0 && wounded && (
+                  <button
+                    onClick={() => void combatHeal(cleric.id, wounded.id)}
+                    className="rounded bg-stone-800 px-2 py-1 text-xs text-parchment"
+                  >
+                    {cleric.name}: Healing ({clericPrayersLeft(cleric).healing} left)
+                  </button>
+                )}
+              </div>
+            )
+          })()}
           <button
             onClick={() => void combatFlee()}
             className="w-full rounded border border-stone-700 bg-stone-800 px-3 py-2 text-sm text-parchment/80"

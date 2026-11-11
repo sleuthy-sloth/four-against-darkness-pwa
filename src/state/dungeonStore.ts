@@ -19,10 +19,15 @@ import {
   rollReactions,
   startCombat,
   xpDue,
+  castSpell,
+  castHealing,
+  type CastableSpell,
   type CombatState,
 } from '../engine/combat/combat'
 import { getCampaign, touchCampaign } from '../database/repositories/campaignRepo'
 import { loadDungeon, saveDungeon } from '../database/repositories/dungeonRepo'
+import { rollLoot } from '../engine/treasure/loot'
+import { getDb } from '../database/db'
 
 /**
  * Dungeon application state (PROJECT_SPEC §10, §23). Engine functions do the
@@ -52,6 +57,8 @@ interface DungeonStoreState {
   /** Begin combat from the current tile's encounter (FADEE p.90). */
   beginCombat: () => Promise<void>
   combatAttack: (pcId: string, enemyId: string) => Promise<void>
+  combatCast: (pcId: string, spell: CastableSpell, enemyId: string | null) => Promise<void>
+  combatHeal: (pcId: string, targetId: string) => Promise<void>
   combatWait: () => Promise<void>
   combatPayBribe: () => Promise<void>
   combatFlee: () => Promise<void>
@@ -62,6 +69,27 @@ interface DungeonStoreState {
 async function persist(state: DungeonState, rng: Rng, campaignId: string): Promise<void> {
   await saveDungeon(campaignId, state)
   await touchCampaign(campaignId, { rngState: JSON.stringify(rng.serialize()) })
+}
+
+/** Persist journal events (PROJECT_SPEC §26; Dexie events table). */
+async function appendEvents(
+  campaignId: string,
+  type: string,
+  entries: { ts: number; text: string }[],
+): Promise<void> {
+  if (!entries.length) return
+  const db = getDb()
+  await db.transaction('rw', db.events, async () => {
+    await db.events.bulkPut(
+      entries.map((e, i) => ({
+        id: `${campaignId}-${e.ts}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+        campaignId,
+        type,
+        timestamp: e.ts,
+        payload: e.text,
+      })),
+    )
+  })
 }
 
 export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
@@ -116,6 +144,31 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       dungeon: result.state,
       log: [...get().log, ...result.events.map((text) => ({ ts: Date.now(), text }))].slice(-100),
     })
+    await appendEvents(campaign.id, 'explore', result.events.map((text) => ({ ts: Date.now(), text })))
+    // Wandering Monster ambush (FADEE pp.104, 107): they strike first.
+    if (result.state.pendingAmbush) {
+      const enc = result.state.pendingAmbush
+      result.state.pendingAmbush = null
+      const enemies = [
+        makeEnemy(
+          enc.monster,
+          enc.table,
+          enc.level,
+          enc.count,
+          lifeFromFormula(enc.level, enc.monster.lifeFormula, enc.monster.flatLife),
+        ),
+      ]
+      const combat = startCombat(dungeon.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng, {
+        forceSurprise: true,
+      })
+      dungeon.combat = combat
+      await persist(dungeon, rng, campaign.id)
+      set({
+        dungeon: { ...dungeon },
+        log: [...get().log, ...combat.log.map((l) => ({ ts: l.ts, text: l.text }))].slice(-100),
+      })
+      await appendEvents(campaign.id, 'combat', combat.log.map((l) => ({ ts: l.ts, text: l.text })))
+    }
   },
 
   beginCombat: async () => {
@@ -162,15 +215,112 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       dungeon: { ...dungeon },
       log: [...get().log, ...combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text }))].slice(-100),
     })
+    await appendEvents(campaign.id, 'combat', combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text })))
     if (combat.phase === 'won' || combat.phase === 'lost') {
       // Sync party casualties/levels to Dexie; surface XP due on victory
       const { saveParty } = await import('../database/repositories/campaignRepo')
       await saveParty(campaign.id, party)
       if (combat.phase === 'won') {
         const due = xpDue(combat)
-        set({ pendingXp: { major: due.majorSlain, minor: due.minorEncounter, boss: due.finalBoss } })
+        // Classical XP (FADEE p.117): 1 roll per Major Foe (+1 Final Boss);
+        // Minors accrue 1 roll per 10 encounters.
+        let rolls = due.majorSlain + (due.finalBoss ? 1 : 0)
+        if (due.minorEncounter) {
+          dungeon.minorEncountersTally = (dungeon.minorEncountersTally ?? 0) + 1
+          if (dungeon.minorEncountersTally >= 10) {
+            dungeon.minorEncountersTally -= 10
+            rolls += 1
+          }
+        }
+        // Loot: once per cleared encounter (FADEE p.99), Foe's treasure modifier.
+        const mod = combat.enemies[0]?.profile.treasure ?? '0'
+        const loot = rollLoot(rng, mod)
+        if (loot.gold > 0) {
+          const living = party.filter((p) => p.status !== 'dead')
+          if (living.length) {
+            const each = Math.floor(loot.gold / living.length)
+            living.forEach((p) => (p.gold += each))
+          }
+        }
+        const carrier = party.find((p) => p.status !== 'dead')
+        if (carrier && loot.scroll) {
+          carrier.equipment.push(`scroll of ${loot.scroll.spell}`)
+        }
+        if (carrier && loot.magic) {
+          carrier.equipment.push(loot.magic.name)
+        }
+        set({ pendingXp: rolls > 0 ? { major: rolls, minor: due.minorEncounter, boss: due.finalBoss } : null })
+        await appendEvents(campaign.id, 'loot', [
+          { ts: Date.now(), text: loot.text },
+        ])
       }
     }
+  },
+
+  combatCast: async (pcId, spell, enemyId) => {
+    const { dungeon } = get()
+    const { campaign, party } = await import('./campaignStore').then((m) =>
+      m.useCampaignStore.getState(),
+    )
+    const combat = dungeon?.combat
+    if (!dungeon || !campaign || !combat) return
+    const pc = party.find((p) => p.id === pcId)
+    if (!pc) return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    castSpell(combat, rng, pc, spell, enemyId)
+    await persist(dungeon, rng, campaign.id)
+    set({
+      dungeon: { ...dungeon },
+      log: [...get().log, ...combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text }))].slice(-100),
+    })
+    if (combat.phase === 'won' || combat.phase === 'lost') {
+      const { saveParty } = await import('../database/repositories/campaignRepo')
+      await saveParty(campaign.id, party)
+      if (combat.phase === 'won') {
+        const due = xpDue(combat)
+        let rolls = due.majorSlain + (due.finalBoss ? 1 : 0)
+        if (due.minorEncounter) {
+          dungeon.minorEncountersTally = (dungeon.minorEncountersTally ?? 0) + 1
+          if (dungeon.minorEncountersTally >= 10) {
+            dungeon.minorEncountersTally -= 10
+            rolls += 1
+          }
+        }
+        const mod = combat.enemies[0]?.profile.treasure ?? '0'
+        const loot = rollLoot(rng, mod)
+        if (loot.gold > 0) {
+          const living = party.filter((p) => p.status !== 'dead')
+          if (living.length) {
+            const each = Math.floor(loot.gold / living.length)
+            living.forEach((p) => (p.gold += each))
+          }
+        }
+        const carrier = party.find((p) => p.status !== 'dead')
+        if (carrier && loot.scroll) carrier.equipment.push(`scroll of ${loot.scroll.spell}`)
+        if (carrier && loot.magic) carrier.equipment.push(loot.magic.name)
+        set({ pendingXp: rolls > 0 ? { major: rolls, minor: due.minorEncounter, boss: due.finalBoss } : null })
+        await appendEvents(campaign.id, 'loot', [{ ts: Date.now(), text: loot.text }])
+      }
+    }
+  },
+
+  combatHeal: async (pcId, targetId) => {
+    const { dungeon } = get()
+    const { campaign, party } = await import('./campaignStore').then((m) =>
+      m.useCampaignStore.getState(),
+    )
+    const combat = dungeon?.combat
+    if (!dungeon || !campaign || !combat) return
+    const pc = party.find((p) => p.id === pcId)
+    const target = party.find((p) => p.id === targetId)
+    if (!pc || !target) return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    castHealing(combat, rng, pc, target)
+    await persist(dungeon, rng, campaign.id)
+    set({
+      dungeon: { ...dungeon },
+      log: [...get().log, ...combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text }))].slice(-100),
+    })
   },
 
   combatWait: async () => {
@@ -250,6 +400,12 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       pc.maxLife += 1
       pc.currentLife += 1
       entries.push({ ts: Date.now(), text: `${pc.name} reaches L${pc.level}: +1 max and current Life, bonuses increase.` })
+    }
+    // Consume one available roll (Major/boss rolls are per-kill; minors accrue)
+    const { pendingXp } = get()
+    if (pendingXp) {
+      const remaining = pendingXp.major > 0 ? pendingXp.major - 1 : 0
+      set({ pendingXp: remaining > 0 ? { ...pendingXp, major: remaining } : null })
     }
     const { saveParty } = await import('../database/repositories/campaignRepo')
     await saveParty(campaign.id, party)

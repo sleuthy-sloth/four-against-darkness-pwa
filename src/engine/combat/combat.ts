@@ -25,6 +25,8 @@ export interface EnemyInstance {
   asleep?: boolean
   /** Set when the Final Boss roll revealed this foe (FADEE p.105). */
   isFinalBossFlag?: boolean
+  /** Sleeping Minor Foes (Sleep spell, FADEE p.68). */
+  asleepCount?: number
 }
 
 export interface CombatLogEntry {
@@ -52,6 +54,8 @@ export interface CombatState {
   surprised: boolean
   /** Reaction outcome pending player payment etc. */
   pendingBribe?: { enemyGroupId: string; amount: number; each: boolean } | null
+  /** Protection spell: +1 Defense per protected PC (FADEE p.68). */
+  protections?: Record<string, number>
   /** Rewards accrued at victory (resolved into party in Phase 5/loot). */
   minorEncounterCounted?: boolean
 }
@@ -171,11 +175,11 @@ export function startCombat(
   participants: Character[],
   enemies: EnemyInstance[],
   rng: Rng,
-  opts: { partyWaits?: boolean } = {},
+  opts: { partyWaits?: boolean; forceSurprise?: boolean } = {},
 ): CombatState {
   // FADEE p.90: surprise check (per-Foe X-in-6). Core dungeon set: goblins 1-in-6.
-  let surprised = false
-  if (enemies.some((e) => e.profile.name === 'Goblins')) {
+  let surprised = opts.forceSurprise === true
+  if (!surprised && enemies.some((e) => e.profile.name === 'Goblins')) {
     const roll = rng.d(6)
     surprised = roll === 1
   }
@@ -345,12 +349,24 @@ export function pcAttack(
   )
   let slain = 0
   let damage = 0
-  if (finalTotal >= enemy.level) {
+  if (enemy.asleep) {
+    // Asleep Major Foe: attacks strike without a defense roll (FADEE p.68).
+    damage = 1
+    applyMajorDamage(state, enemy, damage)
+  } else if (finalTotal >= enemy.level) {
     if (enemy.profile.major) {
       damage = Math.max(1, Math.floor(finalTotal / enemy.level))
       applyMajorDamage(state, enemy, damage)
     } else {
-      slain = Math.max(1, Math.floor(finalTotal / enemy.level))
+      // Sleeping Minors are slain at will (FADEE p.68): 1 per attack, free.
+      let freeKills = 0
+      if ((enemy.asleepCount ?? 0) > 0) {
+        freeKills = Math.min(enemy.asleepCount!, 1)
+        enemy.asleepCount = enemy.asleepCount! - freeKills
+        slain += freeKills
+        log(state, `${freeKills} sleeping ${enemy.profile.name} dispatched where they lie.`)
+      }
+      slain += Math.max(1, Math.floor(finalTotal / enemy.level))
       slain = Math.min(slain, enemy.count)
       enemy.count -= slain
       log(state, `Hit! ${slain} ${enemy.profile.name} slain (${finalTotal} ÷ L${enemy.level}).`)
@@ -421,18 +437,27 @@ function runFoesTurn(state: CombatState, rng: Rng): void {
   }
   for (const enemy of state.enemies) {
     if (enemy.fled || enemy.count === 0 || enemy.life === 0) continue
+    // Sleeping Major Foes lose their turn (FADEE p.68).
+    if (enemy.asleep) {
+      log(state, `The ${enemy.profile.name} sleeps through the round.`)
+      continue
+    }
+    const awakeMinors = enemy.count - (enemy.asleepCount ?? 0)
+    if (!enemy.profile.major && awakeMinors <= 0) continue
     // FADEE p.96: Foes don't roll — each PC targeted rolls Defense.
-    const attackers = enemy.profile.major ? 1 : Math.min(enemy.count, living.length)
+    const attackers = enemy.profile.major ? 1 : Math.min(awakeMinors, living.length)
     const assignments = assignTargets(state, enemy, attackers, living)
     for (const [pcIdx, attackerLabel] of assignments) {
       const pc = living[pcIdx]
       const def = defenseBonusFor(pc)
+      const protection = state.protections?.[pc.id] ?? 0
+      if (protection > 0) def.bonus += protection
       const { rolls, total } = rollExplodingD6(rng, `defense roll (${pc.name})`)
       const finalTotal = total + def.bonus
       const needed = enemy.level + 1 // roll HIGHER than L (FADEE p.96)
       log(
         state,
-        `${attackerLabel} attacks ${pc.name}: defense d6[${rolls.join('+')}] ${def.bonus >= 0 ? '+' : ''}${def.bonus} (${def.note}) = ${finalTotal}; needs > L${enemy.level}`,
+        `${attackerLabel} attacks ${pc.name}: defense d6[${rolls.join('+')}] ${def.bonus >= 0 ? '+' : ''}${def.bonus} (${def.note}${protection ? `, +${protection} Protection` : ''}) = ${finalTotal}; needs > L${enemy.level}`,
       )
       if (finalTotal <= enemy.level && finalTotal !== 1) {
         // hit — failed defense
@@ -608,4 +633,127 @@ export function xpDue(state: CombatState): { majorSlain: number; minorEncounter:
   )
   const finalBoss = state.enemies.some((e) => e.isFinalBossFlag)
   return { majorSlain, minorEncounter, finalBoss }
+}
+
+// ---------- spells & prayers in combat (FADEE pp.28, 67-69, 146) ----------
+
+export type CastableSpell = 'sleep' | 'fireball' | 'lightning' | 'protection' | 'escape'
+
+export function canCast(pc: Character, spell: CastableSpell): boolean {
+  if (pc.status === 'dead') return false
+  if (pc.classId === 'wizard') return pc.spells.includes(spell)
+  if (pc.classId === 'elf') return pc.spells.includes(spell) // no Blessing for elves
+  return false
+}
+
+export function clericPrayersLeft(pc: Character): { healing: number; blessing: number } {
+  // Conditions carry 'prayer:healing:<remaining>' markers (FADEE p.28: 3 each).
+  let healing = 3
+  let blessing = 3
+  for (const c of pc.conditions) {
+    const m = /^prayer:(healing|blessing):(\d+)$/.exec(c)
+    if (m) {
+      if (m[1] === 'healing') healing = parseInt(m[2], 10)
+      if (m[1] === 'blessing') blessing = parseInt(m[2], 10)
+    }
+  }
+  return { healing, blessing }
+}
+
+function spendPrayer(pc: Character, kind: 'healing' | 'blessing'): void {
+  const left = clericPrayersLeft(pc)
+  const remaining = kind === 'healing' ? left.healing - 1 : left.blessing - 1
+  pc.conditions = pc.conditions.filter((c) => !c.startsWith(`prayer:${kind}:`))
+  pc.conditions.push(`prayer:${kind}:${remaining}`)
+}
+
+/**
+ * Cast a spell (FADEE pp.67-68): spellcasting roll d6 + L vs target L;
+ * failure wastes the spell. Sleep KOs 1 Major or d6+L Minors; Fireball slays
+ * (total − L) Minors (min 1) or 1 damage to a Major; Lightning slays 1 Minor
+ * or 2 damage to a Major; Protection gives +1 Defense for the encounter.
+ */
+export function castSpell(
+  state: CombatState,
+  rng: Rng,
+  pc: Character,
+  spell: CastableSpell,
+  enemyId: string | null,
+): void {
+  if (state.phase !== 'pcTurn') throw new CombatError('not the party\u2019s turn')
+  const L = pc.level
+  // Casting from memory spends the slot — success or waste (FADEE p.64).
+  const slotIdx = pc.spells.indexOf(spell)
+  if (slotIdx >= 0) pc.spells.splice(slotIdx, 1)
+  if (spell === 'escape') {
+    // FADEE p.68: caster reappears in the first tile — party retreats.
+    log(state, `${pc.name} casts Escape! The party teleports to the dungeon entrance.`)
+    for (const e of state.enemies) e.fled = true
+    state.phase = 'fled'
+    return
+  }
+  if (spell === 'protection') {
+    state.protections = state.protections ?? {}
+    state.protections[pc.id] = (state.protections[pc.id] ?? 0) + 1
+    log(state, `${pc.name} casts Protection: +1 to Defense rolls until the encounter ends.`)
+    endPcTurn(state, rng)
+    return
+  }
+  const enemy = enemyId ? state.enemies.find((e) => e.id === enemyId) : null
+  if (!enemy || enemy.fled || (enemy.count === 0 && !enemy.profile.major)) {
+    throw new CombatError('spell needs a target')
+  }
+  const { rolls, total } = rollExplodingD6(rng, `spellcasting roll (${pc.name}, ${spell})`)
+  const castTotal = total + L
+  log(state, `${pc.name} casts ${spell}: d6[${rolls.join('+')}] +${L} = ${castTotal} vs L${enemy.level}`)
+  if (castTotal < enemy.level) {
+    log(state, 'The spell fails and is wasted. (FADEE p.67)')
+    endPcTurn(state, rng)
+    return
+  }
+  const undead = enemy.profile.category === 'Undead'
+  if (spell === 'sleep') {
+    if (undead || /Artificial|Elemental/.test(enemy.profile.category)) {
+      log(state, `${enemy.profile.name} is immune to Sleep.`)
+    } else if (enemy.profile.major) {
+      enemy.asleep = true
+      log(state, `The ${enemy.profile.name} falls asleep! Attacks against it need no Defense roll.`)
+    } else {
+      const affected = Math.min(enemy.count, rng.formula(`d6+${L}`, 'Sleep Minor count'))
+      enemy.asleepCount = (enemy.asleepCount ?? 0) + affected
+      log(state, `${affected} ${enemy.profile.name} fall asleep.`)
+    }
+  } else if (spell === 'fireball') {
+    if (enemy.profile.major) {
+      applyMajorDamage(state, enemy, 1)
+    } else {
+      const slain = Math.max(1, castTotal - enemy.level)
+      const killed = Math.min(slain, enemy.count - (enemy.asleepCount ?? 0))
+      enemy.count -= killed
+      log(state, `Fireball slays ${killed} ${enemy.profile.name} (${castTotal} − L${enemy.level}).`)
+      checkMorale(state, enemy, rng)
+    }
+  } else if (spell === 'lightning') {
+    if (enemy.profile.major) {
+      applyMajorDamage(state, enemy, 2)
+    } else {
+      enemy.count -= 1
+      log(state, `Lightning slays 1 ${enemy.profile.name}.`)
+      checkMorale(state, enemy, rng)
+    }
+  }
+  endPcTurn(state, rng)
+}
+
+/** Cleric prayer: heal d6+L Life on any living PC (FADEE p.28). */
+export function castHealing(state: CombatState, rng: Rng, pc: Character, target: Character): void {
+  if (state.phase !== 'pcTurn') throw new CombatError('not the party\u2019s turn')
+  const left = clericPrayersLeft(pc)
+  if (left.healing <= 0) throw new CombatError('no Healing prayers left this adventure')
+  const amount = rng.formula(`d6+${pc.level}`, `Healing prayer (${pc.name})`)
+  const healed = Math.min(amount, target.maxLife - target.currentLife)
+  target.currentLife += healed
+  spendPrayer(pc, 'healing')
+  log(state, `${pc.name} prays for Healing: ${target.name} recovers ${healed} Life → ${target.currentLife}/${target.maxLife}.`)
+  endPcTurn(state, rng)
 }

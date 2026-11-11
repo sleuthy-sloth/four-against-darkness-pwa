@@ -90,6 +90,10 @@ export interface DungeonState {
   pendingWanderingMonsters: number | null
   /** Active combat, if any (engine/combat). */
   combat?: CombatState | null
+  /** Wandering Monster ambush rolled while retracing (resolves as combat). */
+  pendingAmbush?: EncounterRoll | null
+  /** Minor encounters defeated toward the next XP roll (FADEE p.117). */
+  minorEncountersTally?: number
 }
 
 export class DungeonError extends Error {}
@@ -231,7 +235,7 @@ export function exploreThrough(
 
   // Already generated beyond this exit → just walk through (FADEE p.104).
   if (exit.toTileId) {
-    state = moveThroughExplored(state, rng, exit.toTileId, events)
+    state = moveThroughExplored(state, rng, exit.toTileId, events, hcl)
     return { state, events }
   }
 
@@ -287,12 +291,24 @@ function moveThroughExplored(
   rng: Rng,
   tileId: string,
   events: string[],
+  hcl: number,
 ): DungeonState {
   // FADEE p.104: retrace — 1-in-6 Wandering Monsters.
   const roll = rng.d(6)
   if (roll === 1) {
-    state.pendingWanderingMonsters = Date.now()
-    events.push('Retracing: 1-in-6 → Wandering Monsters attack! (resolution arrives with the combat engine)')
+    // FADEE p.107: d6 → Vermin/Minions/Weird/Boss (reroll event-Foes & dragons).
+    const tableRoll = rng.d(6)
+    const table: TableKind =
+      tableRoll <= 2 ? 'vermin' : tableRoll <= 4 ? 'minions' : tableRoll === 5 ? 'weird' : 'boss'
+    let tableToUse = table
+    let profile = profileFor(tableToUse, rng.d(6))
+    while (profile.category === 'Event' || profile.category === 'Dragon') {
+      profile = profileFor(tableToUse, rng.d(6))
+    }
+    const enc = rollEncounter(state, rng, profile, hcl, events)
+    if (profile.major) enc.isFinalBoss = false // WM Majors can never be the Final Boss
+    state.pendingAmbush = enc
+    events.push('Retracing: 1-in-6 → Wandering Monsters attack! They strike first. (FADEE pp.104, 107)')
   }
   state.currentTileId = tileId
   return state
