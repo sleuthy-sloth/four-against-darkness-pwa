@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-stone-950 text-parchment font-display antialiased;
+  overscroll-behavior: none;
+}
+
+/* Screen placeholder styling shared across Phase 1 nav stubs */
+.screen-placeholder {
+  @apply flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center;
+}
+
+.phase-note {
+  @apply text-xs text-parchment/50;
+}
