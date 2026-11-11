@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copyright and content policy
 - Deployment guide
 
+### Added — Phase 4 combat core (2026-11-10)
+- Combat engine: exploding dice, modifier summaries from pp.146-148, minor/major damage math, Morale, reactions, bribes, fleeing, PC death, XP accounting
+- CombatPanel UI with target selection and a fully explained combat log
+- Combat persisted within the dungeon record; 68 tests green; live fight verified end-to-end
+
 ### Added — Phase 3 dungeon generation (2026-11-10)
 - Tile data pack (42 shapes, confidence-flagged, OQ-2 verified via zoomed crops)
 - Dungeon monster tables (dungeon environment) as page-cited data

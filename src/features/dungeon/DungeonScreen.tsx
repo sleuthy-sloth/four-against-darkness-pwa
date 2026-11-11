@@ -7,6 +7,7 @@ import {
 import { tileGeometry, dungeonBounds } from './mapGeometry'
 import { useCampaignStore } from '../../state/campaignStore'
 import { D66_TILES } from '../../rulesets/expanded/tiles'
+import CombatPanel from './CombatPanel'
 
 /**
  * Dungeon screen (PROJECT_SPEC §23): the interactive map is the centerpiece.
@@ -14,7 +15,7 @@ import { D66_TILES } from '../../rulesets/expanded/tiles'
  * pinch/buttons to zoom, recenter on the party. Collapsible bottom panel.
  */
 export default function DungeonScreen() {
-  const { dungeon, log, busy, error, ensureDungeon, explore, search, pendingFind, claimFind, clearError } =
+  const { dungeon, log, busy, error, ensureDungeon, explore, search, pendingFind, claimFind, clearError, beginCombat } =
     useDungeonStore()
   const { campaign, party, loadLastCampaign } = useCampaignStore()
   const [panelOpen, setPanelOpen] = useState(true)
@@ -215,8 +216,13 @@ export default function DungeonScreen() {
         </div>
       </div>
 
-      {/* bottom panel */}
-      <div className="shrink-0 border-t border-stone-800 bg-stone-900/95">
+      {/* bottom panel: combat replaces the exploration panel */}
+      {dungeon.combat ? (
+        <div className="max-h-[52%] shrink-0 overflow-hidden border-t border-stone-800 bg-stone-900/95 flex flex-col">
+          <CombatPanel />
+        </div>
+      ) : (
+        <div className="shrink-0 border-t border-stone-800 bg-stone-900/95">
         <button
           onClick={() => setPanelOpen((o) => !o)}
           className="flex w-full items-center justify-between px-3 py-1.5 text-xs uppercase tracking-wide text-parchment/60"
@@ -230,14 +236,19 @@ export default function DungeonScreen() {
         {panelOpen && (
           <div className="max-h-44 overflow-y-auto px-3 pb-3 text-sm">
             {content?.encounter && (
-              <p className="mb-2 rounded bg-ember/20 px-2 py-1.5 text-parchment">
-                {content.encounter.count}×{' '}
-                <span className="text-torch">{content.encounter.monster.name}</span> (L
-                {content.encounter.level}){content.encounter.isFinalBoss && ' — FINAL BOSS!'}
-                <span className="block text-xs text-parchment/60">
-                  Combat arrives with the encounter engine (Phase 4).
-                </span>
-              </p>
+              <div className="mb-2 rounded bg-ember/20 px-2 py-1.5 text-parchment">
+                <p>
+                  {content.encounter.count}×{' '}
+                  <span className="text-torch">{content.encounter.monster.name}</span> (L
+                  {content.encounter.level}){content.encounter.isFinalBoss && ' — FINAL BOSS!'}
+                </p>
+                <button
+                  onClick={() => void beginCombat()}
+                  className="mt-1 rounded border border-torch/40 bg-torch/10 px-3 py-1 text-torch"
+                >
+                  Engage! (FADEE p.90)
+                </button>
+              </div>
             )}
             {content?.kind === 'treasure' && (
               <p className="mb-2 text-parchment/80">Treasure here! (loot tables land in Phase 5)</p>
@@ -308,7 +319,8 @@ export default function DungeonScreen() {
             )}
           </div>
         )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }

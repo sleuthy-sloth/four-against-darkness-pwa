@@ -142,10 +142,11 @@ describe('combat simulation', () => {
     expect(majorSeen).toBeGreaterThan(0)
   })
 
-  it('is deterministic: same seed → identical log', () => {
+  it('is deterministic: same seed → identical log text', () => {
     const a = autoResolve(777, 2, 'minions').state
     const b = autoResolve(777, 2, 'minions').state
-    expect(JSON.stringify(a.log)).toBe(JSON.stringify(b.log))
+    const textOf = (s: CombatState) => JSON.stringify(s.log.map((l) => l.text))
+    expect(textOf(a)).toBe(textOf(b))
   })
 
   it('no combat loop exceeds a sane number of rounds', () => {

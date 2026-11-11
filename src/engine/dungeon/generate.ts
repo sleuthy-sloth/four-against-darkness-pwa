@@ -7,6 +7,7 @@ import {
   type TableKind,
 } from '../../rulesets/expanded/monsters'
 import type { Rng } from '../core/rng'
+import type { CombatState } from '../combat/combat'
 
 /**
  * Dungeon generation engine (FADEE pp.104, 149-152; PROJECT_SPEC Part V §10).
@@ -87,6 +88,8 @@ export interface DungeonState {
   majorFoesMet: number
   /** Pending Wandering Monsters (rolled but unresolved until Phase 4). */
   pendingWanderingMonsters: number | null
+  /** Active combat, if any (engine/combat). */
+  combat?: CombatState | null
 }
 
 export class DungeonError extends Error {}

@@ -26,7 +26,17 @@
 
 ## Current Work
 
-- [ ] Journal screen (Phase 3 remainder): persist the event log to the Dexie events table and render it with category filters
+- [ ] Phase 4 remainder: spell-casting in combat (basic 6 + prayers), ranged-first phase, marching-order UI, Wandering Monster ambush resolution
+
+## Completed Work (Phase 4 — combat core, live)
+
+- [x] Combat engine (engine/combat/combat.ts): exploding tier dice, class/armor/shield/weapon modifiers per FADEE pp.146-148, Minor-group slaying (total ÷ L), Major damage per L-multiple, weaken-below-half, group Morale once per encounter, hated-class attack distribution, natural-1-always-fails defense
+- [x] Reactions: parser + automation for flee/flee-if-outnumbered/bribe/fight/ignore/peaceful; bribes paid from pooled party gold; unhandled reactions flagged as fights with a source note (no silent substitutions)
+- [x] Flee resolution (each Foe strikes once, shields negated); PC death at 0 Life (FADEE p.105); XP accounting (Major rolls, minor encounter per 10, Final Boss bonus)
+- [x] Combat state persisted inside the dungeon record; party casualties sync to Dexie after each fight
+- [x] CombatPanel UI: enemy/target selection, party health grid, engage/wait/bribe/flee, full explained combat log, XP-roll assignment prompt
+- [x] Tests: 16 unit + 5 sim (160 auto-resolved combats, determinism, loop bounds) — 68 total green
+- [x] Live-verified in browser: 10× Mushroom Men L3 fought to victory through the UI; Cleric fell to a failed defense (logged); Morale broke the goblin... (mushroom men) group below half; XP roll spent → Warrior L2 with +1 Life
 
 ## Completed Work (Phase 3 — dungeon generation, map live)
 
@@ -95,7 +105,13 @@ None.
 
 ## Next Recommended Task
 
-Phase 4: encounters and combat — attack/defense resolution per the pp.146-148 modifier summaries, monster turn automation, Morale, combat log, then treasure/loot (Phase 5 starts there too).
+Phase 4 remainder + Phase 5: spells in combat, then treasure/loot tables and the Journal.
+
+## [Unreleased] — Phase 4 combat core (2026-11-10)
+### Added
+- Combat engine: exploding dice, modifier summaries from pp.146-148, minor/major damage math, Morale, reactions, bribes, fleeing, PC death, XP accounting
+- CombatPanel UI with target selection and a fully explained combat log
+- Combat persisted within the dungeon record; 68 tests green; live fight verified end-to-end
 
 ## [Unreleased] — Phase 3 dungeon generation (2026-11-10)
 ### Added
