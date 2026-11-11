@@ -1,113 +1,72 @@
-# Game Rules
+# Game Rules — Implementation Reference (FADEE)
 
-**IMPORTANT**: This document describes mechanics conceptually. All specific rule values are pending verification against the Four Against Darkness Expanded Edition rulebook.
+Original-language summary of how a Four Against Darkness (Expanded Edition) adventure runs, written for the engine team. Every claim is page-cited; full detail lives in RULES_VERIFICATION.md. No book prose is reproduced here.
 
-## Character System
+## The loop
 
-### Character Classes
-| Class | Role | Status |
-|-------|------|--------|
-| Fighter | Frontline combat | UNVERIFIED |
-| Wizard | Spellcasting | UNVERIFIED |
-| Rogue | Stealth/traps | UNVERIFIED |
-| Cleric | Healing/support | UNVERIFIED |
+1. **Assemble** a party of four L1 adventurers (one class each; FADEE pp.7-8, 19-66).
+2. **Generate** the dungeon one tile at a time: d6 starting room, then d66 tile shapes connected through doors/openings (pp.104, 149-151). Roll 2d6 for tile content as the party steps in (p.152).
+3. **Resolve** whatever the tile holds: Foe encounters, events, traps, special features, treasure (pp.152-166).
+4. **Fight** Foes: PCs roll everything; Foes have a Level (L) the rolls are made against (pp.2, 90-99).
+5. **Level up** with XP rolls, collect loot, manage Life, spells, Madness (pp.113-118).
+6. **Find and slay the Final Boss** (d6 + one per Major Foe met so far, on 6+; p.105), then **walk out alive**. That ends the adventure (p.105).
 
-### Character Creation
-- Party size: 4 characters (Requirement)
-- Each character has: name, class, level, statistics, health, abilities, spells, equipment, inventory
-- Status: UNVERIFIED - rules pending book access
+## Resolution primitives
 
-### Statistics
-- Attributes: Strength, Dexterity, Intelligence, etc.
-- Derived values: Hit Points, Armor Class, Saving Throws, etc.
-- Status: UNVERIFIED
+- Everything is a d6 roll plus modifiers against a target (d8/d10/d12/d20 appear only at higher tiers, pp.2, 5).
+- **Attack**: roll ≥ target (Foe's L). **Defense**: roll > Foe's L. **Save**: roll ≥ the Save's stated target (p.77). Foes never roll (p.2).
+- **Explosion**: rolling the die's highest face adds another die, cumulatively (p.5).
+- **HCL** = highest character level; Foe/hazard L = HCL + modifier, locked at first meeting (p.3).
+- **Tier** (1-5) keys die type and several +Tier bonuses (p.5).
 
-## Dungeon Generation
+## Characters
 
-### Environment Types
-| Environment | Status |
-|-------------|--------|
-| Cave | UNVERIFIED |
-| Dungeon | UNVERIFIED |
-| Temple | UNVERIFIED |
-| Ruins | UNVERIFIED |
-| ... | UNVERIFIED |
+- Each PC has: class, level, Attack/Defense bonuses, Life (class formula, e.g. L+7), traits, class abilities, equipment, gold (pp.7, 19-66).
+- 20 classes in this book; the 8 core ones (warrior, barbarian, elf, dwarf, cleric, rogue, wizard, halfling) anchor the Saves tables; others "Save as" one of them (pp.7-8). Class data table: RULES_VERIFICATION Part 3.
+- Hands matter: two-handed weapons and bows occupy both; casters need one free hand; shields take a turn to equip (p.110).
+- Level-ups are instant during play: +1 max and current Life plus every L-derived bonus (p.117). Four interchangeable XP systems exist; the Classical one is default (pp.117-118).
 
-### Room Generation
-- Room dimensions vary
-- Rooms have doors/corridors
-- Status: UNVERIFIED
+## Combat flow
 
-### Door Types
-- Standard doors
-- Secret doors
-- Locked doors
-- Status: UNVERIFIED
+1. On meeting Foes the party may strike immediately or watch their Reaction (pp.90, 101-102).
+2. Surprise rolls (X-in-6 per Foe) can hand the first turn to the Foes (p.90).
+3. Ranged attacks and spells always go before melee — Foes' first if they surprised the party (pp.91, 146).
+4. PCs act in any order, one action each; then surviving Foes attack — the PCs make Defense rolls against the Foes' L (p.96).
+5. Damage: 1 per hit by default; every L-multiple the roll exceeds adds damage (p.94). Minor Foes (Vermin/Minions) have 1 Life and die in numbers; Major Foes (Weird/Bosses) have Life pools and weaken below half Life (p.94).
+6. Groups of Minors test Morale under half strength (d6: 1-3 flee); "fight to the death" profiles never do (p.94).
+7. End combat by killing all, fleeing, or withdrawing through a door (pp.97-98).
 
-## Encounter System
+## Dungeon generation pipeline (engine order)
 
-### Encounter Tables
-Per-environment encounter selection
-- Status: UNVERIFIED
+1. Roll first room (d6, p.149), no content.
+2. Party picks an exit → roll d66 tile shape (pp.104, 149-151), draw it connected, roll 2d6 content (p.152).
+3. Content routes to: treasure, trap+treasure, special events (rooms only), special features (empty rooms), Vermin/Minion/Weird/Boss encounter per environment table, dragon lair, or empty-searchable (p.152).
+4. Doors: optional 2d6 table with seven special door types (p.109); bashing/lockpicking rules p.110.
+5. Empty tiles may be Searched once (d6, p.107). Wandering Monsters appear on retraces, restings, bashing noise, hidden-treasure alarms, and some events (pp.104, 107, 108, 110, 114).
+6. Every Major Foe rolls for Final Boss status (p.105).
 
-### Monster Mechanics
-- Monster statistics (HD, AC, attacks, etc.)
-- Monster quantities per room
-- Monster special abilities
-- Status: UNVERIFIED
+## Environments
 
-## Combat System
+Dungeons, caverns, fungal grottoes share tile shapes and the content table but have their own Foe tables (Vermin/Minion/Weird/Boss × each), traps, events, and special rules — caverns have terrain features and no doors; grottoes are slippery and doorless (mushroom walls) (pp.111-113). Secret passages move between them (pp.108, 152).
 
-### Turn Order
-- Initiative resolution
-- Player vs monster actions
-- Status: UNVERIFIED
+## Magic
 
-### Combat Actions
-- Attack selection
-- Damage calculation
-- Special abilities/spells
-- Status: UNVERIFIED
+- Spellcasting roll d6 + L vs target L; failure wastes the spell; Magic Resistance demands a second roll first (p.67).
+- Spellcasters memorize into slots before each adventure (wizard L+2, elf L, druid 2+L, illusionist L+3, gnome's single daily spell) (pp.32-34, 42, 64).
+- Lists: 6 basic wizard spells (pp.68-69), 12 druid (pp.70-72), 12 illusionist (pp.73-75). Scrolls (parchment/bark/prism) are cast by anyone but barbarians (p.76). Clerics pray instead of casting (pp.28, 67).
+- 3 Clues reveal a Secret from a ten-entry list (pp.123-124).
 
-### Combat Resolution
-- Hit/miss determination
-- Damage application
-- Death and recovery
-- Status: UNVERIFIED
+## Death & recovery
 
-## Progression
+- 0 Life = dead; a Major Foe at 0 Life can instead be subdued via -1 attacks (pp.99, 105).
+- Bodies can be carried (the carrier is defenseless), looted (5-in-6 items left behind are stolen), blessed back from stone, or resurrected with a 1000gp ritual (d6 ≤ level) (pp.85, 105-106).
+- Resting once per adventure heals 1 Life or renews 1 spent ability, behind nailed doors, with a 1-in-6 Wandering Monster roll (p.114).
+- Madness above Level (wizards: L+1) removes a PC permanently (pp.113-114).
 
-### Experience
-- XP awards per combat
-- Level advancement thresholds
-- Status: UNVERIFIED
+## Engine implementation notes
 
-### Treasure
-- Gold rewards
-- Equipment items
-- Magical items
-- Status: UNVERIFIED
-
-## Complete Rules Inventory
-
-All Expanded Edition mechanics are currently **UNVERIFIED** pending access to the rulebook. Do not implement specific values until verified.
-
-| Rule ID | Rule Name | Status | Source |
-|---------|-----------|--------|--------|
-| CHAR-001 | Character Creation | UNVERIFIED | Pending book access |
-| CHAR-002 | Character Classes | UNVERIFIED | Pending book access |
-| CHAR-003 | Character Statistics | UNVERIFIED | Pending book access |
-| CHAR-004 | Experience/Levels | UNVERIFIED | Pending book access |
-| DUNGEON-001 | Dungeon Generation | UNVERIFIED | Pending book access |
-| DUNGEON-002 | Room Generation | UNVERIFIED | Pending book access |
-| DUNGEON-003 | Door Types | UNVERIFIED | Pending book access |
-| ENCOUNTER-001 | Encounter Tables | UNVERIFIED | Pending book access |
-| ENCOUNTER-002 | Monster Selection | UNVERIFIED | Pending book access |
-| COMBAT-001 | Combat Flow | UNVERIFIED | Pending book access |
-| COMBAT-002 | Attack Resolution | UNVERIFIED | Pending book access |
-| COMBAT-003 | Damage Calculation | UNVERIFIED | Pending book access |
-| TREASURE-001 | Treasure Generation | UNVERIFIED | Pending book access |
-| TRAP-001 | Trap Mechanics | UNVERIFIED | Pending book access |
-| EVENT-001 | Event Resolution | UNVERIFIED | Pending book access |
-| SPELL-001 | Spell Casting | UNVERIFIED | Pending book access |
-| EQUIPMENT-001 | Equipment Rules | UNVERIFIED | Pending book access |
+- All randomness through the seeded PRNG; every table above is data, not code.
+- Encounter selection = environment → tier table (vermin/minion/weird/boss) → d6 entry → quantity formula (e.g. "d6+1", "2d6") from the profile.
+- Foe profile shape: L formula, Life formula, attack count, treasure modifier, special abilities, d6 reactions table (pp.167-186).
+- Reactions drive the "wait" decision; Bribe amounts are per-profile gp (pp.101-102).
+- The initiative flowchart and the attack/defense modifier summaries on pp.146-148 are the canonical resolution order — implement from those pages first.

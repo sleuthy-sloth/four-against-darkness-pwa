@@ -1,9 +1,13 @@
 # Implementation Status
 
 **Last Updated**: 2026-11-10
-**Current Phase**: Phase 1 (App Shell) — scaffold complete, unverified on device
+**Current Phase**: Phase 0 COMPLETE except verification pass; rules research DONE
 
 ## Completed Work
+
+- [x] Rules research — UNBLOCKED and DONE (owner delivered the Expanded Edition PDF 2026-11-10)
+- [x] Full mechanic inventory in docs/RULES_VERIFICATION.md (~180 page-cited rule entries, 20 classes, 30 spells, 24 monster tables, all generation/treasure/trap/event tables, 5 open questions flagged)
+- [x] docs/GAME_RULES.md rewritten as original-language engine reference
 
 - [x] Environment inspection (Node v26.8.2, npm 11.19.1, Git 2.47.3, gh 2.101.0)
 - [x] GitHub authentication verified (sleuthy-sloth, repo scope)
@@ -26,10 +30,8 @@
 
 ## Pending Work
 
-### Phase 0 Remaining (BLOCKED on rulebook)
-- [ ] Rules research — drop the Expanded Edition PDF at ~/inbox/4ad/ to unblock
-- [ ] Complete rules inventory
-- [ ] Verify all mechanics against book
+### Phase 0 Remaining
+- [ ] Verification pass: owner spot-checks RULES_VERIFICATION.md, resolves the 5 open questions (OQ-1 Search Table "0-1" misprint; OQ-2 tile-shape diagram confirmation)
 
 ### Phase 1 (App Shell) — code complete, acceptance partially verified
 - [x] Vite + React + TypeScript project
@@ -53,7 +55,8 @@ None known.
 
 ## Unverified Mechanics
 
-**ALL** Expanded Edition mechanics are UNVERIFIED. The rulebook is not available on this host. See docs/RULES_VERIFICATION.md for complete inventory.
+- All mechanics are RESEARCHED with page citations (docs/RULES_VERIFICATION.md) — none yet VERIFIED (needs the second pass above), IMPLEMENTED, or TESTED.
+- Tile-shape diagrams (pp.149-151) were transcribed from page images: highest transcription risk, must be re-verified before Phase 3.
 
 ## Failed Tests
 
@@ -61,10 +64,10 @@ None.
 
 ## Outstanding Dependencies
 
-- Expanded Edition rulebook (required for rules verification) — owner is placing PDF at ~/inbox/4ad/
+- Owner spot-check of RULES_VERIFICATION.md (open questions OQ-1, OQ-2)
 - iPhone for PWA testing
 - Cloudflare API token + account ID (deployment wiring, Phase 7)
 
 ## Next Recommended Task
 
-Phase 2: character system (Zod schemas, class definitions, party creation) once the rulebook is ingested; do not invent class data — keep RULES_VERIFICATION.md authoritative.
+Phase 2: character system — Zod schemas + class data pack for the 8 core classes (page-cited from RULES_VERIFICATION Part 3), party creation, Dexie persistence, unit tests. Do not touch the 13 non-core classes until Release 0.5.
