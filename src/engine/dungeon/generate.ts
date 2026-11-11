@@ -62,6 +62,8 @@ export interface TileContent {
   specialFeatureRoll?: number
   /** d6 result of the room's Special Events roll (resolved once, p.153). */
   eventRoll?: number
+  /** Encounter defeated here (Resting prerequisite, FADEE p.114). */
+  cleared?: boolean
 }
 
 export interface PlacedTile {
@@ -103,13 +105,15 @@ export interface DungeonState {
   alchemistMet?: boolean
   /** A feature/event choice the player must answer before play continues. */
   pendingChoice?: PendingChoicePayload | null
+  /** The party already rested this adventure (once only, FADEE p.114). */
+  rested?: boolean
 }
 
 /** Serialized player choice from the features engine. */
 export interface PendingChoicePayload {
   kind:
     | 'temple' | 'statue' | 'puzzle' | 'ghost' | 'healer' | 'alchemist'
-    | 'secret' | 'secretPc' | 'secretWeakness' | 'secretItem'
+    | 'secret' | 'secretPc' | 'secretWeakness' | 'secretItem' | 'rest'
   source: string
   /** Statue: difficulty info. */
   hcl?: number

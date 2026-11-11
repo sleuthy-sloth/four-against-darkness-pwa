@@ -43,7 +43,12 @@ import {
   TRAP_INFO,
   FEATURE_INFO,
   EVENT_INFO,
+  ITEM_INFO,
 } from '../rulesets/expanded/features'
+import { canRest, beginRest, applyRestChoice } from '../engine/camp/rest'
+import {
+  profileFor,
+} from '../rulesets/expanded/monsters'
 import {
   attemptPuzzle,
   resolveEvent,
@@ -108,6 +113,11 @@ interface DungeonStoreState {
   /** Open the item-choice dialog for the item-location secret. */
   beginSecretItem: () => Promise<void>
   useTreasureLocation: () => Promise<void>
+  /** Rest once per adventure in a cleared, nail-secured room (FADEE p.114). */
+  rest: () => Promise<void>
+  restPick: (pcId: string, choice: 'life' | 'spell' | 'prayer-healing' | 'prayer-blessing') => Promise<void>
+  /** Outfitter (between adventures, FADEE pp.82-85). */
+  buyItem: (pcId: string, item: string) => Promise<void>
   clearError: () => void
 }
 
@@ -222,6 +232,11 @@ async function savePartyIfCombatOver(
   if (phase === 'won' || phase === 'lost' || phase === 'fled') {
     const { saveParty } = await import('../database/repositories/campaignRepo')
     await saveParty(campaignId, party)
+    // Victory clears the tile's encounter (Resting prerequisite, FADEE p.114).
+    if (phase === 'won' && dungeon.combat) {
+      const tile = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
+      if (tile?.content) tile.content.cleared = true
+    }
     // Secrets consumed in combat (Terrifying) write back (FADEE p.123).
     if (dungeon.combat?.secrets) {
       const { useCampaignStore } = await import('./campaignStore')
@@ -450,6 +465,8 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       const { saveParty } = await import('../database/repositories/campaignRepo')
       await saveParty(campaign.id, party)
       if (combat.phase === 'won') {
+        const t = dungeon.tiles.find((x) => x.id === dungeon.currentTileId)
+        if (t?.content) t.content.cleared = true
         const due = xpDue(combat)
         // Classical XP (FADEE p.117): 1 roll per Major Foe (+1 Final Boss);
         // Minors accrue 1 roll per 10 encounters.
@@ -506,6 +523,8 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       const { saveParty } = await import('../database/repositories/campaignRepo')
       await saveParty(campaign.id, party)
       if (combat.phase === 'won') {
+        const t = dungeon.tiles.find((x) => x.id === dungeon.currentTileId)
+        if (t?.content) t.content.cleared = true
         const due = xpDue(combat)
         let rolls = due.majorSlain + (due.finalBoss ? 1 : 0)
         if (due.minorEncounter) {
@@ -1098,6 +1117,119 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     await saveParty(campaign.id, party)
     appendLog([`The password opens a wall niche: ${gold} gp! (FADEE p.122)`])
     await appendEvents(campaign.id, 'loot', [{ ts: Date.now(), text: `Treasure-location secret: ${gold} gp (FADEE p.122)` }])
+  },
+
+  // ---------- Resting (FADEE pp.113-114) ----------
+
+  rest: async () => {
+    const { dungeon } = get()
+    const { campaign, party } = await import('./campaignStore').then((m) =>
+      m.useCampaignStore.getState(),
+    )
+    if (!dungeon || !campaign) return
+    const tile = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
+    if (!tile) return
+    const nails = party.reduce((n, p) => n + p.equipment.filter((e) => e === 'bag of nails').length, 0)
+    // Neighbors: every linked exit's target must be explored and cleared.
+    const neighborsCleared = tile.exits
+      .filter((e) => e.toTileId)
+      .every((e) => {
+        const t = dungeon.tiles.find((x) => x.id === e.toTileId)
+        return !!t && (!t.content?.encounter || t.content.cleared === true)
+      })
+    const check = canRest({
+      doorCount: tile.exits.length,
+      neighborsCleared,
+      tileCleared: !tile.content?.encounter || tile.content.cleared === true,
+      nailsHeld: nails,
+      alreadyRested: dungeon.rested === true,
+    })
+    if (!check.ok) {
+      set({ error: check.reason })
+      return
+    }
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    const outcome = beginRest(party, tile.exits.length)
+    dungeon.rested = true
+    dungeon.pendingChoice = {
+      kind: 'rest',
+      source: 'FADEE p.114',
+      pcIds: outcome.pendingPcIds,
+      prompt: 'Each PC recovers 1 Life or 1 spent ability (spell or prayer).',
+    }
+    await persist(dungeon, rng, campaign.id)
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    appendLog(outcome.messages)
+    await appendEvents(campaign.id, 'event', outcome.messages.map((text) => ({ ts: Date.now(), text })))
+  },
+
+  restPick: async (pcId, choice) => {
+    const { dungeon } = get()
+    const { campaign, party } = await import('./campaignStore').then((m) =>
+      m.useCampaignStore.getState(),
+    )
+    if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'rest') return
+    const pc = party.find((p) => p.id === pcId && p.status !== 'dead')
+    if (!pc) return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    const msg = applyRestChoice(pc, choice, rng)
+    const remaining = (dungeon.pendingChoice.pcIds ?? []).filter((id) => id !== pcId)
+    dungeon.pendingChoice = remaining.length
+      ? { ...dungeon.pendingChoice, pcIds: remaining }
+      : null
+    await persist(dungeon, rng, campaign.id)
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    appendLog([msg])
+    // FADEE p.114: the 1-in-6 WM roll happens AFTER recovery; nailed doors
+    // (always required here) mean the party attacks first even if surprised.
+    if (!remaining.length) {
+      const roll = rng.d(6)
+      if (roll === 1) {
+        const tableRoll = rng.d(6)
+        const table = tableRoll <= 2 ? 'vermin' : tableRoll <= 4 ? 'minions' : tableRoll === 5 ? 'weird' : 'boss'
+        const enc = rollEncounterSimple(dungeon, rng, profileFor(table, tableRoll), Math.max(1, ...party.map((p) => p.level)))
+        enc.isFinalBoss = false
+        const enemies = [
+          makeEnemy(enc.monster, enc.table, enc.level, enc.count, lifeFromFormula(enc.level, enc.monster.lifeFormula, enc.monster.flatLife)),
+        ]
+        const combat = startCombat(dungeon.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng, {
+          marchingOrder: party.map((p) => p.id),
+          secrets: campaign.secrets,
+        })
+        dungeon.combat = combat
+        await persist(dungeon, rng, campaign.id)
+        appendLog(['Wandering Monsters burst in as the party rests — but the nailed doors gave the party the first attack! (FADEE p.114)', ...combat.log.map((l) => l.text)])
+        await appendEvents(campaign.id, 'combat', combat.log.map((l) => ({ ts: l.ts, text: l.text })))
+      } else {
+        appendLog([`Rest complete — no Wandering Monsters (rolled ${roll}). (FADEE p.114)`])
+      }
+    }
+  },
+
+  /** Outfitter purchase (between adventures, FADEE pp.82-85). */
+  buyItem: async (pcId, item) => {
+    const { dungeon } = get()
+    const { campaign, party } = await import('./campaignStore').then((m) =>
+      m.useCampaignStore.getState(),
+    )
+    if (!campaign) return
+    const pc = party.find((p) => p.id === pcId && p.status !== 'dead')
+    const info = ITEM_INFO[item]
+    if (!pc || !info) return
+    if (pc.gold < info.price) {
+      set({ error: `${pc.name} has only ${pc.gold}gp (${item} costs ${info.price}gp).` })
+      return
+    }
+    pc.gold -= info.price
+    pc.equipment.push(item)
+    const rng = dungeon && campaign ? Rng.deserialize(JSON.parse(campaign.rngState)) : null
+    if (dungeon) await persist(dungeon, rng!, campaign.id)
+    else await touchCampaign(campaign.id, {})
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    appendLog([`${pc.name} buys ${item} for ${info.price}gp at the outfitter. (FADEE pp.82-85)`])
   },
 
   clearError: () => set({ error: null }),

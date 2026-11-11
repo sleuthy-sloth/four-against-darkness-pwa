@@ -132,7 +132,34 @@ export const ITEM_INFO: Record<string, { text: string; price: number; source: st
     price: 4,
     source: 'FADEE p.85',
   },
+  rope: {
+    text: '+1 to Climbing Saves; may bind subdued Foes.',
+    price: 4,
+    source: 'FADEE p.83',
+  },
+  lantern: {
+    text: 'Light source. Without light: -2 Attack/Defense/Saves, no Search or ranged attacks.',
+    price: 4,
+    source: 'FADEE p.82',
+  },
+  rations: {
+    text: 'Food for 1 person for 1 day. Max 10 per PC. Bribes ravenous creatures.',
+    price: 1,
+    source: 'FADEE p.83',
+  },
+  'scroll of blessing': {
+    text: 'Reading takes 1 turn; casts 1 Blessing (removes a curse). Casting destroys it.',
+    price: 100,
+    source: 'FADEE p.84',
+  },
 }
+
+/**
+ * Between-adventures outfitter stock (FADEE pp.82-85): light/heavy armor,
+ * weapons and magic services are excluded (armor/weapons come from class
+ * kits; magic-item purchases land with the supplements milestone).
+ */
+export const SHOP_STOCK = ['rations', 'rope', 'lantern', 'bandage', 'bag of nails', 'healing potion', 'scroll of blessing'] as const
 
 /** Barbarians may not use magic items, scrolls, or potions (FADEE p.54). */
 export const NO_MAGIC_CLASSES = new Set(['barbarian'])

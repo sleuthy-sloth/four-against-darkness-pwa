@@ -17,7 +17,7 @@ import { DUNGEON_FEATURES, FEATURE_INFO } from '../../rulesets/expanded/features
  * pinch/buttons to zoom, recenter on the party. Collapsible bottom panel.
  */
 export default function DungeonScreen() {
-  const { dungeon, log, busy, error, ensureDungeon, explore, search, pendingFind, claimFind, clearError, beginCombat, beginSecretReveal, beginSecretItem, useTreasureLocation } =
+  const { dungeon, log, busy, error, ensureDungeon, explore, search, pendingFind, claimFind, clearError, beginCombat, beginSecretReveal, beginSecretItem, useTreasureLocation, rest } =
     useDungeonStore()
   const { campaign, party, loadLastCampaign } = useCampaignStore()
   const [panelOpen, setPanelOpen] = useState(true)
@@ -311,6 +311,14 @@ export default function DungeonScreen() {
                 className="mb-2 rounded border border-torch/40 bg-torch/10 px-3 py-1.5 text-xs text-torch"
               >
                 Reveal a Secret (spend 3 Clues — {campaign.clues} in pool)
+              </button>
+            )}
+            {tile.content?.cleared && !dungeon.combat && (
+              <button
+                onClick={() => void rest()}
+                className="mb-2 rounded border border-stone-600 bg-stone-800 px-3 py-1.5 text-xs text-parchment"
+              >
+                Rest here (1 Life or 1 ability each — FADEE p.114)
               </button>
             )}
             {tile.searchResult === 'find' && !pendingFind && (

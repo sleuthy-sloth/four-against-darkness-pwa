@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useCampaignStore } from '../../state/campaignStore'
 import { useDungeonStore } from '../../state/dungeonStore'
-import { ITEM_INFO, sameBuild, NO_MAGIC_CLASSES } from '../../rulesets/expanded/features'
+import { ITEM_INFO, SHOP_STOCK, sameBuild, NO_MAGIC_CLASSES } from '../../rulesets/expanded/features'
 import { applyBandage, drinkHealingPotion } from '../../engine/combat/combat'
 import { saveParty } from '../../database/repositories/campaignRepo'
 import type { Character } from '../../rulesets/schema/character'
@@ -13,9 +13,10 @@ import type { Character } from '../../rulesets/schema/character'
  */
 export default function InventoryScreen() {
   const { party, campaign } = useCampaignStore()
-  const { dungeon, error, clearError } = useDungeonStore()
+  const { dungeon, error, clearError, buyItem } = useDungeonStore()
   const [msg, setMsg] = useState<string | null>(null)
   const [moveItem, setMoveItem] = useState<{ pcId: string; item: string } | null>(null)
+  const [buying, setBuying] = useState<string | null>(null)
 
   if (!party.length) {
     return <div className="p-4 text-parchment/60">Create a party first.</div>
@@ -78,6 +79,24 @@ export default function InventoryScreen() {
         </p>
       )}
       {inCombat && <p className="mt-2 text-xs text-ember">Combat is active — armor may not be exchanged; use the combat panel for potions.</p>}
+      {!inCombat && (
+        <div className="mt-3 rounded-lg border border-stone-700 bg-stone-900/70 p-3">
+          <p className="text-sm text-torch">Outfitter (between adventures — FADEE pp.82-85)</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {SHOP_STOCK.map((item) => (
+              <button
+                key={item}
+                onClick={() => setBuying(item)}
+                className="rounded border border-stone-600 bg-stone-800 px-2.5 py-1.5 text-xs text-parchment"
+                title={ITEM_INFO[item].text}
+              >
+                {item} · {ITEM_INFO[item].price}gp
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-[10px] text-parchment/40">Tap an item, then who carries it. Armor and weapons come from class kits; magic-item services land with the supplements milestone.</p>
+        </div>
+      )}
       <div className="mt-3 space-y-3">
         {party.map((pc) => (
           <div key={pc.id} className="rounded-lg border border-stone-700 bg-stone-900/70 p-3">
@@ -157,6 +176,32 @@ export default function InventoryScreen() {
                   )
                 })}
               <button onClick={() => setMoveItem(null)} className="rounded bg-stone-700 px-3 py-2 text-sm">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {buying && (
+        <div className="fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
+          <div className="w-full rounded-lg border border-torch/40 bg-stone-900 p-4">
+            <p className="text-sm text-torch">Who buys the {buying} ({ITEM_INFO[buying].price}gp)?</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {living.map((p) => (
+                <button
+                  key={p.id}
+                  disabled={p.gold < ITEM_INFO[buying].price}
+                  onClick={() => {
+                    void buyItem(p.id, buying)
+                    setMsg(`${p.name} buys ${buying}.`)
+                    setBuying(null)
+                  }}
+                  className="rounded border border-stone-600 bg-stone-800 px-3 py-2 text-sm text-parchment disabled:opacity-40"
+                >
+                  {p.name} ({p.gold}gp)
+                </button>
+              ))}
+              <button onClick={() => setBuying(null)} className="rounded bg-stone-700 px-3 py-2 text-sm">
                 Cancel
               </button>
             </div>

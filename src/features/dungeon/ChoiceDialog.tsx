@@ -2,6 +2,7 @@ import { useDungeonStore } from '../../state/dungeonStore'
 import { useCampaignStore } from '../../state/campaignStore'
 import { EVENT_INFO } from '../../rulesets/expanded/features'
 import { MAGIC_TREASURE } from '../../rulesets/expanded/treasure'
+import { clericPrayersLeft } from '../../engine/combat/combat'
 import { SECRET_INFO, WEAKNESS_TARGETS, type SecretId } from '../../rulesets/expanded/secrets'
 
 /**
@@ -23,6 +24,7 @@ export function ChoiceDialog() {
     pickSecretPc,
     pickWeaknessTarget,
     pickSecretItem,
+    restPick,
   } = useDungeonStore()
   const { party } = useCampaignStore()
   const choice = dungeon?.pendingChoice
@@ -195,6 +197,44 @@ export function ChoiceDialog() {
                   {m.name}
                 </button>
               ))}
+            </div>
+          )}
+          {choice.kind === 'rest' && (
+            <div className="space-y-3">
+              {(choice.pcIds ?? []).map((id) => {
+                const pc = party.find((p) => p.id === id)
+                if (!pc) return null
+                const isCleric = pc.classId === 'cleric'
+                return (
+                  <div key={id} className="rounded bg-stone-800/70 p-2">
+                    <p className="text-xs text-parchment/80">
+                      {pc.name} ({pc.currentLife}/{pc.maxLife}) recovers:
+                    </p>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      {pc.currentLife < pc.maxLife && (
+                        <button onClick={() => void restPick(id, 'life')} className="rounded bg-stone-700 px-3 py-1.5 text-sm text-parchment">
+                          +1 Life
+                        </button>
+                      )}
+                      {(pc.classId === 'wizard' || pc.classId === 'elf') && (
+                        <button onClick={() => void restPick(id, 'spell')} className="rounded bg-stone-700 px-3 py-1.5 text-sm text-parchment">
+                          Re-memorize a spell
+                        </button>
+                      )}
+                      {isCleric && clericPrayersLeft(pc).healing < 3 && (
+                        <button onClick={() => void restPick(id, 'prayer-healing')} className="rounded bg-stone-700 px-3 py-1.5 text-sm text-parchment">
+                          +1 Healing prayer
+                        </button>
+                      )}
+                      {isCleric && clericPrayersLeft(pc).blessing < 3 && (
+                        <button onClick={() => void restPick(id, 'prayer-blessing')} className="rounded bg-stone-700 px-3 py-1.5 text-sm text-parchment">
+                          +1 Blessing prayer
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
           {choice.kind === 'alchemist' && (
