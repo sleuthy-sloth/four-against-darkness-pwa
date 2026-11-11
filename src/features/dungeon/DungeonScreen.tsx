@@ -23,11 +23,7 @@ import boxIcon from '../../assets/icons/box.svg.frag?raw'
 import skullIcon from '../../assets/icons/skull.svg.frag?raw'
 import partyIconFrag from '../../assets/icons/party.svg.frag?raw'
 import type { TileContent } from '../../engine/dungeon/generate'
-
-/** Strip the game-icons background square. */
-function cleanIcon(frag: string): string {
-  return frag.replace('<path d="M0 0h512v512H0z"/>', '')
-}
+import { cleanIconFragment } from '../common/iconUtils'
 
 /** Iconography lookup for a tile's content (FADEE p.152 kinds). */
 function contentIcon(content: TileContent | null): string | null {
@@ -35,21 +31,23 @@ function contentIcon(content: TileContent | null): string | null {
   switch (content.kind) {
     case 'treasure':
     case 'treasureTrapped':
-      return cleanIcon(chestIcon)
+      return cleanIconFragment(chestIcon)
     case 'vermin':
     case 'minions':
     case 'weird':
+      return content.cleared ? null : cleanIconFragment(monstersIcon)
     case 'boss':
     case 'dragonLair':
-      return content.cleared ? null : cleanIcon(monstersIcon)
+      // Final foes get the skull: a boss tile must read differently at a glance.
+      return content.cleared ? null : cleanIconFragment(skullIcon)
     case 'specialFeature':
       return [
-        cleanIcon(fountainIcon),
-        cleanIcon(templeIcon),
+        cleanIconFragment(fountainIcon),
+        cleanIconFragment(templeIcon),
         null, // armory — plain room
-        cleanIcon(altarIcon),
-        cleanIcon(statueIcon),
-        cleanIcon(boxIcon),
+        cleanIconFragment(altarIcon),
+        cleanIconFragment(statueIcon),
+        cleanIconFragment(boxIcon),
       ][(content.specialFeatureRoll ?? 1) - 1] ?? null
     default:
       return null
@@ -57,7 +55,7 @@ function contentIcon(content: TileContent | null): string | null {
 }
 
 /** Render a game-icons fragment centered at (x, y) map units. */
-function MapIcon({ frag, x, y, size = 0.62, className = 'fill-parchment/25' }: { frag: string; x: number; y: number; size?: number; className?: string }) {
+function MapIcon({ frag, x, y, size = 0.62, className = 'map-icon' }: { frag: string; x: number; y: number; size?: number; className?: string }) {
   return (
     <g
       transform={`translate(${x - size / 2}, ${y - size / 2}) scale(${size / 512})`}
@@ -277,11 +275,11 @@ export default function DungeonScreen() {
                   strokeWidth={0.05}
                 />
                 <MapIcon
-                  frag={cleanIcon(partyIconFrag)}
+                  frag={cleanIconFragment(partyIconFrag)}
                   x={tile.cells[0].col + 0.5}
                   y={tile.cells[0].row + 0.5}
                   size={0.34}
-                  className="fill-parchment"
+                  className="fill-stone-800"
                 />
               </g>
             )}

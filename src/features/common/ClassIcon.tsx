@@ -7,10 +7,11 @@ import cleric from '../../assets/icons/cleric.svg.frag?raw'
 import rogue from '../../assets/icons/rogue.svg.frag?raw'
 import wizard from '../../assets/icons/wizard.svg.frag?raw'
 import party from '../../assets/icons/party.svg.frag?raw'
+import { cleanIconFragment } from './iconUtils'
 
 /**
  * Class portrait icons — art from game-icons.net (CC BY 3.0; see
- * s../../assets/icons/ATTRIBUTION.md). Rendered with currentColor so the
+ * ../../assets/icons/ATTRIBUTION.md). Rendered with currentColor so the
  * theme palette applies.
  */
 const ICONS: Record<string, string> = {
@@ -38,18 +39,13 @@ export const CLASS_COLORS: Record<string, string> = {
   party: 'text-torch',
 }
 
-/** Strip the black background square so the icon sits on any surface. */
-function clean(frag: string): string {
-  return frag.replace('<path d="M0 0h512v512H0z"/>', '')
-}
-
 export function ClassIcon({ classId, className = 'w-10 h-10' }: { classId: string; className?: string }) {
   const frag = ICONS[classId] ?? ICONS.party
   const cls = CLASS_COLORS[classId] ?? 'text-torch'
   return (
     <span className={`inline-block ${className} ${cls}`} aria-label={classId}>
       <svg viewBox="0 0 512 512" width="100%" height="100%" fill="currentColor">
-        <g dangerouslySetInnerHTML={{ __html: clean(frag) }} />
+        <g dangerouslySetInnerHTML={{ __html: cleanIconFragment(frag) }} />
       </svg>
     </span>
   )

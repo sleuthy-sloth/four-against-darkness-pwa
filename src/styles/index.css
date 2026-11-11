@@ -101,3 +101,14 @@ h1, h2, h3, h4, .font-headline {
 .chapter-banner {
   @apply font-display uppercase tracking-widest text-torch text-center text-sm;
 }
+
+/* Map content icons: iron-gall ink with a parchment halo, so they read on
+   dark stone rooms (ink alone is 2.44:1 there) and pale corridors (a light
+   fill alone is 2.62:1 there) alike. */
+.map-icon {
+  fill: #2b241f;
+  stroke: #faf6ee;
+  stroke-width: 28;
+  paint-order: stroke;
+  stroke-linejoin: round;
+}

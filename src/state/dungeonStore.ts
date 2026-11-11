@@ -61,6 +61,7 @@ import {
   type EventResult,
 } from '../engine/features/resolve'
 import { getDb } from '../database/db'
+import { useCampaignStore } from './campaignStore'
 
 /**
  * Dungeon application state (PROJECT_SPEC §10, §23). Engine functions do the
@@ -141,7 +142,6 @@ async function persist(state: DungeonState, rng: Rng, campaignId: string): Promi
   await touchCampaign(campaignId, { rngState: rngJson })
   // Keep the campaign store's meta in sync, or the next action re-reads a
   // STALE rngState and replays the same dice sequence (groundhog-day bug).
-  const { useCampaignStore } = await import('./campaignStore')
   const cs = useCampaignStore.getState()
   if (cs.campaign?.id === campaignId) {
     useCampaignStore.setState({ campaign: { ...cs.campaign, rngState: rngJson } })
@@ -248,7 +248,6 @@ const UNDO_LIMIT = 5
 /** Capture a pre-action snapshot (call FIRST in every mutating action). */
 async function snap(label: string, campaignId: string): Promise<void> {
   const st = useDungeonStore.getState()
-  const { useCampaignStore } = await import('./campaignStore')
   const cs = useCampaignStore.getState()
   if (!cs.campaign || cs.campaign.id !== campaignId) return
   const { loadJournal } = await import('../database/repositories/journalRepo')
@@ -275,10 +274,8 @@ async function snap(label: string, campaignId: string): Promise<void> {
 
 /** Push campaign meta fields into the campaign store (avoid stale reads). */
 function syncCampaign(patch: Partial<{ clues: number; secrets: string[]; epic: number[] }>): void {
-  void import('./campaignStore').then(({ useCampaignStore }) => {
-    const cs = useCampaignStore.getState()
-    if (cs.campaign) useCampaignStore.setState({ campaign: { ...cs.campaign, ...patch } })
-  })
+  const cs = useCampaignStore.getState()
+  if (cs.campaign) useCampaignStore.setState({ campaign: { ...cs.campaign, ...patch } })
 }
 
 /** Save the party when a combat has concluded (won/lost/fled). */
@@ -298,7 +295,6 @@ async function savePartyIfCombatOver(
     }
     // Secrets consumed in combat (Terrifying) write back (FADEE p.123).
     if (dungeon.combat?.secrets) {
-      const { useCampaignStore } = await import('./campaignStore')
       const cs = useCampaignStore.getState()
       const secrets = dungeon.combat.secrets
       if (JSON.stringify(secrets) !== JSON.stringify(cs.campaign?.secrets)) {
@@ -364,9 +360,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   pendingXp: null,
 
   ensureDungeon: async () => {
-    const { campaign, party } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign, party } = useCampaignStore.getState()
     if (!campaign) return
     set({ busy: true, error: null })
     try {
@@ -392,11 +386,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   },
 
   explore: async (exitId) => {
-    await snap('explore', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('explore', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign, party } = useCampaignStore.getState()
     if (!dungeon || !campaign) return
     const hcl = Math.max(1, ...party.map((p) => p.level))
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
@@ -472,11 +464,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   },
 
   beginCombat: async () => {
-    await snap('beginCombat', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('beginCombat', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign, party } = useCampaignStore.getState()
     if (!dungeon || !campaign || dungeon.combat) return
     const enc = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)?.content?.encounter
     if (!enc) return
@@ -507,11 +497,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   },
 
   combatAttack: async (pcId, enemyId) => {
-    await snap('combatAttack', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('combatAttack', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign, party } = useCampaignStore.getState()
     const combat = dungeon?.combat
     if (!dungeon || !campaign || !combat) return
     const pc = party.find((p) => p.id === pcId)
@@ -568,11 +556,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   },
 
   combatCast: async (pcId, spell, enemyId) => {
-    await snap('combatCast', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('combatCast', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign, party } = useCampaignStore.getState()
     const combat = dungeon?.combat
     if (!dungeon || !campaign || !combat) return
     const pc = party.find((p) => p.id === pcId)
@@ -626,11 +612,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   },
 
   combatHeal: async (pcId, targetId) => {
-    await snap('combatHeal', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('combatHeal', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign, party } = useCampaignStore.getState()
     const combat = dungeon?.combat
     if (!dungeon || !campaign || !combat) return
     const pc = party.find((p) => p.id === pcId)
@@ -647,11 +631,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
 
   /** Scroll cast in combat (FADEE p.75): 1 turn; destroys the scroll. */
   combatCastScroll: async (pcId, spell, enemyId) => {
-    await snap('combatCastScroll', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('combatCastScroll', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign, party } = useCampaignStore.getState()
     const combat = dungeon?.combat
     if (!dungeon || !campaign || !combat) return
     const pc = party.find((p) => p.id === pcId)
@@ -668,11 +650,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
 
   /** Healing potion mid-combat: free action, 1 per PC per adventure (p.83). */
   combatPotion: async (pcId) => {
-    await snap('combatPotion', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('combatPotion', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign, party } = useCampaignStore.getState()
     const combat = dungeon?.combat
     if (!dungeon || !campaign) return
     const pc = party.find((p) => p.id === pcId)
@@ -694,11 +674,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   },
 
   combatWait: async () => {
-    await snap('combatWait', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('combatWait', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign } = useCampaignStore.getState()
     const combat = dungeon?.combat
     if (!dungeon || !campaign || !combat || combat.phase !== 'opening') return
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
@@ -711,11 +689,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   },
 
   combatPayBribe: async () => {
-    await snap('combatPayBribe', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('combatPayBribe', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign, party } = useCampaignStore.getState()
     const combat = dungeon?.combat
     if (!dungeon || !campaign || !combat || !combat.pendingBribe) return
     payBribe(combat, party)
@@ -739,11 +715,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   },
 
   combatFlee: async () => {
-    await snap('combatFlee', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('combatFlee', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign, party } = useCampaignStore.getState()
     const combat = dungeon?.combat
     if (!dungeon || !campaign || !combat) return
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
@@ -763,11 +737,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   },
 
   spendXpRoll: async (pcId) => {
-    await snap('spendXpRoll', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('spendXpRoll', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign, party } = useCampaignStore.getState()
     if (!dungeon || !campaign) return
     const pc = party.find((p) => p.id === pcId)
     if (!pc || pc.status === 'dead') return
@@ -798,11 +770,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   },
 
   search: async () => {
-    await snap('search', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('search', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign } = useCampaignStore.getState()
     if (!dungeon || !campaign) return
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     const result = searchTile(dungeon, rng, dungeon.currentTileId)
@@ -816,11 +786,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   },
 
   claimFind: async (choice) => {
-    await snap('claimFind', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('claimFind', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon, pendingFind } = get()
-    const { campaign } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign } = useCampaignStore.getState()
     if (!dungeon || !campaign || !pendingFind) return
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     const entries: LogEntry[] = []
@@ -841,7 +809,6 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
           : 'A secret door is drawn on the map — roll a fresh tile beyond it when you step through.',
       })
     } else {
-      const { useCampaignStore } = await import('./campaignStore')
       const cs = useCampaignStore.getState()
       if (cs.campaign) {
         const clues = (cs.campaign.clues ?? 0) + 1
@@ -865,9 +832,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
 
   chooseTemple: async (pcId) => {
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign, party } = useCampaignStore.getState()
     if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'temple') return
     const pc = party.find((p) => p.id === pcId)
     if (!pc || pc.status === 'dead') return
@@ -882,11 +847,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   },
 
   statueTouch: async (touch) => {
-    await snap('statueTouch', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('statueTouch', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign, party } = useCampaignStore.getState()
     if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'statue') return
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     const choice = dungeon.pendingChoice
@@ -950,11 +913,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   },
 
   puzzleAttempt: async (pcId, solve) => {
-    await snap('puzzleAttempt', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('puzzleAttempt', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign, party } = useCampaignStore.getState()
     if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'puzzle') return
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     const level = dungeon.pendingChoice.level ?? 1
@@ -980,11 +941,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   },
 
   ghostPick: async (pcId, gainMadness) => {
-    await snap('ghostPick', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('ghostPick', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign, party } = useCampaignStore.getState()
     if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'ghost') return
     const pc = party.find((p) => p.id === pcId)
     if (!pc) return
@@ -1015,11 +974,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   },
 
   healerHeal: async (pcId, points) => {
-    await snap('healerHeal', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('healerHeal', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign, party } = useCampaignStore.getState()
     if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'healer') return
     const pc = party.find((p) => p.id === pcId && p.status !== 'dead')
     if (!pc || points < 1) return
@@ -1041,11 +998,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   },
 
   alchemistBuy: async (pcId, item) => {
-    await snap('alchemistBuy', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('alchemistBuy', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign, party } = useCampaignStore.getState()
     if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'alchemist') return
     const pc = party.find((p) => p.id === pcId && p.status !== 'dead')
     if (!pc) return
@@ -1074,7 +1029,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   /** Step 1: spend 3 Clues, choose the Secret type. */
   beginSecretReveal: async () => {
     const { dungeon } = get()
-    const { campaign } = await import('./campaignStore').then((m) => m.useCampaignStore.getState())
+    const { campaign } = useCampaignStore.getState()
     if (!dungeon || !campaign) return
     if ((campaign.clues ?? 0) < 3) return
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
@@ -1105,7 +1060,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   /** Step 3: the PC rolls XP immediately (FADEE p.122). */
   pickSecretPc: async (pcId) => {
     const { dungeon, pendingSecret } = get() as { dungeon: DungeonState | null; pendingSecret?: { id: string; arg?: string } }
-    const { campaign, party } = await import('./campaignStore').then((m) => m.useCampaignStore.getState())
+    const { campaign, party } = useCampaignStore.getState()
     if (!dungeon || !campaign || !pendingSecret) return
     const pc = party.find((p) => p.id === pcId && p.status !== 'dead')
     if (!pc) return
@@ -1127,7 +1082,6 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       }
     } else {
       const encoded = pendingSecret.arg ? `${pendingSecret.id}:${pendingSecret.arg}` : pendingSecret.id
-      const { useCampaignStore } = await import('./campaignStore')
       const cs = useCampaignStore.getState()
       const secrets = [...(cs.campaign?.secrets ?? []), encoded]
       await touchCampaign(campaign.id, { secrets })
@@ -1145,9 +1099,8 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   /** Weakness target selection completes the Weakness secret. */
   pickWeaknessTarget: async (species) => {
     const { dungeon } = get()
-    const { campaign } = await import('./campaignStore').then((m) => m.useCampaignStore.getState())
+    const { campaign } = useCampaignStore.getState()
     if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'secretWeakness') return
-    const { useCampaignStore } = await import('./campaignStore')
     const cs = useCampaignStore.getState()
     const secrets = [...(cs.campaign?.secrets ?? []), `weakness:${species}`]
     await touchCampaign(campaign.id, { secrets })
@@ -1162,10 +1115,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   /** Location secrets: usable from the dungeon panel in the right tile. */
   pickSecretItem: async (itemName) => {
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) => m.useCampaignStore.getState())
+    const { campaign, party } = useCampaignStore.getState()
     if (!dungeon || !campaign) return
     // consume the item-location secret
-    const { useCampaignStore } = await import('./campaignStore')
     const cs = useCampaignStore.getState()
     const secrets = (cs.campaign?.secrets ?? []).filter((s) => s !== 'item-location')
     await touchCampaign(campaign.id, { secrets })
@@ -1194,13 +1146,12 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   },
 
   useTreasureLocation: async () => {
-    await snap('useTreasureLocation', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('useTreasureLocation', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) => m.useCampaignStore.getState())
+    const { campaign, party } = useCampaignStore.getState()
     if (!dungeon || !campaign) return
     const tile = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
     if (!tile || tile.contentRoll === null || tile.content?.encounter) return
-    const { useCampaignStore } = await import('./campaignStore')
     const cs = useCampaignStore.getState()
     const secrets = (cs.campaign?.secrets ?? []).filter((s) => s !== 'treasure-location')
     await touchCampaign(campaign.id, { secrets })
@@ -1220,11 +1171,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   // ---------- Resting (FADEE pp.113-114) ----------
 
   rest: async () => {
-    await snap('rest', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('rest', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign, party } = useCampaignStore.getState()
     if (!dungeon || !campaign) return
     const tile = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
     if (!tile) return
@@ -1264,11 +1213,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   },
 
   restPick: async (pcId, choice) => {
-    await snap('restPick', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('restPick', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign, party } = useCampaignStore.getState()
     if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'rest') return
     const pc = party.find((p) => p.id === pcId && p.status !== 'dead')
     if (!pc) return
@@ -1311,9 +1258,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   /** Outfitter purchase (between adventures, FADEE pp.82-85). */
   buyItem: async (pcId, item) => {
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) =>
-      m.useCampaignStore.getState(),
-    )
+    const { campaign, party } = useCampaignStore.getState()
     if (!campaign) return
     const pc = party.find((p) => p.id === pcId && p.status !== 'dead')
     const info = ITEM_INFO[item]
@@ -1335,9 +1280,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   // ---------- Quests (FADEE pp.153, 161-163) ----------
 
   questAccept: async () => {
-    await snap('questAccept', (await import('./campaignStore').then((mm) => mm.useCampaignStore.getState())).campaign?.id ?? '')
+    await snap('questAccept', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) => m.useCampaignStore.getState())
+    const { campaign, party } = useCampaignStore.getState()
     if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'quest') return
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     const roll = rng.d(6)
@@ -1360,7 +1305,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
 
   questDecline: async () => {
     const { dungeon } = get()
-    const { campaign } = await import('./campaignStore').then((m) => m.useCampaignStore.getState())
+    const { campaign } = useCampaignStore.getState()
     if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'quest') return
     dungeon.ladyRefused = true
     dungeon.pendingChoice = null
@@ -1372,7 +1317,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   /** Claim the reward at the Quest-giver's tile (types 1/2) or anywhere (5/6). */
   claimQuest: async () => {
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) => m.useCampaignStore.getState())
+    const { campaign, party } = useCampaignStore.getState()
     if (!dungeon || !campaign || !dungeon.quest || dungeon.quest.complete) return
     const q = dungeon.quest
     const atGiver = dungeon.currentTileId === q.giverTileId
@@ -1405,7 +1350,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
 
   questPcPick: async (pcId) => {
     const { dungeon } = get()
-    const { campaign, party } = await import('./campaignStore').then((m) => m.useCampaignStore.getState())
+    const { campaign, party } = useCampaignStore.getState()
     if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'questPc') return
     const pc = party.find((p) => p.id === pcId && p.status !== 'dead')
     if (!pc) return
@@ -1422,7 +1367,6 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     // Epic Rewards roll (FADEE pp.162-163)
     const epicRoll = rng.d(6)
     const reward = EPIC_REWARDS.find((r) => r.roll === epicRoll)!
-    const { useCampaignStore } = await import('./campaignStore')
     const cs = useCampaignStore.getState()
     const epic = [...(cs.campaign?.epic ?? []), epicRoll]
     await touchCampaign(campaign.id, { epic })
@@ -1474,11 +1418,10 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
 
   performUndo: async () => {
     const { undoStack } = get()
-    const { campaign } = await import('./campaignStore').then((m) => m.useCampaignStore.getState())
+    const { campaign } = useCampaignStore.getState()
     const snap = undoStack[undoStack.length - 1]
     set({ confirmUndo: null })
     if (!snap || !campaign || campaign.id !== snap.campaignId) return
-    const { useCampaignStore } = await import('./campaignStore')
     // Restore Dexie first (party + dungeon + meta + journal cutoff).
     const { saveParty } = await import('../database/repositories/campaignRepo')
     const party = JSON.parse(snap.partyJson) as Character[]

@@ -13,8 +13,8 @@
  "skull": "badges/skull.svg",
  "statue": "delapouite/colombian-statue.svg",
  "temple": "delapouite/byzantin-temple.svg",
- "altar": "lorc/stone-sphere.svg",
- "box": "lorc/stone-sphere.svg",
- "monsters": "lorc/stone-sphere.svg",
+ "altar": "delapouite/sword-altar.svg",
+ "box": "delapouite/puzzle.svg",
+ "monsters": "delapouite/goblin-head.svg",
  "party": "delapouite/knight-banner.svg"
 }

@@ -18,6 +18,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copyright and content policy
 - Deployment guide
 
+### Added — Visual polish milestone 1 (2026-11-11)
+- Fix #0: game-icons fragments bake `fill="#fff"` into every art path, overriding
+  `currentColor` — class portraits rendered white-on-cream (invisible) and the
+  monsters icon showed as a white blob on the map. New shared `cleanIconFragment`
+  strips the baked fill and the background square; portraits now take their class
+  colors, map icons take ink-with-parchment-halo (`.map-icon`)
+- Map icons: content glyphs at full ink + halo (ink alone is 2.44:1 on room floors,
+  a light fill alone 2.62:1 on corridors); party token keeps near-white on oxblood;
+  boss/dragon-lair tiles now show the skull instead of the generic monsters icon
+- Contrast: `faint` darkened `#6e6255` → `#5f5346` (4.47:1 → 5.63:1 on canvas, AA);
+  brass documented decorative/large-only (3.20:1, never body text)
+- Distinct icons for the triple-use stone sphere: altar → sword-altar, puzzle box →
+  puzzle, monsters → goblin head (all Delapouite, CC BY 3.0; attribution updated)
+- App icons regenerated (the Phase 1 placeholders were black squares with malformed
+  PNG encoding, undecodable by PIL): interim Tome & Delve mark (parchment, ink
+  double-rule, oxblood wax seal, "4AD" in Noto Serif) at all 8 manifest sizes plus a
+  maskable 512, Apple touch icon, and favicon.ico — generator in `tools/make-icons.py`
+- PWA chrome: manifest `theme_color`/`background_color` aligned to parchment `#e8dfca`
+  (were stale dark navy), `favicon.ico` + `robots.txt` added, manifest `screenshots`
+  (mobile + desktop) added, `index.html` theme-color aligned
+- Tests: `iconUtils` unit suite (incl. real-fragment cleaning) + design-token WCAG AA
+  contrast gates reading the real `tailwind.config.js`
+
+### Fixed — Production dungeon crash (found during this milestone's verification)
+- The Explore tab crashed in production builds (`TypeError: Cannot read properties of
+  undefined (reading 'getState')` in `ensureDungeon`) while working in dev. Root cause:
+  `dungeonStore` reached the campaign store through 66 dynamic
+  `import('./campaignStore')` calls; in the production bundle the `.then((m) =>
+  m.useCampaignStore.getState())` chains resolve to the already-destructured
+  `{campaign, party}` instead of the module namespace, so `m.useCampaignStore` is
+  undefined. There is no circular dependency (campaignStore never imports
+  dungeonStore), so all 66 sites now use a static
+  `import { useCampaignStore } from './campaignStore'`. Verified in the production
+  build: new campaign → party → Explore loads, full reload on /dungeon loads,
+  exploring through exits works with zero page errors. The bug was reproduced on
+  pristine HEAD (f024323) before the fix, confirming it predates this milestone.
+
 ### Added — Phase 6: campaign systems; Phase 6 COMPLETE (2026-11-10)
 - Undo: pre-action snapshots before every mutating action with an explicit confirmation dialog; full reversal of dungeon, party, RNG state and journal
 - Named checkpoints (Dexie v4) with restore confirmation; full-campaign JSON export/import as new campaigns; campaign duplicate

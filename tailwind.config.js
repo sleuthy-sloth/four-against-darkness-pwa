@@ -17,8 +17,8 @@ export default {
         parchment: '#2b241f', // iron-gall ink (was pale text)
         torch: '#8c2626', // dried oxblood / sealing wax (was torch gold)
         ember: '#a83232', // bright wax accent (was ember orange)
-        brass: '#9c7428', // antique brass / gold leaf (loot, torch charges)
-        faint: '#6e6255', // diluted ink / marginalia
+        brass: '#9c7428', // antique brass / gold leaf (loot, torch charges) — decorative & large text only: 3.20:1 on canvas, never body text
+        faint: '#5f5346', // diluted ink / marginalia — 5.63:1 on canvas (AA)
       },
       fontFamily: {
         display: ['"Noto Serif"', 'Georgia', 'serif'],

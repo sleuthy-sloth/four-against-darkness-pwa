@@ -9,13 +9,14 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'robots.txt', 'apple-touch-icon.png'],
+      includeAssets: ['favicon.ico', 'robots.txt', 'icons/apple-touch-icon.png'],
       manifest: {
         name: 'Four Against Darkness',
         short_name: '4AD',
-        description: 'Solo dungeon crawler PWA',
-        theme_color: '#1a1a2e',
-        background_color: '#1a1a2e',
+        description:
+          'Solo dungeon crawler PWA — a fully playable Four Against Darkness companion. Offline after install, no account.',
+        theme_color: '#e8dfca',
+        background_color: '#e8dfca',
         display: 'standalone',
         orientation: 'portrait-primary',
         scope: '/',
@@ -60,6 +61,28 @@ export default defineConfig({
             src: 'icons/icon-512.png',
             sizes: '512x512',
             type: 'image/png'
+          },
+          {
+            src: 'icons/icon-512-maskable.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any maskable'
+          }
+        ],
+        screenshots: [
+          {
+            src: 'screenshots/dungeon-mobile.png',
+            sizes: '780x1688',
+            type: 'image/png',
+            form_factor: 'narrow',
+            label: 'Combat on the dungeon map'
+          },
+          {
+            src: 'screenshots/dungeon-desktop.png',
+            sizes: '1280x800',
+            type: 'image/png',
+            form_factor: 'wide',
+            label: 'Dungeon map on desktop'
           }
         ]
       },

@@ -28,6 +28,38 @@
 
 - [ ] Release 0.5 scope: environments (caverns/grottoes tables + secret passages), quest types 3/4 (subdual capture, item retrieval), trinket magic-item effects, light/darkness, more XP systems
 
+## Completed Work (Visual polish milestone 1 — 2026-11-11)
+
+- [x] Fix #0 (icon white-fill bug): shared `src/features/common/iconUtils.ts`
+  `cleanIconFragment` strips the baked `fill="#fff"` + background square; used by
+  `ClassIcon` and `DungeonScreen`; new `.map-icon` class (ink + parchment halo);
+  party token near-white on oxblood; boss/dragon-lair tiles show the skull
+- [x] Contrast: `faint` `#6e6255` → `#5f5346` (5.63:1 on canvas); brass documented
+  decorative/large-only in `tailwind.config.js` (unused in code, no usages to fix)
+- [x] Triple-use stone sphere resolved: altar → `delapouite/sword-altar.svg`,
+  puzzle box → `delapouite/puzzle.svg`, monsters → `delapouite/goblin-head.svg`;
+  `attribution.json` + `ATTRIBUTION.md` updated (all Delapouite, CC BY 3.0)
+- [x] Icon set regenerated (`tools/make-icons.py`): interim Tome & Delve mark at
+  72/96/128/144/152/192/384/512 + maskable 512 + Apple touch 180 + favicon.ico;
+  old Phase 1 placeholders were black squares with malformed PNG encoding
+  (extra byte per scanline; PIL-undecodable) — replaced, all new files decode
+- [x] PWA chrome: manifest theme/background `#e8dfca`, fuller description,
+  manifest screenshots (mobile 780×1688, desktop 1280×800) from `public/screenshots/`,
+  `favicon.ico` + `robots.txt`, `index.html` theme-color `#e8dfca`,
+  `includeAssets` path fixed (`icons/apple-touch-icon.png`)
+- [x] Tests: `tests/unit/iconUtils.test.ts`, `tests/unit/designTokens.test.ts`
+  (WCAG AA gates read the real `tailwind.config.js`)
+- [x] Production dungeon crash FIXED (pre-existing, found in verification):
+  `ensureDungeon` threw `TypeError: Cannot read properties of undefined (reading
+  'getState')` in production builds (dev unaffected) — the 66 dynamic
+  `import('./campaignStore')` calls in `src/state/dungeonStore.ts` miscompile under
+  Rollup/Vite: the `.then((m) => m.useCampaignStore.getState())` chains resolve to
+  the destructured `{campaign, party}` instead of the module namespace. No circular
+  dependency exists, so all 66 sites now use a static import. Verified end-to-end
+  in the production build (Playwright, fresh profile): new campaign → party →
+  Explore loads, reload on /dungeon loads, 4 explores with zero page errors;
+  reproduced on pristine HEAD f024323 first to confirm it predates the milestone
+
 ## Completed Work (Phase 6 — campaign systems; Phase 6 COMPLETE)
 
 - [x] Undo (§19): pre-action snapshots (dungeon JSON, party, RNG/clues/secrets/epic meta, journal cutoff) before all 22 mutating actions; ⟲ button with explicit confirm dialog; restores Dexie + store, deletes journal events after the cutoff — verified live (journal 3→4→3)
