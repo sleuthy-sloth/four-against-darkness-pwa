@@ -26,7 +26,14 @@
 
 ## Current Work
 
-- [ ] Phase 5 remainder: scroll-learning (copy to wizard spellbook), quest system (Lady in White acceptance), Clues→Secrets XP, resting (needs bag-of-nails economy/shopping), trinket magic items
+- [ ] Phase 5 remainder: scroll-learning (copy to wizard spellbook), quest system (Lady in White acceptance), resting (needs bag-of-nails economy/shopping), trinket magic items, environments (caverns/grottoes tables)
+
+## Completed Work (Phase 5d — Clues, Secrets, marching order)
+
+- [x] Clue pool on the campaign, accumulating across adventures (p.108); Search clue claims count; at 3 Clues the Reveal-a-Secret flow opens (pp.122-123)
+- [x] Secrets implemented: Weakness of a Foe (+2 attack vs chosen species), Terrifying Secret (one auto-failed Morale), hidden-treasure location (3d6×10gp in empty non-entrance rooms), hidden magic item location (choice of item); discovering PC gains 1 immediate XP roll (p.122); story Secrets deferred to the supplements milestone, listed as pending
+- [x] Marching order: reorderable party (leader first, rearmost last, pp.97/104); WM ambushes strike the rearmost PC in round 1 (p.104) — fixed a foes'-turn indexing bug found by the test (targets vs living)
+- [x] Dungeon panel now shows each feature's rule text (fountain/temple/altar/statue/puzzle box) instead of a placeholder
 
 ## Completed Work (Phase 5 remainder batch)
 

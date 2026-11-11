@@ -18,7 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copyright and content policy
 - Deployment guide
 
-### Added — Phase 5 remainder (2026-11-10)
+### Added — Phase 5d: Clues, Secrets, marching order (2026-11-10)
+- Campaign clue pool (p.108); Reveal-a-Secret flow at 3 Clues with immediate XP roll for the discoverer (pp.122-123)
+- Weakness of a Foe, Terrifying Secret, treasure-location, item-location secrets; story Secrets flagged pending
+- Marching order UI (reorder) with WM-ambush rear targeting (p.104); foes'-turn indexing fix
 - Scrolls cast in combat from any PC (barbarians barred, p.75): +L spellcasters / +1 others / +0 clerics; scroll destroyed; Blessing auto-targets a cursed PC (p.67)
 - Healing potion (all damage, 1/adventure, free action in combat) and bandage (+1 Life, never in combat) from Inventory and combat panel (p.83)
 - Dungeon Special Features table fully resolved (p.152): Fountain, Blessed Temple, Armory, Cursed Altar, Statue (living-statue boss fight or 3d6×10gp), Puzzle Box (Save vs. its L)
