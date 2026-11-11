@@ -26,10 +26,13 @@
 
 ## Current Work
 
-- [ ] Phase 5 remainder: scroll-learning (copy to wizard spellbook), quest system (Lady in White acceptance), resting (needs bag-of-nails economy/shopping), trinket magic items, environments (caverns/grottoes tables)
+- [ ] Phase 5 remainder: quest system (Lady in White acceptance), scroll-learning (copy to wizard spellbook), trinket magic items, environments (caverns/grottoes tables), light sources/darkness
 
-## Completed Work (Phase 5d — Clues, Secrets, marching order)
+## Completed Work (Phase 5e — outfitter + Resting)
 
+- [x] Outfitter (between adventures, pp.82-85): rations/rope/lantern/bandage/nails/potion/Blessing scroll at book prices, bought per PC in Inventory
+- [x] Resting (pp.113-114): once per adventure; cleared room + cleared explored neighbors; 1 bag of nails nailed per door (consumed); each PC recovers 1 Life, a re-memorized spell (wizard L+2 / elf L slots, p.64), or a spent prayer; 1-in-6 WM roll after recovery, nailed doors giving the party first attack
+- [x] Cleared-encounter tracking on tiles (Rest prerequisite)
 - [x] Clue pool on the campaign, accumulating across adventures (p.108); Search clue claims count; at 3 Clues the Reveal-a-Secret flow opens (pp.122-123)
 - [x] Secrets implemented: Weakness of a Foe (+2 attack vs chosen species), Terrifying Secret (one auto-failed Morale), hidden-treasure location (3d6×10gp in empty non-entrance rooms), hidden magic item location (choice of item); discovering PC gains 1 immediate XP roll (p.122); story Secrets deferred to the supplements milestone, listed as pending
 - [x] Marching order: reorderable party (leader first, rearmost last, pp.97/104); WM ambushes strike the rearmost PC in round 1 (p.104) — fixed a foes'-turn indexing bug found by the test (targets vs living)

@@ -18,7 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copyright and content policy
 - Deployment guide
 
-### Added — Phase 5d: Clues, Secrets, marching order (2026-11-10)
+### Added — Phase 5e: outfitter + Resting (2026-11-10)
+- Between-adventures outfitter at book prices (pp.82-85); nails economy unblocks Resting
+- Resting (p.114): cleared room + cleared neighbors, nails per door, per-PC recovery (Life / re-memorize spell / regain prayer), 1-in-6 WM after recovery with the party striking first
+- Wizard L+2 / elf L spell-slot math verified against p.64; cleared-tile tracking
 - Campaign clue pool (p.108); Reveal-a-Secret flow at 3 Clues with immediate XP roll for the discoverer (pp.122-123)
 - Weakness of a Foe, Terrifying Secret, treasure-location, item-location secrets; story Secrets flagged pending
 - Marching order UI (reorder) with WM-ambush rear targeting (p.104); foes'-turn indexing fix
