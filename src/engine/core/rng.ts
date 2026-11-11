@@ -63,9 +63,11 @@ export class Rng {
     return this.d(6) * 10 + this.d(6)
   }
 
-  /** Dice formula parser: "d6", "2d6", "d6+3", "5d6", "d3". */
+  /** Dice formula parser: "d6", "2d6", "d6+3", "5d6", "d3", or a plain integer. */
   formula(expr: string, reason = ''): number {
-    const m = /^(\d*)d(\d+)([+-]\d+)?$/.exec(expr.trim())
+    const s = expr.trim()
+    if (/^-?\d+$/.test(s)) return parseInt(s, 10)
+    const m = /^(\d*)d(\d+)([+-]\d+)?$/.exec(s)
     if (!m) throw new Error(`invalid dice formula: ${expr}`)
     const count = m[1] ? parseInt(m[1], 10) : 1
     const sides = parseInt(m[2], 10)
