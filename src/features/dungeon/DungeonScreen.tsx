@@ -8,6 +8,7 @@ import { tileGeometry, dungeonBounds } from './mapGeometry'
 import { useCampaignStore } from '../../state/campaignStore'
 import { D66_TILES } from '../../rulesets/expanded/tiles'
 import CombatPanel from './CombatPanel'
+import { ChoiceDialog } from './ChoiceDialog'
 
 /**
  * Dungeon screen (PROJECT_SPEC §23): the interactive map is the centerpiece.
@@ -324,6 +325,7 @@ export default function DungeonScreen() {
         )}
         </div>
       )}
+      <ChoiceDialog />
     </div>
   )
 }

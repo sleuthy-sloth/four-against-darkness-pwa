@@ -5,11 +5,15 @@ import {
   exploreThrough,
   newDungeon,
   openExits,
+  rollEncounter,
   rollHiddenTreasure,
   searchTile,
   rollSecretDoorBonus,
   type DungeonState,
+  type EncounterRoll,
+  type PendingChoicePayload,
 } from '../engine/dungeon/generate'
+import type { Character } from '../rulesets/schema/character'
 import {
   fleeCombat,
   lifeFromFormula,
@@ -21,12 +25,35 @@ import {
   xpDue,
   castSpell,
   castHealing,
+  castScroll,
+  castBlessing,
+  drinkHealingPotion,
+  applyBandage,
   type CastableSpell,
+  type ScrollSpell,
   type CombatState,
 } from '../engine/combat/combat'
 import { getCampaign, touchCampaign } from '../database/repositories/campaignRepo'
 import { loadDungeon, saveDungeon } from '../database/repositories/dungeonRepo'
 import { rollLoot } from '../engine/treasure/loot'
+import {
+  DUNGEON_EVENTS,
+  DUNGEON_FEATURES,
+  type DungeonTrap,
+  TRAP_INFO,
+  FEATURE_INFO,
+  EVENT_INFO,
+} from '../rulesets/expanded/features'
+import {
+  attemptPuzzle,
+  resolveEvent,
+  resolveFeature,
+  resolveTrap,
+  rollDungeonEvent,
+  touchStatue,
+  type FeatureResult,
+  type EventResult,
+} from '../engine/features/resolve'
 import { getDb } from '../database/db'
 
 /**
@@ -58,11 +85,20 @@ interface DungeonStoreState {
   beginCombat: () => Promise<void>
   combatAttack: (pcId: string, enemyId: string) => Promise<void>
   combatCast: (pcId: string, spell: CastableSpell, enemyId: string | null) => Promise<void>
+  combatCastScroll: (pcId: string, spell: string, enemyId: string | null) => Promise<void>
   combatHeal: (pcId: string, targetId: string) => Promise<void>
+  combatPotion: (pcId: string) => Promise<void>
   combatWait: () => Promise<void>
   combatPayBribe: () => Promise<void>
   combatFlee: () => Promise<void>
   spendXpRoll: (pcId: string) => Promise<void>
+  /** Answer a pending feature/event choice (FADEE pp.152-153). */
+  chooseTemple: (pcId: string) => Promise<void>
+  statueTouch: (touch: boolean) => Promise<void>
+  puzzleAttempt: (pcId: string, solve: boolean) => Promise<void>
+  ghostPick: (pcId: string, gainMadness: boolean) => Promise<void>
+  healerHeal: (pcId: string, points: number) => Promise<void>
+  alchemistBuy: (pcId: string, item: 'healing potion' | 'blade poison') => Promise<void>
   clearError: () => void
 }
 
@@ -76,6 +112,121 @@ async function persist(state: DungeonState, rng: Rng, campaignId: string): Promi
   const cs = useCampaignStore.getState()
   if (cs.campaign?.id === campaignId) {
     useCampaignStore.setState({ campaign: { ...cs.campaign, rngState: rngJson } })
+  }
+}
+
+/** Append to the Zustand log (kept short) — helper for feature/event flows. */
+function appendLog(messages: string[]): void {
+  const { log } = useDungeonStore.getState()
+  useDungeonStore.setState({ log: [...log, ...messages.map((text) => ({ ts: Date.now(), text }))].slice(-100) })
+}
+
+/** Encounter roll for event-spawned Wandering Monsters (FADEE p.153). */
+function rollEncounterSimple(
+  state: DungeonState,
+  rng: Rng,
+  profile: ReturnType<typeof import('../rulesets/expanded/monsters').profileFor>,
+  hcl: number,
+): EncounterRoll {
+  const events: string[] = []
+  const enc = rollEncounter(state, rng, profile, hcl, events)
+  if (profile.major) enc.isFinalBoss = false // WM Majors never Final Boss (p.104)
+  return enc
+}
+
+/** Append messages, persist, and stash any player choice (FADEE pp.152-153). */
+async function finishFeature(
+  state: DungeonState,
+  rng: Rng,
+  campaignId: string,
+  fr: FeatureResult,
+  party: Character[],
+): Promise<void> {
+  state.pendingChoice = fr.choice
+    ? { ...fr.choice, prompt: promptFor(fr.choice as PendingChoicePayload, party) }
+    : null
+  await persist(state, rng, campaignId)
+  appendLog(fr.messages)
+  await appendEvents(campaignId, 'event', fr.messages.map((text) => ({ ts: Date.now(), text })))
+}
+
+/** Same for special events, which may also spawn an ambush or a trap. */
+async function finishEvent(
+  state: DungeonState,
+  rng: Rng,
+  campaignId: string,
+  er: EventResult,
+  party: Character[],
+  hcl: number,
+  leaderIndex: number,
+): Promise<void> {
+  const messages = [...er.messages]
+  if (er.trap) {
+    const info = TRAP_INFO[er.trap]
+    messages.push(`${info.text} (${info.source})`)
+    const tr = resolveTrap(rng, party, er.trap, hcl, leaderIndex)
+    messages.push(...tr.messages)
+    await appendEvents(campaignId, 'event', tr.messages.map((text) => ({ ts: Date.now(), text })))
+  }
+  state.pendingChoice = er.choice ? { ...er.choice, prompt: promptFor(er.choice as PendingChoicePayload, party) } : null
+  await persist(state, rng, campaignId)
+  appendLog(messages)
+  if (er.ambush) {
+    // Wandering Monsters from the events table (FADEE p.153): surprise combat.
+    const { profileFor } = await import('../rulesets/expanded/monsters')
+    const profile = profileFor(er.ambush.table, er.ambush.tableRoll)
+    const enc = rollEncounterSimple(state, rng, profile, er.ambush.hcl)
+    const enemies = [
+      makeEnemy(
+        enc.monster,
+        enc.table,
+        enc.level,
+        enc.count,
+        lifeFromFormula(enc.level, enc.monster.lifeFormula, enc.monster.flatLife),
+      ),
+    ]
+    const combat = startCombat(state.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng, {
+      forceSurprise: true,
+    })
+    state.combat = combat
+    await persist(state, rng, campaignId)
+    appendLog(combat.log.map((l) => l.text))
+    await appendEvents(campaignId, 'combat', combat.log.map((l) => ({ ts: l.ts, text: l.text })))
+  }
+}
+
+/** Save the party when a combat has concluded (won/lost/fled). */
+async function savePartyIfCombatOver(
+  dungeon: DungeonState,
+  campaignId: string,
+  phase: string,
+  party: Character[],
+): Promise<void> {
+  if (phase === 'won' || phase === 'lost' || phase === 'fled') {
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaignId, party)
+  }
+  void dungeon
+}
+
+/** Build a human prompt for the pending choice dialog. */
+function promptFor(choice: NonNullable<PendingChoicePayload>, party: Character[]): string {
+  const living = party.filter((p) => p.status !== 'dead')
+  switch (choice.kind) {
+    case 'temple':
+      return 'Choose a PC to gain +1 Attack vs. undead and demons (until they kill one).'
+    case 'statue':
+      return 'Touch the statue (1-3: it awakens; 4-6: it breaks with gold) or leave it alone?'
+    case 'puzzle':
+      return `Try to solve the puzzle box (L${choice.level}) or leave it alone?`
+    case 'ghost':
+      return 'For each PC that failed the Save: lose 1 Life or gain 1 Madness?'
+    case 'healer':
+      return 'The healer heals 1 Life per 10gp. Choose a PC and how many points.'
+    case 'alchemist':
+      return 'Buy a healing potion (50gp, heals all) or blade poison (30gp, +1 vs. first Foe)?'
+    default:
+      return 'Choose.'
   }
 }
 
@@ -176,6 +327,41 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
         log: [...get().log, ...combat.log.map((l) => ({ ts: l.ts, text: l.text }))].slice(-100),
       })
       await appendEvents(campaign.id, 'combat', combat.log.map((l) => ({ ts: l.ts, text: l.text })))
+      return
+    }
+    // Special feature / special event resolution (FADEE pp.152-153).
+    const tile = result.state.tiles.find((t) => t.id === result.state.currentTileId)
+    const content = tile?.content
+    if (content && !result.state.pendingChoice) {
+      const tier = Math.ceil(Math.max(...party.map((p) => p.level)) / 2)
+      if (content.kind === 'specialFeature' && content.specialFeatureRoll) {
+        const feature = DUNGEON_FEATURES[content.specialFeatureRoll - 1]
+        const fr = resolveFeature(
+          rng,
+          party,
+          feature,
+          result.state.fountainsSeen ?? 0,
+          hcl,
+          tier,
+        )
+        if (feature === 'fountain') result.state.fountainsSeen = (result.state.fountainsSeen ?? 0) + 1
+        await finishFeature(result.state, rng, campaign.id, fr, party)
+      } else if (content.kind === 'specialEvents' && !content.eventRoll) {
+        // Rooms roll the Special Events Table once (FADEE p.152 row 4).
+        const event = rollDungeonEvent(rng)
+        content.eventRoll = DUNGEON_EVENTS.indexOf(event) + 1
+        const er = resolveEvent(
+          rng,
+          party,
+          event,
+          hcl,
+          !!result.state.healerMet,
+          !!result.state.alchemistMet,
+        )
+        if (event === 'healer') result.state.healerMet = true
+        if (event === 'alchemist') result.state.alchemistMet = true
+        await finishEvent(result.state, rng, campaign.id, er, party, hcl, 0)
+      }
     }
   },
 
@@ -331,6 +517,52 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     })
   },
 
+  /** Scroll cast in combat (FADEE p.75): 1 turn; destroys the scroll. */
+  combatCastScroll: async (pcId, spell, enemyId) => {
+    const { dungeon } = get()
+    const { campaign, party } = await import('./campaignStore').then((m) =>
+      m.useCampaignStore.getState(),
+    )
+    const combat = dungeon?.combat
+    if (!dungeon || !campaign || !combat) return
+    const pc = party.find((p) => p.id === pcId)
+    if (!pc) return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    castScroll(combat, rng, pc, spell as ScrollSpell, enemyId)
+    await persist(dungeon, rng, campaign.id)
+    set({
+      dungeon: { ...dungeon },
+      log: [...get().log, ...combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text }))].slice(-100),
+    })
+    await savePartyIfCombatOver(dungeon, campaign.id, combat.phase, party)
+  },
+
+  /** Healing potion mid-combat: free action, 1 per PC per adventure (p.83). */
+  combatPotion: async (pcId) => {
+    const { dungeon } = get()
+    const { campaign, party } = await import('./campaignStore').then((m) =>
+      m.useCampaignStore.getState(),
+    )
+    const combat = dungeon?.combat
+    if (!dungeon || !campaign) return
+    const pc = party.find((p) => p.id === pcId)
+    if (!pc) return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    try {
+      drinkHealingPotion(combat ?? null, pc)
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) })
+      return
+    }
+    await persist(dungeon, rng, campaign.id)
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    set({
+      dungeon: { ...dungeon },
+      log: [...get().log, { ts: Date.now(), text: `${pc.name} drinks a healing potion (free action, FADEE p.83).` }].slice(-100),
+    })
+  },
+
   combatWait: async () => {
     const { dungeon } = get()
     const { campaign } = await import('./campaignStore').then((m) =>
@@ -474,6 +706,207 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     if (choice !== 'clue') {
       await persist(dungeon, rng, campaign.id)
     }
+  },
+
+  // ---------- feature/event choices (FADEE pp.152-153) ----------
+
+  chooseTemple: async (pcId) => {
+    const { dungeon } = get()
+    const { campaign, party } = await import('./campaignStore').then((m) =>
+      m.useCampaignStore.getState(),
+    )
+    if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'temple') return
+    const pc = party.find((p) => p.id === pcId)
+    if (!pc || pc.status === 'dead') return
+    pc.conditions.push('temple-blessing')
+    dungeon.pendingChoice = null
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    await persist(dungeon, rng, campaign.id)
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    appendLog([`${pc.name} receives the temple blessing: +1 Attack vs. undead and demons until they slay one. (FADEE p.152)`])
+    await appendEvents(campaign.id, 'event', [{ ts: Date.now(), text: `Temple blessing on ${pc.name} (FADEE p.152)` }])
+  },
+
+  statueTouch: async (touch) => {
+    const { dungeon } = get()
+    const { campaign, party } = await import('./campaignStore').then((m) =>
+      m.useCampaignStore.getState(),
+    )
+    if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'statue') return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    const choice = dungeon.pendingChoice
+    dungeon.pendingChoice = null
+    if (!touch) {
+      await persist(dungeon, rng, campaign.id)
+      appendLog(['The party leaves the statue alone. (FADEE p.152)'])
+      await appendEvents(campaign.id, 'event', [{ ts: Date.now(), text: 'Statue left alone (FADEE p.152)' }])
+      return
+    }
+    const majorTally = dungeon.majorFoesMet
+    const sr = touchStatue(rng, choice.hcl ?? 1, choice.tier ?? 1, majorTally)
+    if (sr.combat) {
+      // Living statue: Major Foe; tally it for future Final Boss rolls.
+      dungeon.majorFoesMet += 1
+      const enemies = sr.combat.enemies.map((e) =>
+        makeEnemy(
+          {
+            roll: 1,
+            name: e.profile.name,
+            category: e.profile.category ?? 'Artificial',
+            levelOffset: 0,
+            countFormula: '1',
+            lifeFormula: undefined,
+            flatLife: e.life,
+            attacks: 1,
+            treasure: e.profile.treasure,
+            major: true,
+            special: [],
+            reactions: ['Always fight to the death (living statue, FADEE p.152)'],
+            source: 'FADEE p.152',
+          },
+          'boss',
+          e.level,
+          e.count,
+          e.life,
+        ),
+      )
+      enemies[0].isFinalBossFlag = !!sr.combat.isFinalBoss
+      const combat = startCombat(dungeon.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng, {
+        forceSurprise: false,
+      })
+      dungeon.combat = combat
+      await persist(dungeon, rng, campaign.id)
+      appendLog([...sr.messages, ...combat.log.map((l) => l.text)])
+      await appendEvents(campaign.id, 'event', sr.messages.map((text) => ({ ts: Date.now(), text })))
+    } else {
+      if (sr.gold) {
+        const living = party.filter((p) => p.status !== 'dead')
+        const each = Math.floor(sr.gold / Math.max(1, living.length))
+        living.forEach((p) => (p.gold += each))
+      }
+      await persist(dungeon, rng, campaign.id)
+      const { saveParty } = await import('../database/repositories/campaignRepo')
+      await saveParty(campaign.id, party)
+      appendLog(sr.messages)
+      await appendEvents(campaign.id, 'loot', sr.messages.map((text) => ({ ts: Date.now(), text })))
+    }
+  },
+
+  puzzleAttempt: async (pcId, solve) => {
+    const { dungeon } = get()
+    const { campaign, party } = await import('./campaignStore').then((m) =>
+      m.useCampaignStore.getState(),
+    )
+    if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'puzzle') return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    const level = dungeon.pendingChoice.level ?? 1
+    dungeon.pendingChoice = null
+    if (!solve) {
+      await persist(dungeon, rng, campaign.id)
+      appendLog(['The party leaves the puzzle box alone. (FADEE p.152)'])
+      return
+    }
+    const pc = party.find((p) => p.id === pcId && p.status !== 'dead')
+    if (!pc) return
+    const pr = attemptPuzzle(rng, pc, level)
+    if (pr.gold) {
+      const living = party.filter((p) => p.status !== 'dead')
+      const each = Math.floor(pr.gold / Math.max(1, living.length))
+      living.forEach((p) => (p.gold += each))
+    }
+    await persist(dungeon, rng, campaign.id)
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    appendLog(pr.messages)
+    await appendEvents(campaign.id, 'event', pr.messages.map((text) => ({ ts: Date.now(), text })))
+  },
+
+  ghostPick: async (pcId, gainMadness) => {
+    const { dungeon } = get()
+    const { campaign, party } = await import('./campaignStore').then((m) =>
+      m.useCampaignStore.getState(),
+    )
+    if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'ghost') return
+    const pc = party.find((p) => p.id === pcId)
+    if (!pc) return
+    const entries: string[] = []
+    if (gainMadness) {
+      // Madness: 1 point now; L1-4 PCs may take 2 damage instead — the player
+      // already chose Madness here (FADEE p.113).
+      const m = (pc.conditions.find((c) => c.startsWith('madness')) ?? 'madness:0')
+      const n = parseInt(m.split(':')[1] ?? '0', 10) + 1
+      pc.conditions = pc.conditions.filter((c) => !c.startsWith('madness'))
+      pc.conditions.push(`madness:${n}`)
+      entries.push(`${pc.name} gains 1 Madness (total ${n}). (FADEE p.153, 112)`)
+    } else {
+      pc.currentLife = Math.max(0, pc.currentLife - 1)
+      if (pc.currentLife === 0) pc.status = 'dead'
+      entries.push(`${pc.name} loses 1 Life (${pc.currentLife}/${pc.maxLife}). (FADEE p.153)`)
+    }
+    const remaining = (dungeon.pendingChoice.pcIds ?? []).filter((id) => id !== pcId)
+    dungeon.pendingChoice = remaining.length
+      ? { ...dungeon.pendingChoice, pcIds: remaining }
+      : null
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    await persist(dungeon, rng, campaign.id)
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    appendLog(entries)
+    await appendEvents(campaign.id, 'event', entries.map((text) => ({ ts: Date.now(), text })))
+  },
+
+  healerHeal: async (pcId, points) => {
+    const { dungeon } = get()
+    const { campaign, party } = await import('./campaignStore').then((m) =>
+      m.useCampaignStore.getState(),
+    )
+    if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'healer') return
+    const pc = party.find((p) => p.id === pcId && p.status !== 'dead')
+    if (!pc || points < 1) return
+    const cost = points * 10
+    if (pc.gold < cost) {
+      set({ error: `${pc.name} has only ${pc.gold}gp (healing costs ${cost}gp).` })
+      return
+    }
+    const healed = Math.min(points, pc.maxLife - pc.currentLife)
+    pc.gold -= healed * 10
+    pc.currentLife += healed
+    dungeon.pendingChoice = null
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    await persist(dungeon, rng, campaign.id)
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    appendLog([`The wandering healer restores ${healed} Life on ${pc.name} for ${healed * 10}gp. (FADEE p.153)`])
+    await appendEvents(campaign.id, 'event', [{ ts: Date.now(), text: `Healer: ${pc.name} +${healed} Life for ${healed * 10}gp (FADEE p.153)` }])
+  },
+
+  alchemistBuy: async (pcId, item) => {
+    const { dungeon } = get()
+    const { campaign, party } = await import('./campaignStore').then((m) =>
+      m.useCampaignStore.getState(),
+    )
+    if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'alchemist') return
+    const pc = party.find((p) => p.id === pcId && p.status !== 'dead')
+    if (!pc) return
+    const price = item === 'healing potion' ? 50 : 30
+    if (pc.gold < price) {
+      set({ error: `${pc.name} has only ${pc.gold}gp (${item} costs ${price}gp).` })
+      return
+    }
+    pc.gold -= price
+    if (item === 'healing potion') {
+      pc.equipment.push('healing potion')
+    } else {
+      pc.equipment.push('blade poison')
+    }
+    dungeon.pendingChoice = null
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    await persist(dungeon, rng, campaign.id)
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    appendLog([`${pc.name} buys ${item} for ${price}gp from the wandering alchemist. (FADEE p.153)`])
+    await appendEvents(campaign.id, 'loot', [{ ts: Date.now(), text: `Alchemist: ${pc.name} buys ${item} for ${price}gp (FADEE p.153)` }])
   },
 
   clearError: () => set({ error: null }),

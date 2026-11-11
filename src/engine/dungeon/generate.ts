@@ -60,6 +60,8 @@ export interface TileContent {
   /** Monster table roll (d6) for encounter kinds. */
   tableRoll?: number
   specialFeatureRoll?: number
+  /** d6 result of the room's Special Events roll (resolved once, p.153). */
+  eventRoll?: number
 }
 
 export interface PlacedTile {
@@ -94,6 +96,30 @@ export interface DungeonState {
   pendingAmbush?: EncounterRoll | null
   /** Minor encounters defeated toward the next XP roll (FADEE p.117). */
   minorEncountersTally?: number
+  /** Fountains seen this adventure (first one heals, FADEE p.152). */
+  fountainsSeen?: number
+  /** Healer/alchemist met this adventure (once only, FADEE p.153). */
+  healerMet?: boolean
+  alchemistMet?: boolean
+  /** A feature/event choice the player must answer before play continues. */
+  pendingChoice?: PendingChoicePayload | null
+}
+
+/** Serialized player choice from the features engine. */
+export interface PendingChoicePayload {
+  kind: 'temple' | 'statue' | 'puzzle' | 'ghost' | 'healer' | 'alchemist'
+  source: string
+  /** Statue: difficulty info. */
+  hcl?: number
+  tier?: number
+  /** Puzzle box: its level. */
+  level?: number
+  /** Ghost: PCs who must choose Life or Madness. */
+  pcIds?: string[]
+  /** Temple: PCs eligible for the undead bonus. */
+  eligible?: string[]
+  /** Statement shown in the dialog. */
+  prompt: string
 }
 
 export class DungeonError extends Error {}

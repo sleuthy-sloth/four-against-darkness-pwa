@@ -9,7 +9,7 @@ import { describeEnemies, clericPrayersLeft } from '../../engine/combat/combat'
  * the player picks targets, waits for reactions, pays bribes, or flees.
  */
 export default function CombatPanel() {
-  const { dungeon, combatAttack, combatCast, combatHeal, combatWait, combatPayBribe, combatFlee, spendXpRoll, pendingXp } =
+  const { dungeon, combatAttack, combatCast, combatCastScroll, combatHeal, combatPotion, combatWait, combatPayBribe, combatFlee, spendXpRoll, pendingXp } =
     useDungeonStore()
   const { party } = useCampaignStore()
   const [targetId, setTargetId] = useState<string | null>(null)
@@ -171,6 +171,44 @@ export default function CombatPanel() {
                     {cleric.name}: Healing ({clericPrayersLeft(cleric).healing} left)
                   </button>
                 )}
+                {/* Scroll casts (FADEE p.75): any PC but barbarians, +1 turn */}
+                {living
+                  .filter((p) => p.equipment.some((e) => e.startsWith('scroll of ')))
+                  .flatMap((p) =>
+                    p.equipment
+                      .filter((e) => e.startsWith('scroll of '))
+                      .map((e) => ({ p, spell: e.replace('scroll of ', '') })),
+                  )
+                  .map(({ p, spell }) => (
+                    <button
+                      key={`${p.id}-${spell}`}
+                      disabled={spell !== 'blessing' && spell !== 'escape' && spell !== 'protection' ? !targetId && !active : false}
+                      onClick={() => {
+                        void combatCastScroll(
+                          p.id,
+                          spell,
+                          ['blessing', 'escape', 'protection'].includes(spell)
+                            ? null
+                            : (targetId ?? active!.id),
+                        )
+                      }}
+                      className="rounded bg-ember/20 px-2 py-1 text-xs text-parchment"
+                    >
+                      {p.name}: scroll {spell}
+                    </button>
+                  ))}
+                {/* Healing potion: free action, 1/PC/adventure (p.83) */}
+                {living
+                  .filter((p) => p.equipment.includes('healing potion') && !p.conditions.includes('potion-drunk'))
+                  .map((p) => (
+                    <button
+                      key={`pot-${p.id}`}
+                      onClick={() => void combatPotion(p.id)}
+                      className="rounded bg-stone-800 px-2 py-1 text-xs text-parchment"
+                    >
+                      {p.name}: potion (free)
+                    </button>
+                  ))}
               </div>
             )
           })()}
@@ -211,7 +249,7 @@ export default function CombatPanel() {
       )}
       {(combat.phase === 'won' || combat.phase === 'lost') && (
         <p className="mb-2 text-xs text-parchment/50">
-          Leave via a map exit — loot rolls arrive with the treasure engine (Phase 5).
+          Leave via a map exit — loot was rolled on victory and the Journal has the record.
         </p>
       )}
 

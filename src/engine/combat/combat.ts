@@ -685,6 +685,18 @@ export function castSpell(
   // Casting from memory spends the slot — success or waste (FADEE p.64).
   const slotIdx = pc.spells.indexOf(spell)
   if (slotIdx >= 0) pc.spells.splice(slotIdx, 1)
+  castSpellEffect(state, rng, pc, spell, enemyId, L)
+}
+
+/** Spell effect body shared by memorized casts (bonus +L) and scrolls (p.75). */
+function castSpellEffect(
+  state: CombatState,
+  rng: Rng,
+  pc: Character,
+  spell: CastableSpell,
+  enemyId: string | null,
+  bonus: number,
+): void {
   if (spell === 'escape') {
     // FADEE p.68: caster reappears in the first tile — party retreats.
     log(state, `${pc.name} casts Escape! The party teleports to the dungeon entrance.`)
@@ -704,8 +716,8 @@ export function castSpell(
     throw new CombatError('spell needs a target')
   }
   const { rolls, total } = rollExplodingD6(rng, `spellcasting roll (${pc.name}, ${spell})`)
-  const castTotal = total + L
-  log(state, `${pc.name} casts ${spell}: d6[${rolls.join('+')}] +${L} = ${castTotal} vs L${enemy.level}`)
+  const castTotal = total + bonus
+  log(state, `${pc.name} casts ${spell}: d6[${rolls.join('+')}] +${bonus} = ${castTotal} vs L${enemy.level}`)
   if (castTotal < enemy.level) {
     log(state, 'The spell fails and is wasted. (FADEE p.67)')
     endPcTurn(state, rng)
@@ -719,7 +731,7 @@ export function castSpell(
       enemy.asleep = true
       log(state, `The ${enemy.profile.name} falls asleep! Attacks against it need no Defense roll.`)
     } else {
-      const affected = Math.min(enemy.count, rng.formula(`d6+${L}`, 'Sleep Minor count'))
+      const affected = Math.min(enemy.count, rng.formula(`d6+${bonus}`, 'Sleep Minor count'))
       enemy.asleepCount = (enemy.asleepCount ?? 0) + affected
       log(state, `${affected} ${enemy.profile.name} fall asleep.`)
     }
@@ -756,4 +768,99 @@ export function castHealing(state: CombatState, rng: Rng, pc: Character, target:
   spendPrayer(pc, 'healing')
   log(state, `${pc.name} prays for Healing: ${target.name} recovers ${healed} Life → ${target.currentLife}/${target.maxLife}.`)
   endPcTurn(state, rng)
+}
+
+/** Blessing scroll slot name in equipment ('scroll of blessing', FADEE p.84). */
+export type ScrollSpell = CastableSpell | 'blessing'
+
+/**
+ * Cast a spell from a scroll (FADEE p.75): any PC except barbarians may spend
+ * 1 turn reading it. Spellcasting roll bonus: actual spellcasters +L; PCs who
+ * are not spellcasters +1; clerics add +L only when casting Blessing.
+ * Casting destroys the scroll.
+ */
+export function castScroll(
+  state: CombatState,
+  rng: Rng,
+  pc: Character,
+  spell: ScrollSpell,
+  enemyId: string | null,
+): void {
+  if (state.phase !== 'pcTurn') throw new CombatError('not the party\u2019s turn')
+  if (pc.classId === 'barbarian') {
+    throw new CombatError('barbarians may not use scrolls (FADEE p.54)')
+  }
+  const idx = pc.equipment.indexOf(`scroll of ${spell}`)
+  if (idx < 0) throw new CombatError(`no scroll of ${spell}`)
+  pc.equipment.splice(idx, 1)
+  if (spell === 'blessing') {
+    // Blessing is automatic (FADEE p.67); automate the target: a cursed PC
+    // (Cursed Altar, p.152) if any, else the reader.
+    const cursed = state.participants.find((p) => p.conditions.includes('cursed'))
+    castBlessing(state, pc, cursed ?? pc)
+    endPcTurn(state, rng)
+    return
+  }
+  const casterClasses = new Set(['wizard', 'elf', 'illusionist', 'druid'])
+  let bonus: number
+  if (pc.classId === 'cleric') bonus = 0
+  else if (casterClasses.has(pc.classId)) bonus = pc.level
+  else bonus = 1
+  castSpellEffect(state, rng, pc, spell, enemyId, bonus)
+}
+
+/**
+ * Blessing works automatically: it removes a curse (or petrification later)
+ * (FADEE p.67; cursed altar, p.152).
+ */
+export function castBlessing(state: CombatState, pc: Character, target?: Character): void {
+  const t = target ?? pc
+  const before = t.conditions.length
+  t.conditions = t.conditions.filter((c) => c !== 'cursed')
+  const removed = before !== t.conditions.length
+  log(
+    state,
+    removed
+      ? `${pc.name} casts Blessing on ${t.name}: the curse is lifted. (FADEE p.67)`
+      : `${pc.name} casts Blessing on ${t.name}: nothing to remove, it still counts against their prayers. (FADEE p.67)`,
+  )
+}
+
+/**
+ * Healing potion: heals ALL damage; max 1 per PC per adventure; free action,
+ * usable during combat (FADEE p.83).
+ */
+export function drinkHealingPotion(state: CombatState | null, pc: Character): string {
+  if (pc.conditions.includes('potion-drunk')) {
+    throw new CombatError('a PC may drink only 1 healing potion per adventure (FADEE p.83)')
+  }
+  const healed = pc.maxLife - pc.currentLife
+  pc.currentLife = pc.maxLife
+  pc.conditions.push('potion-drunk')
+  const msg =
+    healed > 0
+      ? `${pc.name} drinks a healing potion and recovers ALL ${healed} lost Life → ${pc.currentLife}/${pc.maxLife}. (FADEE p.83)`
+      : `${pc.name} drinks a healing potion at full Life — it is wasted. (FADEE p.83)`
+  if (state) log(state, msg)
+  return msg
+}
+
+/**
+ * Bandage: heals 1 Life; 1 per PC per adventure; may NOT be applied in combat
+ * (FADEE p.83).
+ */
+export function applyBandage(pc: Character): string {
+  if (pc.conditions.includes('bandage-used')) {
+    throw new CombatError('each PC may use only 1 bandage per adventure (FADEE p.83)')
+  }
+  const idx = pc.equipment.indexOf('bandage')
+  if (idx < 0) throw new CombatError('no bandage')
+  pc.equipment.splice(idx, 1)
+  if (pc.currentLife < pc.maxLife) {
+    pc.currentLife += 1
+    pc.conditions.push('bandage-used')
+    return `${pc.name} applies a bandage: +1 Life → ${pc.currentLife}/${pc.maxLife}. (FADEE p.83)`
+  }
+  pc.conditions.push('bandage-used')
+  return `${pc.name} applies a bandage at full Life — it is wasted. (FADEE p.83)`
 }

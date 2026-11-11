@@ -26,11 +26,17 @@
 
 ## Current Work
 
-- [ ] Phase 5 remainder: scroll-casting from loot, equipment restrictions, potion use, carrying limits, special events/features tables
+- [ ] Phase 5 remainder: scroll-learning (copy to wizard spellbook), quest system (Lady in White acceptance), Clues→Secrets XP, resting (needs bag-of-nails economy/shopping), trinket magic items
 
-## Completed Work (Phase 4 remainder + Phase 5 core)
+## Completed Work (Phase 5 remainder batch)
 
-## Completed Work (Phase 4 remainder + Phase 5 core)
+- [x] Scrolls (FADEE p.75): any PC except barbarians casts from a scroll (1 turn, destroys it); bonuses — spellcasters +L, non-spellcasters +1, clerics +0 (Blessing excepted); scroll buttons in combat; Blessing scroll auto-targets a cursed PC (p.67, p.152)
+- [x] Consumables (FADEE p.83): healing potion (heals ALL, 1/PC/adventure, free action even in combat — combat panel button), bandage (+1 Life, 1/PC/adventure, never in combat) usable from Inventory
+- [x] Special Features (FADEE p.152) all six: Fountain (first-encounter heal), Blessed Temple (choice: +1 vs. undead/demons until a kill), Armory, Cursed Altar (random PC 'cursed' condition, removable by Blessing/temple), Statue (touch choice: living statue HCL+3 Tier+5 fight w/ Final Boss roll, or 3d6×10gp no-XP), Puzzle Box (Save vs. its L, wizards/rogues +L, 1 dmg per fail, success rolls Treasure)
+- [x] Special Events (FADEE p.153) all six: Ghost (Save vs. L4 fear, clerics +L, per-PC Life-or-Madness choice, madness:N condition), Wandering Monsters ambush (forced surprise), Lady in White (appears; quest acceptance deferred — flagged, no silent substitution), Traps roll, wandering healer (10gp/Life, once/adventure, reroll after), wandering alchemist (50gp potion / 30gp poison, once/adventure, reroll→trap)
+- [x] Dungeon Traps (FADEE p.163) all six: dart (halfling reroll), poison gas (barb/halfling +L), trapdoor (armor Save penalties, +1 halfling/elf, rogue +L), bear trap (persistent -1 condition), spears (2 random PCs), falling stone (position 4, armor yes shield no, 2 Life) — Marching Order pending, leader = party[0], noted
+- [x] Equipment exchange (FADEE p.111) in Inventory: give-item flow, armor only same-build (dwarf/halfling/elf vs humanoids), combat restrictions enforced with rule text
+- [x] ChoiceDialog UI for all player choices; 97 tests (spells/loot/features/events/traps + 600-tile sim with growth assertions); build clean; live-verified: WM ambush combat, scroll buttons, potion button, encounter→victory→loot
 
 - [x] Spells in combat: Sleep/Fireball/Lightning/Protection/Escape with slot consumption (p.64), wasted-spell rule (p.67), Sleep immunities, sleeping foes auto-hit/dispatch-at-will (p.68); cleric Healing prayer with 3-use tracking (p.28); spell buttons in CombatPanel
 - [x] Wandering Monster ambushes: retrace 1-in-6 rolls the WM tables and opens a forced-surprise combat (pp.104, 107); event/dragon rerolls; WM Majors can never be the Final Boss
