@@ -1,0 +1,1 @@
+<path d="M0 0h512v512H0z"/><path fill="#fff" d="M64 448v-64h64v-64h64v-64h64v-64h64v-64h64V64h64v384z"/>

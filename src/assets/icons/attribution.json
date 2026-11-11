@@ -1,0 +1,20 @@
+{
+ "warrior": "cathelineau/swordman.svg",
+ "barbarian": "delapouite/barbarian.svg",
+ "dwarf": "delapouite/dwarf-face.svg",
+ "elf": "delapouite/woman-elf-face.svg",
+ "halfling": "delapouite/hobbit-door.svg",
+ "cleric": "lorc/prayer.svg",
+ "rogue": "darkzaitzev/hooded-assassin.svg",
+ "wizard": "delapouite/wizard-face.svg",
+ "chest": "delapouite/chest.svg",
+ "stairs": "delapouite/stairs.svg",
+ "fountain": "lorc/fountain.svg",
+ "skull": "badges/skull.svg",
+ "statue": "delapouite/colombian-statue.svg",
+ "temple": "delapouite/byzantin-temple.svg",
+ "altar": "lorc/stone-sphere.svg",
+ "box": "lorc/stone-sphere.svg",
+ "monsters": "lorc/stone-sphere.svg",
+ "party": "delapouite/knight-banner.svg"
+}

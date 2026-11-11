@@ -12,6 +12,61 @@ import { ChoiceDialog } from './ChoiceDialog'
 import { DUNGEON_FEATURES, FEATURE_INFO } from '../../rulesets/expanded/features'
 import { QUEST_TABLE } from '../../rulesets/expanded/quests'
 
+/** Map iconography — game-icons.net fragments rendered inside the SVG. */
+import chestIcon from '../../assets/icons/chest.svg.frag?raw'
+import monstersIcon from '../../assets/icons/monsters.svg.frag?raw'
+import fountainIcon from '../../assets/icons/fountain.svg.frag?raw'
+import templeIcon from '../../assets/icons/temple.svg.frag?raw'
+import statueIcon from '../../assets/icons/statue.svg.frag?raw'
+import altarIcon from '../../assets/icons/altar.svg.frag?raw'
+import boxIcon from '../../assets/icons/box.svg.frag?raw'
+import skullIcon from '../../assets/icons/skull.svg.frag?raw'
+import partyIconFrag from '../../assets/icons/party.svg.frag?raw'
+import type { TileContent } from '../../engine/dungeon/generate'
+
+/** Strip the game-icons background square. */
+function cleanIcon(frag: string): string {
+  return frag.replace('<path d="M0 0h512v512H0z"/>', '')
+}
+
+/** Iconography lookup for a tile's content (FADEE p.152 kinds). */
+function contentIcon(content: TileContent | null): string | null {
+  if (!content) return null
+  switch (content.kind) {
+    case 'treasure':
+    case 'treasureTrapped':
+      return cleanIcon(chestIcon)
+    case 'vermin':
+    case 'minions':
+    case 'weird':
+    case 'boss':
+    case 'dragonLair':
+      return content.cleared ? null : cleanIcon(monstersIcon)
+    case 'specialFeature':
+      return [
+        cleanIcon(fountainIcon),
+        cleanIcon(templeIcon),
+        null, // armory — plain room
+        cleanIcon(altarIcon),
+        cleanIcon(statueIcon),
+        cleanIcon(boxIcon),
+      ][(content.specialFeatureRoll ?? 1) - 1] ?? null
+    default:
+      return null
+  }
+}
+
+/** Render a game-icons fragment centered at (x, y) map units. */
+function MapIcon({ frag, x, y, size = 0.62, className = 'fill-parchment/25' }: { frag: string; x: number; y: number; size?: number; className?: string }) {
+  return (
+    <g
+      transform={`translate(${x - size / 2}, ${y - size / 2}) scale(${size / 512})`}
+      className={className}
+      dangerouslySetInnerHTML={{ __html: frag }}
+    />
+  )
+}
+
 /**
  * Dungeon screen (PROJECT_SPEC §23): the interactive map is the centerpiece.
  * Tap an exit marker to explore (generates the next tile), drag to pan,
@@ -122,12 +177,30 @@ export default function DungeonScreen() {
           style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
           preserveAspectRatio="xMidYMid meet"
         >
+          <defs>
+            {/* stone-floor pattern: warm parchment blocks with dark joints */}
+            <pattern id="stoneFloor" width="1" height="1" patternUnits="userSpaceOnUse">
+              <rect width="1" height="1" fill="#6b5f46" />
+              <rect width="1" height="1" fill="#544b38" opacity="0.35" />
+              <path d="M0 0.5h1M0.5 0v1" className="stroke-stone-950" strokeWidth={0.06} />
+            </pattern>
+            {/* torch-lit variant for the current tile */}
+            <pattern id="stoneFloorLit" width="1" height="1" patternUnits="userSpaceOnUse">
+              <rect width="1" height="1" fill="#8a7147" />
+              <rect width="1" height="1" fill="#a3742c" opacity="0.3" />
+              <path d="M0 0.5h1M0.5 0v1" className="stroke-stone-950" strokeWidth={0.06} />
+            </pattern>
+          </defs>
           <g transform={`translate(${2 - bounds.minCol}, ${2 - bounds.minRow})`}>
             {dungeon.tiles.map((t) => {
               const geo = tileGeometry(t)
               const isCurrent = t.id === tile.id
+              const icon = contentIcon(t.content)
+              const cx = t.cells.reduce((n, c) => n + c.col, 0) / Math.max(1, t.cells.length) + 0.5
+              const cy = t.cells.reduce((n, c) => n + c.row, 0) / Math.max(1, t.cells.length) + 0.5
               return (
                 <g key={t.id}>
+                  {/* floor: patterned stone; corridors darker than rooms */}
                   {t.cells.map((c, i) => (
                     <rect
                       key={i}
@@ -135,9 +208,11 @@ export default function DungeonScreen() {
                       y={c.row}
                       width={1}
                       height={1}
-                      className={isCurrent ? 'fill-torch/25' : 'fill-stone-800'}
+                      fill={isCurrent ? 'url(#stoneFloorLit)' : 'url(#stoneFloor)'}
+                      opacity={isCorridor ? 0.55 : 1}
                     />
                   ))}
+                  {/* walls: deep shadow base + pale carved edge */}
                   {geo.walls.map((w, i) => (
                     <line
                       key={i}
@@ -145,32 +220,70 @@ export default function DungeonScreen() {
                       y1={w.y1}
                       x2={w.x2}
                       y2={w.y2}
-                      className="stroke-stone-300"
-                      strokeWidth={0.06}
+                      className="stroke-stone-600"
+                      strokeWidth={0.14}
                     />
                   ))}
-                  {geo.doors.map((d, i) => (
-                    <rect
-                      key={i}
-                      x={d.x - (d.edge === 'N' || d.edge === 'S' ? 0.15 : 0.04)}
-                      y={d.y - (d.edge === 'N' || d.edge === 'S' ? 0.04 : 0.15)}
-                      width={d.edge === 'N' || d.edge === 'S' ? 0.3 : 0.08}
-                      height={d.edge === 'N' || d.edge === 'S' ? 0.08 : 0.3}
-                      className={d.door ? 'fill-torch' : 'fill-parchment/40'}
+                  {geo.walls.map((w, i) => (
+                    <line
+                      key={`hl${i}`}
+                      x1={w.x1}
+                      y1={w.y1}
+                      x2={w.x2}
+                      y2={w.y2}
+                      className="stroke-stone-200"
+                      strokeWidth={0.04}
                     />
                   ))}
+                  {/* doors: leaf + swing arc (FADEE-style dungeon glyphs) */}
+                  {geo.doors.map((d, i) => {
+                    const horiz = d.edge === 'N' || d.edge === 'S'
+                    return (
+                      <g key={`door${i}`}>
+                        <rect
+                          x={d.x - (horiz ? 0.16 : 0.04)}
+                          y={d.y - (horiz ? 0.04 : 0.16)}
+                          width={horiz ? 0.32 : 0.08}
+                          height={horiz ? 0.08 : 0.32}
+                          className={d.door ? 'fill-ember' : 'fill-parchment/50'}
+                        />
+                        {/* swing arc */}
+                        <path
+                          d={
+                            horiz
+                              ? `M ${d.x - 0.2} ${d.y} A 0.28 0.28 0 0 1 ${d.x - 0.2} ${d.y + (d.edge === 'N' ? -0.28 : 0.28)}`
+                              : `M ${d.x} ${d.y - 0.2} A 0.28 0.28 0 0 0 ${d.x + (d.edge === 'W' ? -0.28 : 0.28)} ${d.y - 0.2}`
+                          }
+                          className="stroke-parchment/25"
+                          fill="none"
+                          strokeWidth={0.03}
+                        />
+                      </g>
+                    )
+                  })}
+                  {/* content iconography */}
+                  {icon && <MapIcon frag={icon} x={cx} y={cy} />}
                 </g>
               )
             })}
-            {/* party marker */}
+            {/* party marker: banner token on a torch disc */}
             {tile.cells.length > 0 && (
-              <circle
-                cx={tile.cells[0].col + 0.5}
-                cy={tile.cells[0].row + 0.5}
-                r={0.28}
-                className="fill-torch stroke-stone-950"
-                strokeWidth={0.05}
-              />
+              <g>
+                <circle
+                  cx={tile.cells[0].col + 0.5}
+                  cy={tile.cells[0].row + 0.5}
+                  r={0.3}
+                  className="fill-torch stroke-stone-950"
+                  strokeWidth={0.05}
+                />
+                <MapIcon
+                  frag={cleanIcon(partyIconFrag)}
+                  x={tile.cells[0].col + 0.5}
+                  y={tile.cells[0].row + 0.5}
+                  size={0.34}
+                  className="fill-stone-950"
+                />
+              </g>
             )}
             {/* exit tap targets: glowing = unexplored (generate), dim = move through */}
             {tile.exits.map((e) => {

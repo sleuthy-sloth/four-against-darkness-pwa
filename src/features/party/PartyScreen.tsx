@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CORE_CLASSES } from '../../rulesets/expanded/coreClasses'
 import { useCampaignStore } from '../../state/campaignStore'
+import { ClassIcon } from '../common/ClassIcon'
 
 /** Party dashboard (PROJECT_SPEC §24): four character cards + create flow. */
 export default function PartyScreen() {
@@ -57,7 +58,8 @@ export default function PartyScreen() {
                   className="block w-full text-left active:opacity-80"
                 >
                   <div className="flex items-baseline justify-between">
-                    <span className="text-base text-parchment">
+                    <span className="flex items-center gap-2 text-base text-parchment">
+                      <ClassIcon classId={c.classId} className="w-7 h-7 shrink-0" />
                       {idx + 1}. {c.name}
                     </span>
                     <span className="text-xs text-parchment/50">

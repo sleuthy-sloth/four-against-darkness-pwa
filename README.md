@@ -16,6 +16,10 @@ encounters, dice, combat math, treasure, XP — while the player keeps the meani
 | ![Party, mobile](docs/screenshots/party-mobile.png) | ![Campaign dashboard, desktop](docs/screenshots/campaign-desktop.png) |
 | | ![Journal, desktop](docs/screenshots/journal-desktop.png) |
 
+Icon art: [game-icons.net](https://game-icons.net) (CC BY 3.0) — see
+`src/assets/icons/ATTRIBUTION.md`. All map floors, walls and door glyphs are
+procedural SVG (original, MIT).
+
 ## Development
 
 ```bash

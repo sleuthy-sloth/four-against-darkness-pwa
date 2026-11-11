@@ -28,6 +28,12 @@
 
 - [ ] Release 0.5 scope: environments (caverns/grottoes tables + secret passages), quest types 3/4 (subdual capture, item retrieval), trinket magic-item effects, light/darkness, more XP systems
 
+## Completed Work (Graphics overhaul — map + characters)
+
+- [x] Map: patterned parchment/stone floors (torch-lit current tile, darker corridors), carved two-layer walls, door leaf + swing-arc glyphs, content iconography on tiles (chest/monsters/fountain/temple/altar/statue/puzzle box), party banner token
+- [x] Characters: class portrait icons on party cards and character sheets (game-icons.net CC BY 3.0, attributed in src/assets/icons/ATTRIBUTION.md); README credits icon art — book art NOT used (copyrighted; repo stays MIT for code, icons carry their own license)
+- [x] 107 tests green; build clean; screenshots refreshed in both environments
+
 ## Completed Work (Phase 5f — quests, epic rewards; Phase 5 COMPLETE)
 
 - [x] Lady in White quest flow (pp.153, 161-162): accept/decline dialog; refusal makes her ignore future appearances; Quest Table roll d6

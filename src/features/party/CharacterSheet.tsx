@@ -1,6 +1,7 @@
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { CORE_CLASSES } from '../../rulesets/expanded/coreClasses'
 import { useCampaignStore } from '../../state/campaignStore'
+import { ClassIcon } from '../common/ClassIcon'
 import { BASIC_SPELLS } from '../../rulesets/expanded/coreClasses'
 
 /** Detailed character sheet (PROJECT_SPEC §24): tap a party card to open. */
@@ -19,10 +20,15 @@ export default function CharacterSheet() {
       <button onClick={() => navigate('/party')} className="mb-2 self-start text-xs text-parchment/50">
         ← Party
       </button>
-      <h1 className="text-2xl text-torch">{character.name}</h1>
-      <p className="text-sm text-parchment/70">
-        {def.name} · Level {character.level} · {def.source}
-      </p>
+      <div className="flex items-center gap-3">
+        <ClassIcon classId={character.classId} className="w-14 h-14 shrink-0" />
+        <div>
+          <h1 className="text-2xl text-torch">{character.name}</h1>
+          <p className="text-sm text-parchment/70">
+            {def.name} · Level {character.level} · {def.source}
+          </p>
+        </div>
+      </div>
 
       <div className="mt-4 grid grid-cols-3 gap-2 text-center">
         <div className="rounded-lg bg-stone-800/60 p-3">
