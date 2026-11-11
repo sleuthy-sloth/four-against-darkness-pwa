@@ -253,6 +253,14 @@ export function exploreThrough(
   }
 
   const placed = placeAtOrigin(shape, placement.transform, placement.origin)
+  if (placement.truncated) {
+    // FADEE p.104: truncated tiles keep only the clipped squares.
+    placed.cells = placement.truncated
+    placed.exits = placed.exits.filter(
+      (e) => placement.truncated!.some((c) => c.row === e.cell.row && c.col === e.cell.col),
+    )
+    events.push(`Rolled tile ${roll} — truncated to fit (FADEE p.104).`)
+  }
   const newTileId = `${state.campaignId}-t${state.tiles.length + 1}`
   const newTile: PlacedTile = {
     id: newTileId,
@@ -318,6 +326,8 @@ interface Placement {
   transform: number
   origin: Cell
   exitCell: Cell // absolute cell of the new tile's matching exit
+  /** Clipped cells when the tile was truncated (FADEE p.104). */
+  truncated?: Cell[]
 }
 
 function findPlacement(
@@ -346,6 +356,28 @@ function findPlacement(
       }
       if (cells.some((c) => occupied.has(key(c)))) continue
       return { transform, origin, exitCell: targetCell }
+    }
+  }
+  // FADEE p.104 truncation: a shape that won't fit intact is truncated —
+  // clip to the grid, drop overlapping squares; it still counts as a tile
+  // and still rolls content, even down to one square.
+  for (let transform = 0; transform < 8; transform++) {
+    const t = transformShape(shape, transform)
+    const needEdge = oppositeEdge(exit.edge)
+    for (const ex of t.exits) {
+      if (ex.edge !== needEdge) continue
+      const dr = targetCell.row - ex.cell.row
+      const dc = targetCell.col - ex.cell.col
+      const origin = { row: 1 + dr, col: 1 + dc }
+      const clipped = t.cells
+        .map((c) => offsetCell(c, dr, dc))
+        .filter((c) => c.row >= 1 && c.row <= GRID_H && c.col >= 1 && c.col <= GRID_W)
+        .filter((c) => !occupied.has(key(c)))
+      const exitCell = offsetCell(ex.cell, dr, dc)
+      // The connection square must survive truncation, or there is no way in.
+      if (clipped.length >= 1 && clipped.some((c) => c.row === exitCell.row && c.col === exitCell.col)) {
+        return { transform, origin, exitCell, truncated: clipped }
+      }
     }
   }
   return null

@@ -18,7 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copyright and content policy
 - Deployment guide
 
-### Added — Phase 4 combat core (2026-11-10)
+### Added — Phase 4 remainder + Phase 5 core (2026-11-10)
+- Spells in combat: Sleep/Fireball/Lightning/Protection/Escape; slots consumed on cast (p.64); failed casts waste the spell (p.67); Sleep immunities; sleeping-foe rules (p.68)
+- Cleric Healing prayer with per-adventure 3-use tracking (p.28)
+- Wandering Monster ambushes on retrace: forced-surprise combat from the WM tables (pp.104, 107)
+- Loot engine: Treasure Table rows + Magic Treasure with modifiers (pp.157-158); gold pooled, scrolls/magic items carried
+- Classical XP economy (p.117): Major-Foe rolls + Final Boss bonus; minor accrual 1 roll per 10 encounters
+- Journal screen with category filters; engine events persist to Dexie (§26)
+- FADEE p.104 truncation in tile placement; move-through markers on explored exits
+- RNG-state sync fix (stale campaign meta replayed dice) + Dexie VersionError recovery; 79 tests green
 - Combat engine: exploding dice, modifier summaries from pp.146-148, minor/major damage math, Morale, reactions, bribes, fleeing, PC death, XP accounting
 - CombatPanel UI with target selection and a fully explained combat log
 - Combat persisted within the dungeon record; 68 tests green; live fight verified end-to-end

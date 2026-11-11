@@ -26,9 +26,21 @@
 
 ## Current Work
 
-- [ ] Phase 4 remainder: spell-casting in combat (basic 6 + prayers), ranged-first phase, marching-order UI, Wandering Monster ambush resolution
+- [ ] Phase 5 remainder: scroll-casting from loot, equipment restrictions, potion use, carrying limits, special events/features tables
 
-## Completed Work (Phase 4 — combat core, live)
+## Completed Work (Phase 4 remainder + Phase 5 core)
+
+## Completed Work (Phase 4 remainder + Phase 5 core)
+
+- [x] Spells in combat: Sleep/Fireball/Lightning/Protection/Escape with slot consumption (p.64), wasted-spell rule (p.67), Sleep immunities, sleeping foes auto-hit/dispatch-at-will (p.68); cleric Healing prayer with 3-use tracking (p.28); spell buttons in CombatPanel
+- [x] Wandering Monster ambushes: retrace 1-in-6 rolls the WM tables and opens a forced-surprise combat (pp.104, 107); event/dragon rerolls; WM Majors can never be the Final Boss
+- [x] Loot engine: Treasure Table dungeon rows + Magic Treasure (pp.157-158) with treasure modifiers; gold pooled to living PCs; scrolls/magic items carried by a living PC; rolled once per cleared encounter (p.99)
+- [x] Classical XP economy (p.117): 1 roll per Major Foe + Final Boss bonus; minors accrue 1 roll per 10 encounters; XP rolls decrement availability
+- [x] Journal (PROJECT_SPEC §26): engine events persist to Dexie by category; JournalScreen with filters
+- [x] FADEE p.104 truncation implemented (a shape that won't fit is clipped and still rolls content); map now renders move-through markers on explored exits (no more stranded parties)
+- [x] RNG-state sync bug fixed: dungeon actions updated the campaign meta in place (a stale rngState replayed identical dice — caught live as six identical d66 rolls)
+- [x] Dexie hardening: globalThis singleton across HMR + VersionError recovery (delete + recreate) instead of a bricked app
+- [x] 79 tests green; build clean; live-verified: encounter → melee fight with exploding-dice kill → loot roll (Sleep scroll) → journal with filters
 
 - [x] Combat engine (engine/combat/combat.ts): exploding tier dice, class/armor/shield/weapon modifiers per FADEE pp.146-148, Minor-group slaying (total ÷ L), Major damage per L-multiple, weaken-below-half, group Morale once per encounter, hated-class attack distribution, natural-1-always-fails defense
 - [x] Reactions: parser + automation for flee/flee-if-outnumbered/bribe/fight/ignore/peaceful; bribes paid from pooled party gold; unhandled reactions flagged as fights with a source note (no silent substitutions)

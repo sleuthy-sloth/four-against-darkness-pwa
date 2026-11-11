@@ -68,7 +68,15 @@ interface DungeonStoreState {
 
 async function persist(state: DungeonState, rng: Rng, campaignId: string): Promise<void> {
   await saveDungeon(campaignId, state)
-  await touchCampaign(campaignId, { rngState: JSON.stringify(rng.serialize()) })
+  const rngJson = JSON.stringify(rng.serialize())
+  await touchCampaign(campaignId, { rngState: rngJson })
+  // Keep the campaign store's meta in sync, or the next action re-reads a
+  // STALE rngState and replays the same dice sequence (groundhog-day bug).
+  const { useCampaignStore } = await import('./campaignStore')
+  const cs = useCampaignStore.getState()
+  if (cs.campaign?.id === campaignId) {
+    useCampaignStore.setState({ campaign: { ...cs.campaign, rngState: rngJson } })
+  }
 }
 
 /** Persist journal events (PROJECT_SPEC §26; Dexie events table). */

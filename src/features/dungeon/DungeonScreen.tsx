@@ -169,17 +169,20 @@ export default function DungeonScreen() {
                 strokeWidth={0.05}
               />
             )}
-            {/* exit tap targets */}
-            {exits.map((e) => {
+            {/* exit tap targets: glowing = unexplored (generate), dim = move through */}
+            {tile.exits.map((e) => {
               const x = e.cell.col + (e.edge === 'E' ? 1 : e.edge === 'W' ? 0 : 0.5)
               const y = e.cell.row + (e.edge === 'S' ? 1 : e.edge === 'N' ? 0 : 0.5)
+              const unexplored = !e.toTileId
               return (
                 <circle
                   key={e.id}
                   cx={x}
                   cy={y}
                   r={0.34}
-                  className="cursor-pointer fill-torch/80 stroke-stone-950"
+                  className={`cursor-pointer stroke-stone-950 ${
+                    unexplored ? 'fill-torch/80' : 'fill-parchment/50'
+                  }`}
                   strokeWidth={0.05}
                   onPointerUp={(ev) => {
                     if (!dragRef.current?.moved) {

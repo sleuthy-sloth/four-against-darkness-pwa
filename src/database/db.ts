@@ -77,10 +77,28 @@ export interface DungeonRecord {
 
 let dbInstance: FourADDatabase | null = null
 
-/** Singleton accessor — one open connection per page lifetime. */
+/** Singleton accessor — one open connection per page lifetime.
+ * Survives Vite HMR re-execution by caching on globalThis; on a Dexie
+ * VersionError (DB newer than code — dev churn or a stale cached bundle),
+ * the database is deleted and recreated rather than leaving the app bricked.
+ * Recovery logs loudly: data written by a NEWER build is discarded, which is
+ * acceptable only because the newer build never shipped. */
 export function getDb(): FourADDatabase {
+  const g = globalThis as { __fourADDb?: FourADDatabase }
+  if (!dbInstance && g.__fourADDb) dbInstance = g.__fourADDb
   if (!dbInstance) {
     dbInstance = new FourADDatabase()
+    dbInstance.open().catch((e: Error) => {
+      if (/newer version|VersionError/i.test(String(e))) {
+        console.warn('[4AD] database schema is newer than this build — resetting local DB')
+        dbInstance!.delete()
+        dbInstance = new FourADDatabase()
+        g.__fourADDb = dbInstance
+      } else {
+        throw e
+      }
+    })
+    g.__fourADDb = dbInstance
   }
   return dbInstance
 }
