@@ -26,9 +26,19 @@
 
 ## Current Work
 
-- [ ] Wire the wizard/elf spell-slot chooser + halfling trait picker into creation UI (engine validates them today; UI uses defaults)
+- [ ] Journal screen (Phase 3 remainder): persist the event log to the Dexie events table and render it with category filters
 
-## Completed Work (Phase 2 — character system)
+## Completed Work (Phase 3 — dungeon generation, map live)
+
+- [x] OQ-2 tile-shape verification pass: zoomed vision crops of pp.149-151; tiles 51-56, 63 corrected, 23/33/24/26/34/41/42/43/44/45/46/62/65/36 confirmed high/medium; 32/35 remain low-confidence (art-obscured)
+- [x] Tile data pack: 6 starting + 36 d66 shapes with cells/exits/door-vs-opening/confidence (rulesets/expanded/tiles.ts)
+- [x] Dungeon monster tables (dungeon environment) as data with HCL caps, quantity formulas, reactions (rulesets/expanded/monsters.ts)
+- [x] Generation engine: transform placement (rotate × mirror), dead ends, 2d6 content routing, encounter rolls (level = HCL + offset with caps), Final Boss tally, search-once, hidden treasure (2d6+HCL)² + complications, secret-door safe-exit roll
+- [x] Dexie v3: dungeons table (per-campaign JSON state)
+- [x] Dungeon screen: SVG map (cells/walls/doors/openings), fog-of-war styling, party marker, tap-exit-to-explore with pan/pinch/zoom/recenter, collapsible bottom panel with content + search + find-choice + log
+- [x] Sim tests: 100 seeded dungeons validating bounds/overlap/connectivity/reciprocal links; caught and fixed a placement-geometry inversion
+- [x] Live-verified in browser: start tile → 2 explorations → search → reload persistence (map redraws from saved state)
+- Known dev-only caveat: repeated HMR edits of db.ts churn the Dexie version chain (dev DB hit v30 and reset); production chain is 1→2→3 and clean
 
 - [x] Seeded RNG engine (mulberry32, serialized state, d3/d66/dice-formula parser, roll log) — PROJECT_SPEC §8
 - [x] Zod schemas: ClassDef, TraitDef, Character, Party (rulesets/schema)
@@ -85,4 +95,12 @@ None.
 
 ## Next Recommended Task
 
-Phase 3: dungeon generation — tile-shape verification pass first (OQ-2), then seeded generation, SVG map, fog of war, exploration.
+Phase 4: encounters and combat — attack/defense resolution per the pp.146-148 modifier summaries, monster turn automation, Morale, combat log, then treasure/loot (Phase 5 starts there too).
+
+## [Unreleased] — Phase 3 dungeon generation (2026-11-10)
+### Added
+- Tile data pack (42 shapes, confidence-flagged, OQ-2 verified via zoomed crops)
+- Dungeon monster tables (dungeon environment) as page-cited data
+- Seeded generation engine: transforms, content 2d6 routing, encounters with HCL caps, Final Boss tally, search/hidden treasure/secret doors
+- Dexie v3 dungeons table; interactive SVG map screen with pan/pinch/zoom, tap-to-explore, collapsible info panel
+- Simulation suite: 100 seeded dungeons, structural validation; 47 tests total green

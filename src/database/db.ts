@@ -8,7 +8,7 @@ import type { Character } from '../rulesets/schema/character'
  * reproducible. Migrations: bump SCHEMA_VERSION with an upgrade path; never
  * drop columns implicitly.
  */
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 export interface CampaignMeta {
   id: string
@@ -37,6 +37,7 @@ export class FourADDatabase extends Dexie {
   campaigns!: EntityTable<CampaignMeta, 'id'>
   characters!: EntityTable<CharacterRecord, 'id'>
   events!: EntityTable<EventRecord, 'id'>
+  dungeons!: EntityTable<DungeonRecord, 'id'>
 
   constructor() {
     super('four-against-darkness')
@@ -46,7 +47,7 @@ export class FourADDatabase extends Dexie {
       events: 'id, campaignId, timestamp',
     })
     // v2: characters now hold the full validated record (same keys/indexes).
-    this.version(SCHEMA_VERSION)
+    this.version(2)
       .stores({
         campaigns: 'id, name, lastModified',
         characters: 'id, campaignId, classId',
@@ -57,7 +58,21 @@ export class FourADDatabase extends Dexie {
         // rather than guess at migration semantics (PROJECT_SPEC Rule 4).
         await tx.table('characters').clear()
       })
+    // v3: dungeon state per campaign (JSON blob, keyed by campaign id).
+    this.version(SCHEMA_VERSION).stores({
+      campaigns: 'id, name, lastModified',
+      characters: 'id, campaignId, classId',
+      events: 'id, campaignId, timestamp',
+      dungeons: 'id',
+    })
   }
+}
+
+/** Serialized DungeonState (engine/dungeon/generate.ts). */
+export interface DungeonRecord {
+  id: string // campaignId
+  state: unknown
+  savedAt: number
 }
 
 let dbInstance: FourADDatabase | null = null

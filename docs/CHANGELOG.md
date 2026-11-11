@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copyright and content policy
 - Deployment guide
 
+### Added — Phase 3 dungeon generation (2026-11-10)
+- Tile data pack (42 shapes, confidence-flagged, OQ-2 verified via zoomed crops)
+- Dungeon monster tables (dungeon environment) as page-cited data
+- Seeded generation engine: transforms, content 2d6 routing, encounters with HCL caps, Final Boss tally, search/hidden treasure/secret doors
+- Dexie v3 dungeons table; interactive SVG map screen with pan/pinch/zoom, tap-to-explore, collapsible info panel
+- Simulation suite: 100 seeded dungeons, structural validation; 47 tests total green
+
 ### Added — Phase 2 character system (2026-11-10)
 - Seeded RNG engine with serialized state, dice formulas, d3/d66, roll log
 - Zod schemas + core-8 class data pack (page-cited FADEE pp.24-65)
@@ -26,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Campaign dashboard flow, party screen, 4-class creation form, character sheet
 - 30 passing tests (unit + fake-indexeddb persistence); build green
 - Live browser smoke test: create → persist → reload → sheet all verified
+
+### Added — Phase 1 app shell (2026-11-10)
 - Phase 1 app shell: Vite + React 18 + TypeScript + Tailwind + react-router
 - 5-tab navigation with honest Phase-labelled stub screens (no fake features)
 - Zustand settings store; Dexie database (schema v1: campaigns, characters, events)
