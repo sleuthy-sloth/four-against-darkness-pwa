@@ -32,6 +32,8 @@ export interface FeatureResult {
 
 export type PendingChoice =
   | { kind: 'temple'; source: string } // pick which PC gains the undead bonus
+  | { kind: 'quest'; source: string } // accept or decline the Lady's Quest
+  | { kind: 'questPc'; source: string } // who gains the quest-completion XP
   | { kind: 'statue'; source: string; hcl: number; tier: number } // touch or leave
   | { kind: 'puzzle'; source: string; level: number } // solve attempt or leave
   | { kind: 'ghost'; pcIds: string[]; source: string } // per-PC Life or Madness
@@ -229,6 +231,8 @@ export function resolveEvent(
   hcl: number,
   healerMet: boolean,
   alchemistMet: boolean,
+  questActive = false,
+  ladyRefused = false,
 ): EventResult {
   const messages: string[] = []
   switch (event) {
@@ -258,13 +262,15 @@ export function resolveEvent(
       }
     }
     case 'ladyInWhite':
-      // Quest system is a later milestone; the Lady appears and the party
-      // cannot yet accept a Quest (no silent substitution — flagged in
-      // IMPLEMENTATION_STATUS). Ignore further appearances (FADEE p.153).
+      // Quest system (FADEE pp.153, 161-162): the Lady offers a Quest once;
+      // refusing makes her ignore future appearances, and an active Quest
+      // means no second Lady.
+      if (questActive || ladyRefused) {
+        return { messages: [] }
+      }
       return {
-        messages: [
-          'A Lady in White appears and asks the party to complete a Quest. (Quest acceptance arrives with the quest system milestone — FADEE p.153)',
-        ],
+        messages: ['A Lady in White appears and asks you to complete a Quest.'],
+        choice: { kind: 'quest', source: 'FADEE pp.153, 161' },
       }
     case 'trap': {
       const trap = DUNGEON_TRAPS[rng.d(6) - 1]

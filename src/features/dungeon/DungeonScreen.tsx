@@ -10,6 +10,7 @@ import { D66_TILES } from '../../rulesets/expanded/tiles'
 import CombatPanel from './CombatPanel'
 import { ChoiceDialog } from './ChoiceDialog'
 import { DUNGEON_FEATURES, FEATURE_INFO } from '../../rulesets/expanded/features'
+import { QUEST_TABLE } from '../../rulesets/expanded/quests'
 
 /**
  * Dungeon screen (PROJECT_SPEC §23): the interactive map is the centerpiece.
@@ -17,7 +18,7 @@ import { DUNGEON_FEATURES, FEATURE_INFO } from '../../rulesets/expanded/features
  * pinch/buttons to zoom, recenter on the party. Collapsible bottom panel.
  */
 export default function DungeonScreen() {
-  const { dungeon, log, busy, error, ensureDungeon, explore, search, pendingFind, claimFind, clearError, beginCombat, beginSecretReveal, beginSecretItem, useTreasureLocation, rest } =
+  const { dungeon, log, busy, error, ensureDungeon, explore, search, pendingFind, claimFind, clearError, beginCombat, beginSecretReveal, beginSecretItem, useTreasureLocation, rest, claimQuest } =
     useDungeonStore()
   const { campaign, party, loadLastCampaign } = useCampaignStore()
   const [panelOpen, setPanelOpen] = useState(true)
@@ -312,6 +313,22 @@ export default function DungeonScreen() {
               >
                 Reveal a Secret (spend 3 Clues — {campaign.clues} in pool)
               </button>
+            )}
+            {dungeon.quest && !dungeon.quest.complete && (
+              <div className="mb-2">
+                <p className="text-xs text-parchment/70">
+                  Quest {dungeon.quest.roll}: {QUEST_TABLE[dungeon.quest.roll - 1]}
+                  {dungeon.quest.target && ` — target: ${dungeon.quest.target}`}
+                  {dungeon.quest.amount > 0 && ` — bring ${dungeon.quest.amount}gp`}
+                  {dungeon.quest.roll === 5 && ` — ${dungeon.quest.progress}/3`}
+                </p>
+                <button
+                  onClick={() => void claimQuest()}
+                  className="rounded border border-torch/40 bg-torch/10 px-3 py-1.5 text-xs text-torch"
+                >
+                  Claim Quest reward
+                </button>
+              </div>
             )}
             {tile.content?.cleared && !dungeon.combat && (
               <button

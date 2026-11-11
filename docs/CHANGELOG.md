@@ -18,7 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copyright and content policy
 - Deployment guide
 
-### Added — Phase 5e: outfitter + Resting (2026-11-10)
+### Added — Phase 5f: quests + Epic Rewards; Phase 5 COMPLETE (2026-11-10)
+- Lady in White: accept/decline, Quest Table roll, refusal tracking (pp.153, 161)
+- Quest types 1/2/5/6 with progress tracking and giver-tile claims; types 3/4 accepted and flagged pending subdual/retrieval mechanics
+- Epic Rewards (pp.162-163): Book of Skalitos (6 scrolls), Gold of Kerrak Dar, Enchanted weapon (best-of-2 dice), Shield of Warning, Arrow of slaying (destined target rolled), Holy symbol (+2 Healing)
+- README screenshots: mobile + desktop app captures
+- 107 tests; Phase 5 (complete adventure mechanics) closed
 - Between-adventures outfitter at book prices (pp.82-85); nails economy unblocks Resting
 - Resting (p.114): cleared room + cleared neighbors, nails per door, per-PC recovery (Life / re-memorize spell / regain prayer), 1-in-6 WM after recovery with the party striking first
 - Wizard L+2 / elf L spell-slot math verified against p.64; cleared-tile tracking

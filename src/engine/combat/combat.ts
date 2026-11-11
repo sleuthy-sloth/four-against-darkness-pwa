@@ -348,11 +348,16 @@ export function pcAttack(
   enemyId: string,
 ): AttackResult {
   if (state.phase !== 'pcTurn') throw new CombatError('not the party\u2019s turn')
-  const enemy = state.enemies.find((e) => e.id === enemyId && !e.fled && e.count > 0)
+  const enemy = enemyId ? state.enemies.find((e) => e.id === enemyId && !e.fled && e.count > 0) : null
   if (!enemy) throw new CombatError('target not available')
   const cls = attackBonusFor(pc)
   const weapon = meleeWeaponFor(pc)
-  const { rolls, total } = rollExplodingD6(rng, `attack roll (${pc.name})`)
+  // Epic reward — Enchanted weapon (FADEE p.162): roll 2, keep the best.
+  const enchanted = pc.conditions.includes('enchanted-weapon')
+  const rollA = rollExplodingD6(rng, `attack roll (${pc.name})`)
+  const rollB = enchanted ? rollExplodingD6(rng, `enchanted attack roll (${pc.name}, best of 2)`) : null
+  const { rolls, total } =
+    rollB && rollB.total > rollA.total ? rollB : rollA
   let bonus = cls.bonus + weapon.mod
   // FADEE p.60/p.147: rogue +L vs OUTNUMBERED Minor Foes.
   if (pc.classId === 'rogue' && enemy.table !== 'weird' && enemy.table !== 'boss' && enemy.count < livingPartySize(state)) {
@@ -363,7 +368,7 @@ export function pcAttack(
   const finalTotal = total + bonus
   log(
     state,
-    `${pc.name} attacks ${enemy.profile.name}: d6[${rolls.join('+')}] ${bonus >= 0 ? '+' : ''}${bonus} (${cls.note}; ${weapon.name}) = ${finalTotal} vs L${enemy.level}`,
+    `${pc.name} attacks ${enemy.profile.name}: d6[${rolls.join('+')}] ${bonus >= 0 ? '+' : ''}${bonus} (${cls.note}; ${weapon.name}) = ${finalTotal} vs L${enemy.level}${enchanted ? ' (enchanted weapon: best of 2 dice, FADEE p.162)' : ''}`,
   )
   let slain = 0
   let damage = 0
@@ -799,7 +804,9 @@ export function castHealing(state: CombatState, rng: Rng, pc: Character, target:
   const left = clericPrayersLeft(pc)
   if (left.healing <= 0) throw new CombatError('no Healing prayers left this adventure')
   const amount = rng.formula(`d6+${pc.level}`, `Healing prayer (${pc.name})`)
-  const healed = Math.min(amount, target.maxLife - target.currentLife)
+  // Epic reward — Holy symbol of healing (FADEE p.163): +2 Life healed.
+  const symbol = pc.conditions.includes('holy-symbol') ? 2 : 0
+  const healed = Math.min(amount + symbol, target.maxLife - target.currentLife)
   target.currentLife += healed
   spendPrayer(pc, 'healing')
   log(state, `${pc.name} prays for Healing: ${target.name} recovers ${healed} Life → ${target.currentLife}/${target.maxLife}.`)

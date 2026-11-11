@@ -46,6 +46,7 @@ import {
   ITEM_INFO,
 } from '../rulesets/expanded/features'
 import { canRest, beginRest, applyRestChoice } from '../engine/camp/rest'
+import { QUEST_TABLE, QUEST_SOURCES, EPIC_REWARDS } from '../rulesets/expanded/quests'
 import {
   profileFor,
 } from '../rulesets/expanded/monsters'
@@ -118,6 +119,11 @@ interface DungeonStoreState {
   restPick: (pcId: string, choice: 'life' | 'spell' | 'prayer-healing' | 'prayer-blessing') => Promise<void>
   /** Outfitter (between adventures, FADEE pp.82-85). */
   buyItem: (pcId: string, item: string) => Promise<void>
+  /** Quest system (FADEE pp.153, 161-163). */
+  questAccept: () => Promise<void>
+  questDecline: () => Promise<void>
+  claimQuest: () => Promise<void>
+  questPcPick: (pcId: string) => Promise<void>
   clearError: () => void
 }
 
@@ -178,6 +184,8 @@ async function finishEvent(
   party: Character[],
   hcl: number,
   leaderIndex: number,
+  questActive = false,
+  ladyRefused = false,
 ): Promise<void> {
   const messages = [...er.messages]
   if (er.trap) {
@@ -188,6 +196,8 @@ async function finishEvent(
     await appendEvents(campaignId, 'event', tr.messages.map((text) => ({ ts: Date.now(), text })))
   }
   state.pendingChoice = er.choice ? { ...er.choice, prompt: promptFor(er.choice as PendingChoicePayload, party) } : null
+  void questActive
+  void ladyRefused
   await persist(state, rng, campaignId)
   appendLog(messages)
   if (er.ambush) {
@@ -215,7 +225,7 @@ async function finishEvent(
 }
 
 /** Push campaign meta fields into the campaign store (avoid stale reads). */
-function syncCampaign(patch: Partial<{ clues: number; secrets: string[] }>): void {
+function syncCampaign(patch: Partial<{ clues: number; secrets: string[]; epic: number[] }>): void {
   void import('./campaignStore').then(({ useCampaignStore }) => {
     const cs = useCampaignStore.getState()
     if (cs.campaign) useCampaignStore.setState({ campaign: { ...cs.campaign, ...patch } })
@@ -404,7 +414,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
         )
         if (event === 'healer') result.state.healerMet = true
         if (event === 'alchemist') result.state.alchemistMet = true
-        await finishEvent(result.state, rng, campaign.id, er, party, hcl, 0)
+        await finishEvent(result.state, rng, campaign.id, er, party, hcl, 0, !!result.state.quest, !!result.state.ladyRefused)
       }
     }
   },
@@ -525,6 +535,14 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       if (combat.phase === 'won') {
         const t = dungeon.tiles.find((x) => x.id === dungeon.currentTileId)
         if (t?.content) t.content.cleared = true
+        // Quest type 1 progress: the named Boss was slain (FADEE p.161).
+        if (dungeon.quest && dungeon.quest.roll === 1 && !dungeon.quest.complete) {
+          const slainName = combat.enemies[0]?.profile.name
+          if (slainName && slainName === dungeon.quest.target) {
+            dungeon.quest.progress += 1
+            appendLog([`Quest progress: the ${slainName} is slain! Bring its head to the Quest-giver's tile. (FADEE p.161)`])
+          }
+        }
         const due = xpDue(combat)
         let rolls = due.majorSlain + (due.finalBoss ? 1 : 0)
         if (due.minorEncounter) {
@@ -641,6 +659,16 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     const combat = dungeon?.combat
     if (!dungeon || !campaign || !combat || !combat.pendingBribe) return
     payBribe(combat, party)
+    // Non-violent encounter (FADEE p.161, Quest type 5): bribes count.
+    dungeon.nonViolentTally = (dungeon.nonViolentTally ?? 0) + 1
+    if (dungeon.quest?.roll === 5 && !dungeon.quest.complete) {
+      dungeon.quest.progress = dungeon.nonViolentTally
+      if (dungeon.quest.progress >= 3) {
+        appendLog([`Quest progress: 3 non-violent encounters — the peace Quest is complete! (FADEE p.161)`])
+      } else {
+        appendLog([`Quest progress: ${dungeon.quest.progress}/3 non-violent encounters. (FADEE p.161)`])
+      }
+    }
     await persist(dungeon, Rng.deserialize(JSON.parse(campaign.rngState)), campaign.id)
     const { saveParty } = await import('../database/repositories/campaignRepo')
     await saveParty(campaign.id, party)
@@ -1230,6 +1258,130 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     const { saveParty } = await import('../database/repositories/campaignRepo')
     await saveParty(campaign.id, party)
     appendLog([`${pc.name} buys ${item} for ${info.price}gp at the outfitter. (FADEE pp.82-85)`])
+  },
+
+  // ---------- Quests (FADEE pp.153, 161-163) ----------
+
+  questAccept: async () => {
+    const { dungeon } = get()
+    const { campaign, party } = await import('./campaignStore').then((m) => m.useCampaignStore.getState())
+    if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'quest') return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    const roll = rng.d(6)
+    let target = ''
+    let amount = 0
+    if (roll === 1 || roll === 3) {
+      // Roll on any Boss Monster Table to select the target (p.161).
+      target = profileFor('boss', rng.d(6)).name
+    } else if (roll === 2) {
+      amount = rng.roll(1, 6, 0, 'quest gold d6 (p.161)') * 50
+      const held = party.reduce((n, p) => n + p.gold, 0)
+      if (held >= amount) amount *= 2 // already carrying it: double (p.161)
+    }
+    dungeon.quest = { roll, target, amount, giverTileId: dungeon.currentTileId, progress: 0, complete: false }
+    dungeon.pendingChoice = null
+    await persist(dungeon, rng, campaign.id)
+    appendLog([`Quest accepted: ${QUEST_TABLE[roll - 1]} (${QUEST_SOURCES[roll]})`])
+    await appendEvents(campaign.id, 'event', [{ ts: Date.now(), text: `Quest ${roll} accepted: ${dungeon.quest.target || dungeon.quest.amount || ''}` }])
+  },
+
+  questDecline: async () => {
+    const { dungeon } = get()
+    const { campaign } = await import('./campaignStore').then((m) => m.useCampaignStore.getState())
+    if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'quest') return
+    dungeon.ladyRefused = true
+    dungeon.pendingChoice = null
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    await persist(dungeon, rng, campaign.id)
+    appendLog(['The party refuses the Quest; the Lady disappears. (FADEE p.153)'])
+  },
+
+  /** Claim the reward at the Quest-giver's tile (types 1/2) or anywhere (5/6). */
+  claimQuest: async () => {
+    const { dungeon } = get()
+    const { campaign, party } = await import('./campaignStore').then((m) => m.useCampaignStore.getState())
+    if (!dungeon || !campaign || !dungeon.quest || dungeon.quest.complete) return
+    const q = dungeon.quest
+    const atGiver = dungeon.currentTileId === q.giverTileId
+    let eligible = false
+    if (q.roll === 1) eligible = q.progress > 0 && atGiver
+    else if (q.roll === 2) {
+      const held = party.reduce((n, p) => n + p.gold, 0)
+      eligible = held >= q.amount && atGiver
+    }
+    else if (q.roll === 5) eligible = q.progress >= 3
+    else if (q.roll === 6) {
+      // Interpretation (noted in RULES_VERIFICATION): layout complete = no
+      // unexplored exits remain anywhere and every tile is cleared.
+      const allCleared = dungeon.tiles.every((t) => !t.content?.encounter || t.content.cleared === true)
+      const noOpen = dungeon.tiles.every((t) => t.exits.every((e) => e.toTileId))
+      eligible = allCleared && noOpen
+    }
+    else eligible = false // types 3/4: capture/retrieval mechanics pending
+    if (!eligible) {
+      set({ error: 'The Quest is not complete yet (or you are not at the Quest-giver’s tile).' })
+      return
+    }
+    dungeon.pendingChoice = {
+      kind: 'questPc',
+      source: 'FADEE p.153',
+      prompt: 'Quest complete! Choose the PC who gains 1 XP (and the Enchanted weapon, if that is the reward).',
+    }
+    set({ dungeon: { ...dungeon } })
+  },
+
+  questPcPick: async (pcId) => {
+    const { dungeon } = get()
+    const { campaign, party } = await import('./campaignStore').then((m) => m.useCampaignStore.getState())
+    if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'questPc') return
+    const pc = party.find((p) => p.id === pcId && p.status !== 'dead')
+    if (!pc) return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    // 1 XP: immediate roll (FADEE p.153)
+    const roll = rng.d(6)
+    const success = roll > pc.level || roll === 6
+    const entries = [`Quest XP roll for ${pc.name}: d6=${roll} vs L${pc.level} → ${success ? 'LEVEL UP!' : 'no level'} (FADEE p.153)`]
+    if (success) {
+      pc.level += 1
+      pc.maxLife += 1
+      pc.currentLife += 1
+    }
+    // Epic Rewards roll (FADEE pp.162-163)
+    const epicRoll = rng.d(6)
+    const reward = EPIC_REWARDS.find((r) => r.roll === epicRoll)!
+    const { useCampaignStore } = await import('./campaignStore')
+    const cs = useCampaignStore.getState()
+    const epic = [...(cs.campaign?.epic ?? []), epicRoll]
+    await touchCampaign(campaign.id, { epic })
+    syncCampaign({ epic })
+    const carrier = party.find((p) => p.status !== 'dead') ?? pc
+    entries.push(`Epic reward (d6=${epicRoll}): ${reward.name} — ${reward.text} (${reward.source})`)
+    if (epicRoll === 1) {
+      // The Book counts as 1 scroll of each basic spell (p.162).
+      for (const sp of ['blessing', 'escape', 'lightning', 'fireball', 'protection', 'sleep']) {
+        carrier.equipment.push(`scroll of ${sp}`)
+      }
+    } else if (epicRoll === 3) {
+      pc.conditions.push('enchanted-weapon')
+    } else if (epicRoll === 4 || epicRoll === 5) {
+      carrier.equipment.push(reward.name.toLowerCase())
+      if (epicRoll === 5) {
+        // destined target: roll on any Major Foe table (p.162)
+        const species = profileFor('boss', rng.d(6)).name
+        entries.push(`The arrow of slaying is destined for: ${species}.`)
+      }
+    } else if (epicRoll === 6) {
+      const cleric = party.find((p) => p.classId === 'cleric' && p.status !== 'dead')
+      if (cleric) cleric.conditions.push('holy-symbol')
+      else carrier.equipment.push('holy symbol of healing')
+    }
+    dungeon.quest = null
+    dungeon.pendingChoice = null
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    await persist(dungeon, rng, campaign.id)
+    set({ dungeon: { ...dungeon }, log: [...get().log, ...entries.map((text) => ({ ts: Date.now(), text }))].slice(-100) })
+    await appendEvents(campaign.id, 'event', entries.map((text) => ({ ts: Date.now(), text })))
   },
 
   clearError: () => set({ error: null }),

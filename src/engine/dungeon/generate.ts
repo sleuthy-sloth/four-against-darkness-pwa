@@ -107,6 +107,24 @@ export interface DungeonState {
   pendingChoice?: PendingChoicePayload | null
   /** The party already rested this adventure (once only, FADEE p.114). */
   rested?: boolean
+  /** Active Quest from the Lady in White (FADEE pp.153, 161-162). */
+  quest?: QuestState | null
+  /** Non-violent encounters completed toward a "peace" Quest (type 5). */
+  nonViolentTally?: number
+  /** The Lady was refused — ignore further appearances (FADEE p.153). */
+  ladyRefused?: boolean
+}
+
+/** Serialized quest state (Quest Table roll + completion tracking). */
+export interface QuestState {
+  roll: number
+  target: string
+  /** Gold amount for type 2; 0 otherwise. */
+  amount: number
+  giverTileId: string
+  /** Bosses slain (type 1), peaceful encounters (type 5). */
+  progress: number
+  complete: boolean
 }
 
 /** Serialized player choice from the features engine. */
@@ -114,6 +132,7 @@ export interface PendingChoicePayload {
   kind:
     | 'temple' | 'statue' | 'puzzle' | 'ghost' | 'healer' | 'alchemist'
     | 'secret' | 'secretPc' | 'secretWeakness' | 'secretItem' | 'rest'
+    | 'quest' | 'questPc'
   source: string
   /** Statue: difficulty info. */
   hcl?: number

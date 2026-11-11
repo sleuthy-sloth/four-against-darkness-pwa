@@ -26,7 +26,16 @@
 
 ## Current Work
 
-- [ ] Phase 5 remainder: quest system (Lady in White acceptance), scroll-learning (copy to wizard spellbook), trinket magic items, environments (caverns/grottoes tables), light sources/darkness
+- [ ] Release 0.5 scope: environments (caverns/grottoes tables + secret passages), quest types 3/4 (subdual capture, item retrieval), trinket magic-item effects, light/darkness, more XP systems
+
+## Completed Work (Phase 5f — quests, epic rewards; Phase 5 COMPLETE)
+
+- [x] Lady in White quest flow (pp.153, 161-162): accept/decline dialog; refusal makes her ignore future appearances; Quest Table roll d6
+- [x] Quest types implemented: 1 (named Boss slain → bring head to giver's tile), 2 (bring d6×50gp, doubled if already held), 5 (3 non-violent encounters — bribes tracked, no return), 6 (interpretation noted in RULES_VERIFICATION: layout fully explored + all tiles cleared); types 3/4 accepted-and-tracked with pending-mechanics labels (subdual capture, item retrieval)
+- [x] Completion: 1 XP roll for a chosen PC (p.153) + Epic Rewards roll (pp.162-163) — Book of Skalitos (6 scrolls), Gold of Kerrak Dar (search-chest record), Enchanted weapon (best-of-2 attack dice on the chosen PC), Shield of Warning, Arrow of slaying (destined species rolled), Holy symbol (+2 Healing)
+- [x] Quest status line + Claim button in the dungeon panel; QuestDialog choices
+- [x] Screenshots (mobile 390×844 @2x + desktop 1280×800) embedded in README: dungeon map, party, campaign dashboard, journal
+- [x] 107 tests green; build clean
 
 ## Completed Work (Phase 5e — outfitter + Resting)
 

@@ -25,6 +25,9 @@ export function ChoiceDialog() {
     pickWeaknessTarget,
     pickSecretItem,
     restPick,
+    questAccept,
+    questDecline,
+    questPcPick,
   } = useDungeonStore()
   const { party } = useCampaignStore()
   const choice = dungeon?.pendingChoice
@@ -235,6 +238,25 @@ export function ChoiceDialog() {
                   </div>
                 )
               })}
+            </div>
+          )}
+          {choice.kind === 'quest' && (
+            <div className="flex gap-2">
+              <button onClick={() => void questAccept()} className="rounded border border-torch/40 bg-torch/10 px-3 py-2 text-sm text-torch">
+                Accept the Quest
+              </button>
+              <button onClick={() => void questDecline()} className="rounded border border-stone-600 bg-stone-800 px-3 py-2 text-sm text-parchment">
+                Refuse
+              </button>
+            </div>
+          )}
+          {choice.kind === 'questPc' && (
+            <div className="flex flex-wrap gap-2">
+              {living.map((p) => (
+                <button key={p.id} onClick={() => void questPcPick(p.id)} className="rounded border border-stone-600 bg-stone-800 px-3 py-2 text-sm text-parchment">
+                  {p.name}
+                </button>
+              ))}
             </div>
           )}
           {choice.kind === 'alchemist' && (

@@ -21,6 +21,8 @@ export interface CampaignMeta {
   clues?: number
   /** Revealed Secrets, encoded ('weakness:Orcs', 'terrifying:1', …). */
   secrets?: string[]
+  /** Epic reward rolls earned from completed Quests (FADEE p.162). */
+  epic?: number[]
   createdAt: number
   lastModified: number
   saveVersion: number
