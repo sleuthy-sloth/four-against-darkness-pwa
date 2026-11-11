@@ -1,19 +1,40 @@
 import { useDungeonStore } from '../../state/dungeonStore'
 import { useCampaignStore } from '../../state/campaignStore'
 import { EVENT_INFO } from '../../rulesets/expanded/features'
+import { MAGIC_TREASURE } from '../../rulesets/expanded/treasure'
+import { SECRET_INFO, WEAKNESS_TARGETS, type SecretId } from '../../rulesets/expanded/secrets'
 
 /**
  * Player-choice dialog for special features and events
  * (FADEE pp.152-153): temple blessing, statue, puzzle box, ghost fallout,
- * wandering healer, wandering alchemist.
+ * wandering healer, wandering alchemist — plus the Secrets flow
+ * (FADEE pp.122-123).
  */
 export function ChoiceDialog() {
-  const { dungeon, chooseTemple, statueTouch, puzzleAttempt, ghostPick, healerHeal, alchemistBuy } =
-    useDungeonStore()
+  const {
+    dungeon,
+    chooseTemple,
+    statueTouch,
+    puzzleAttempt,
+    ghostPick,
+    healerHeal,
+    alchemistBuy,
+    pickSecret,
+    pickSecretPc,
+    pickWeaknessTarget,
+    pickSecretItem,
+  } = useDungeonStore()
   const { party } = useCampaignStore()
   const choice = dungeon?.pendingChoice
   if (!choice) return null
   const living = party.filter((p) => p.status !== 'dead')
+
+  const unimplementedNote = (
+    <p className="mt-2 text-[10px] text-parchment/40">
+      Story-driven Secrets (Deal with a Foe, True Name, New Spell, The Prisoner, …) arrive with the
+      supplements milestone — only mechanically self-contained Secrets are offered here.
+    </p>
+  )
 
   return (
     <div className="fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
@@ -121,6 +142,59 @@ export function ChoiceDialog() {
                   </div>
                 )
               })}
+            </div>
+          )}
+          {choice.kind === 'secret' && (
+            <div className="space-y-1">
+              {(Object.keys(SECRET_INFO) as SecretId[]).map((id) => (
+                <button
+                  key={id}
+                  onClick={() => void pickSecret(id)}
+                  className="block w-full rounded bg-stone-800 px-3 py-2 text-left text-xs text-parchment"
+                >
+                  <span className="text-torch">{id}</span> — {SECRET_INFO[id].text}
+                </button>
+              ))}
+              {unimplementedNote}
+            </div>
+          )}
+          {choice.kind === 'secretPc' && (
+            <div className="flex flex-wrap gap-2">
+              {living.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => void pickSecretPc(p.id)}
+                  className="rounded border border-stone-600 bg-stone-800 px-3 py-2 text-sm text-parchment"
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          )}
+          {choice.kind === 'secretWeakness' && (
+            <div className="flex flex-wrap gap-2">
+              {WEAKNESS_TARGETS.map((sp) => (
+                <button
+                  key={sp}
+                  onClick={() => void pickWeaknessTarget(sp)}
+                  className="rounded border border-stone-600 bg-stone-800 px-3 py-2 text-sm text-parchment"
+                >
+                  {sp}
+                </button>
+              ))}
+            </div>
+          )}
+          {choice.kind === 'secretItem' && (
+            <div className="flex flex-wrap gap-2">
+              {MAGIC_TREASURE.map((m) => (
+                <button
+                  key={m.name}
+                  onClick={() => void pickSecretItem(m.name)}
+                  className="rounded border border-stone-600 bg-stone-800 px-3 py-2 text-sm text-parchment"
+                >
+                  {m.name}
+                </button>
+              ))}
             </div>
           )}
           {choice.kind === 'alchemist' && (

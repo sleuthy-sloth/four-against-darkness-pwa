@@ -99,6 +99,15 @@ interface DungeonStoreState {
   ghostPick: (pcId: string, gainMadness: boolean) => Promise<void>
   healerHeal: (pcId: string, points: number) => Promise<void>
   alchemistBuy: (pcId: string, item: 'healing potion' | 'blade poison') => Promise<void>
+  /** Secrets (FADEE pp.122-123): reveal with 3 Clues, then use. */
+  beginSecretReveal: () => Promise<void>
+  pickSecret: (secretId: string, arg?: string) => Promise<void>
+  pickSecretPc: (pcId: string) => Promise<void>
+  pickWeaknessTarget: (species: string) => Promise<void>
+  pickSecretItem: (itemName: string) => Promise<void>
+  /** Open the item-choice dialog for the item-location secret. */
+  beginSecretItem: () => Promise<void>
+  useTreasureLocation: () => Promise<void>
   clearError: () => void
 }
 
@@ -195,6 +204,14 @@ async function finishEvent(
   }
 }
 
+/** Push campaign meta fields into the campaign store (avoid stale reads). */
+function syncCampaign(patch: Partial<{ clues: number; secrets: string[] }>): void {
+  void import('./campaignStore').then(({ useCampaignStore }) => {
+    const cs = useCampaignStore.getState()
+    if (cs.campaign) useCampaignStore.setState({ campaign: { ...cs.campaign, ...patch } })
+  })
+}
+
 /** Save the party when a combat has concluded (won/lost/fled). */
 async function savePartyIfCombatOver(
   dungeon: DungeonState,
@@ -205,6 +222,16 @@ async function savePartyIfCombatOver(
   if (phase === 'won' || phase === 'lost' || phase === 'fled') {
     const { saveParty } = await import('../database/repositories/campaignRepo')
     await saveParty(campaignId, party)
+    // Secrets consumed in combat (Terrifying) write back (FADEE p.123).
+    if (dungeon.combat?.secrets) {
+      const { useCampaignStore } = await import('./campaignStore')
+      const cs = useCampaignStore.getState()
+      const secrets = dungeon.combat.secrets
+      if (JSON.stringify(secrets) !== JSON.stringify(cs.campaign?.secrets)) {
+        await touchCampaign(campaignId, { secrets })
+        syncCampaign({ secrets })
+      }
+    }
   }
   void dungeon
 }
@@ -319,6 +346,8 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       ]
       const combat = startCombat(dungeon.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng, {
         forceSurprise: true,
+        marchingOrder: party.map((p) => p.id),
+        secrets: campaign.secrets,
       })
       dungeon.combat = combat
       await persist(dungeon, rng, campaign.id)
@@ -384,7 +413,13 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       ),
     ]
     enemies[0].isFinalBossFlag = !!enc.isFinalBoss
-    const combat = startCombat(dungeon.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng)
+    const combat = startCombat(
+      dungeon.currentTileId,
+      party.filter((p) => p.status !== 'dead'),
+      enemies,
+      rng,
+      { marchingOrder: party.map((p) => p.id), secrets: campaign.secrets },
+    )
     dungeon.combat = combat
     await persist(dungeon, rng, campaign.id)
     set({
@@ -695,7 +730,14 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
           : 'A secret door is drawn on the map — roll a fresh tile beyond it when you step through.',
       })
     } else {
-      entries.push({ ts: Date.now(), text: 'The party gains 1 Clue. (FADEE p.109)' })
+      const { useCampaignStore } = await import('./campaignStore')
+      const cs = useCampaignStore.getState()
+      if (cs.campaign) {
+        const clues = (cs.campaign.clues ?? 0) + 1
+        await touchCampaign(cs.campaign.id, { clues })
+        useCampaignStore.setState({ campaign: { ...cs.campaign, clues } })
+        entries.push({ ts: Date.now(), text: `The party gains 1 Clue (pool: ${clues}). (FADEE p.108)` })
+      }
     }
     set({
       pendingFind: null,
@@ -774,6 +816,8 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       enemies[0].isFinalBossFlag = !!sr.combat.isFinalBoss
       const combat = startCombat(dungeon.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng, {
         forceSurprise: false,
+        marchingOrder: party.map((p) => p.id),
+        secrets: campaign.secrets,
       })
       dungeon.combat = combat
       await persist(dungeon, rng, campaign.id)
@@ -907,6 +951,153 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     await saveParty(campaign.id, party)
     appendLog([`${pc.name} buys ${item} for ${price}gp from the wandering alchemist. (FADEE p.153)`])
     await appendEvents(campaign.id, 'loot', [{ ts: Date.now(), text: `Alchemist: ${pc.name} buys ${item} for ${price}gp (FADEE p.153)` }])
+  },
+
+  // ---------- Secrets (FADEE pp.122-123) ----------
+
+  /** Step 1: spend 3 Clues, choose the Secret type. */
+  beginSecretReveal: async () => {
+    const { dungeon } = get()
+    const { campaign } = await import('./campaignStore').then((m) => m.useCampaignStore.getState())
+    if (!dungeon || !campaign) return
+    if ((campaign.clues ?? 0) < 3) return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    await touchCampaign(campaign.id, { clues: (campaign.clues ?? 0) - 3 })
+    syncCampaign({ clues: (campaign.clues ?? 0) - 3 })
+    await persist(dungeon, rng, campaign.id)
+    dungeon.pendingChoice = {
+      kind: 'secret',
+      source: 'FADEE pp.122-123',
+      prompt: 'Choose a Secret to reveal (the discovering PC then immediately gains 1 XP roll).',
+    }
+    set({ dungeon: { ...dungeon } })
+  },
+
+  /** Step 2: the chosen Secret → pick the discovering PC. */
+  pickSecret: async (secretId, arg) => {
+    const { dungeon } = get()
+    if (!dungeon || dungeon.pendingChoice?.kind !== 'secret') return
+    dungeon.pendingChoice = {
+      kind: 'secretPc',
+      source: 'FADEE p.122',
+      prompt: 'Who discovers the Secret? (That PC immediately gains 1 XP roll.)',
+    }
+    // carry the pending secret type on the dungeon until the PC is picked
+    set({ dungeon: { ...dungeon }, pendingSecret: { id: secretId, arg } } as never)
+  },
+
+  /** Step 3: the PC rolls XP immediately (FADEE p.122). */
+  pickSecretPc: async (pcId) => {
+    const { dungeon, pendingSecret } = get() as { dungeon: DungeonState | null; pendingSecret?: { id: string; arg?: string } }
+    const { campaign, party } = await import('./campaignStore').then((m) => m.useCampaignStore.getState())
+    if (!dungeon || !campaign || !pendingSecret) return
+    const pc = party.find((p) => p.id === pcId && p.status !== 'dead')
+    if (!pc) return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    const roll = rng.d(6)
+    const success = roll > pc.level || roll === 6
+    const entries: string[] = [`Secret XP roll for ${pc.name}: d6=${roll} vs L${pc.level} → ${success ? 'LEVEL UP!' : 'no level'} (FADEE p.122)`]
+    if (success) {
+      pc.level += 1
+      pc.maxLife += 1
+      pc.currentLife += 1
+    }
+    if (pendingSecret.id === 'weakness') {
+      // species chosen next
+      dungeon.pendingChoice = {
+        kind: 'secretWeakness',
+        source: 'FADEE p.122',
+        prompt: 'Pick the Major Foe species whose weakness is now known.',
+      }
+    } else {
+      const encoded = pendingSecret.arg ? `${pendingSecret.id}:${pendingSecret.arg}` : pendingSecret.id
+      const { useCampaignStore } = await import('./campaignStore')
+      const cs = useCampaignStore.getState()
+      const secrets = [...(cs.campaign?.secrets ?? []), encoded]
+      await touchCampaign(campaign.id, { secrets })
+      syncCampaign({ secrets })
+      entries.push(`Secret revealed: ${pendingSecret.id}${pendingSecret.arg ? ` (${pendingSecret.arg})` : ''}. (FADEE pp.122-123)`)
+      dungeon.pendingChoice = null
+    }
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    await persist(dungeon, rng, campaign.id)
+    set({ pendingSecret: undefined, dungeon: { ...dungeon }, log: [...get().log, ...entries.map((text) => ({ ts: Date.now(), text }))].slice(-100) } as never)
+    await appendEvents(campaign.id, 'event', entries.map((text) => ({ ts: Date.now(), text })))
+  },
+
+  /** Weakness target selection completes the Weakness secret. */
+  pickWeaknessTarget: async (species) => {
+    const { dungeon } = get()
+    const { campaign } = await import('./campaignStore').then((m) => m.useCampaignStore.getState())
+    if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'secretWeakness') return
+    const { useCampaignStore } = await import('./campaignStore')
+    const cs = useCampaignStore.getState()
+    const secrets = [...(cs.campaign?.secrets ?? []), `weakness:${species}`]
+    await touchCampaign(campaign.id, { secrets })
+    syncCampaign({ secrets })
+    dungeon.pendingChoice = null
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    await persist(dungeon, rng, campaign.id)
+    appendLog([`Weakness of a Foe: every PC attacks ${species} at +2 in whole combats. (FADEE p.122)`])
+    await appendEvents(campaign.id, 'event', [{ ts: Date.now(), text: `Secret: Weakness of ${species} (FADEE p.122)` }])
+  },
+
+  /** Location secrets: usable from the dungeon panel in the right tile. */
+  pickSecretItem: async (itemName) => {
+    const { dungeon } = get()
+    const { campaign, party } = await import('./campaignStore').then((m) => m.useCampaignStore.getState())
+    if (!dungeon || !campaign) return
+    // consume the item-location secret
+    const { useCampaignStore } = await import('./campaignStore')
+    const cs = useCampaignStore.getState()
+    const secrets = (cs.campaign?.secrets ?? []).filter((s) => s !== 'item-location')
+    await touchCampaign(campaign.id, { secrets })
+    syncCampaign({ secrets })
+    const carrier = party.find((p) => p.status !== 'dead')
+    if (carrier) carrier.equipment.push(itemName)
+    dungeon.pendingChoice = null
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    await persist(dungeon, rng, campaign.id)
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    appendLog([`Secret password spoken: ${itemName} is revealed! (FADEE p.122)`])
+    await appendEvents(campaign.id, 'loot', [{ ts: Date.now(), text: `Item-location secret: ${itemName} (FADEE p.122)` }])
+  },
+
+  /** Open the item-choice dialog for the item-location secret (FADEE p.122). */
+  beginSecretItem: async () => {
+    const { dungeon } = get()
+    if (!dungeon || dungeon.pendingChoice) return
+    dungeon.pendingChoice = {
+      kind: 'secretItem',
+      source: 'FADEE p.122',
+      prompt: 'Speak the password — which magic item appears?',
+    }
+    set({ dungeon: { ...dungeon } })
+  },
+
+  useTreasureLocation: async () => {
+    const { dungeon } = get()
+    const { campaign, party } = await import('./campaignStore').then((m) => m.useCampaignStore.getState())
+    if (!dungeon || !campaign) return
+    const tile = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
+    if (!tile || tile.contentRoll === null || tile.content?.encounter) return
+    const { useCampaignStore } = await import('./campaignStore')
+    const cs = useCampaignStore.getState()
+    const secrets = (cs.campaign?.secrets ?? []).filter((s) => s !== 'treasure-location')
+    await touchCampaign(campaign.id, { secrets })
+    syncCampaign({ secrets })
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    const gold = rng.roll(3, 6, 0, 'treasure-location 3d6 (FADEE p.122)') * 10
+    const living = party.filter((p) => p.status !== 'dead')
+    const each = Math.floor(gold / Math.max(1, living.length))
+    living.forEach((p) => (p.gold += each))
+    await persist(dungeon, rng, campaign.id)
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    appendLog([`The password opens a wall niche: ${gold} gp! (FADEE p.122)`])
+    await appendEvents(campaign.id, 'loot', [{ ts: Date.now(), text: `Treasure-location secret: ${gold} gp (FADEE p.122)` }])
   },
 
   clearError: () => set({ error: null }),

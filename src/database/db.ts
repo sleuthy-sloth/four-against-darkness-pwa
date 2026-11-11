@@ -17,6 +17,10 @@ export interface CampaignMeta {
   seed: number
   /** Serialized Rng state (engine/core/rng.ts) — restored on load. */
   rngState: string
+  /** Party clue pool — 3 spent reveal a Secret (FADEE pp.108, 122). */
+  clues?: number
+  /** Revealed Secrets, encoded ('weakness:Orcs', 'terrifying:1', …). */
+  secrets?: string[]
   createdAt: number
   lastModified: number
   saveVersion: number

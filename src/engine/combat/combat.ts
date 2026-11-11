@@ -58,6 +58,12 @@ export interface CombatState {
   protections?: Record<string, number>
   /** Rewards accrued at victory (resolved into party in Phase 5/loot). */
   minorEncounterCounted?: boolean
+  /** Marching order (PC ids, first = leader) — FADEE pp.97, 104, 163. */
+  marchingOrder?: string[]
+  /** Party Secrets in play, mutated when consumed (FADEE pp.122-123). */
+  secrets?: string[]
+  /** Weakness of a Foe applied this combat (FADEE p.122). */
+  weaknessActive?: boolean
 }
 
 export class CombatError extends Error {}
@@ -175,7 +181,7 @@ export function startCombat(
   participants: Character[],
   enemies: EnemyInstance[],
   rng: Rng,
-  opts: { partyWaits?: boolean; forceSurprise?: boolean } = {},
+  opts: { partyWaits?: boolean; forceSurprise?: boolean; marchingOrder?: string[]; secrets?: string[] } = {},
 ): CombatState {
   // FADEE p.90: surprise check (per-Foe X-in-6). Core dungeon set: goblins 1-in-6.
   let surprised = opts.forceSurprise === true
@@ -192,6 +198,16 @@ export function startCombat(
     log: [],
     surprised,
     pendingBribe: null,
+    marchingOrder: opts.marchingOrder ?? participants.map((p) => p.id),
+    secrets: opts.secrets ? [...opts.secrets] : [],
+  }
+  // Weakness of a Foe secret (FADEE p.122): +2 attack for everyone.
+  for (const s of state.secrets ?? []) {
+    const [id, arg] = s.split(':')
+    if (id === 'weakness' && arg === enemies[0]?.profile.name) {
+      log(state, `Secret — Weakness of a Foe: all PCs attack ${enemies[0].profile.name} at +2 (FADEE p.122).`)
+      state.weaknessActive = true
+    }
   }
   log(state, `Combat begins: ${describeEnemies(enemies)} (FADEE p.90)`)
   if (surprised) log(state, 'The Foes surprise the party! They act first. (FADEE p.90)')
@@ -342,6 +358,8 @@ export function pcAttack(
   if (pc.classId === 'rogue' && enemy.table !== 'weird' && enemy.table !== 'boss' && enemy.count < livingPartySize(state)) {
     bonus += pc.level
   }
+  // Secret — Weakness of a Foe (FADEE p.122): +2 for the whole combat.
+  if (state.weaknessActive) bonus += 2
   const finalTotal = total + bonus
   log(
     state,
@@ -399,6 +417,14 @@ function checkMorale(state: CombatState, enemy: EnemyInstance, rng: Rng): void {
   if (enemy.moraleTested || enemy.count === 0) return
   if (enemy.count * 2 >= enemy.initialCount) return
   enemy.moraleTested = true
+  // Secret — Terrifying (FADEE p.123): the Foes automatically fail Morale.
+  const terrIdx = (state.secrets ?? []).findIndex((s) => s.startsWith('terrifying'))
+  if (terrIdx >= 0) {
+    state.secrets!.splice(terrIdx, 1)
+    enemy.fled = true
+    log(state, `${enemy.profile.name} hear an unspeakable secret and automatically fail their Morale! (FADEE p.123)`)
+    return
+  }
   let roll = rng.d(6)
   let modNote = ''
   if (enemy.profile.name === 'Goblin Swarmlings') {
@@ -446,9 +472,19 @@ function runFoesTurn(state: CombatState, rng: Rng): void {
     if (!enemy.profile.major && awakeMinors <= 0) continue
     // FADEE p.96: Foes don't roll — each PC targeted rolls Defense.
     const attackers = enemy.profile.major ? 1 : Math.min(awakeMinors, living.length)
-    const assignments = assignTargets(state, enemy, attackers, living)
+    // FADEE p.104: Wandering Monsters strike first at the REAR of the Marching
+    // Order; after one turn (in a room) the party spreads out as normal.
+    const rearRound = state.surprised && state.round === 1 && (state.marchingOrder?.length ?? 0) > 0
+    let targets: Character[] = living
+    if (rearRound) {
+      // The rearmost living PC in the marching order.
+      const rearId = state.marchingOrder!.slice().reverse().find((id) => living.some((p) => p.id === id))
+      const rear = rearId ? living.find((p) => p.id === rearId) : undefined
+      targets = rear ? [rear] : living
+    }
+    const assignments = assignTargets(state, enemy, attackers, targets)
     for (const [pcIdx, attackerLabel] of assignments) {
-      const pc = living[pcIdx]
+      const pc = targets[pcIdx]
       const def = defenseBonusFor(pc)
       const protection = state.protections?.[pc.id] ?? 0
       if (protection > 0) def.bonus += protection

@@ -107,7 +107,9 @@ export interface DungeonState {
 
 /** Serialized player choice from the features engine. */
 export interface PendingChoicePayload {
-  kind: 'temple' | 'statue' | 'puzzle' | 'ghost' | 'healer' | 'alchemist'
+  kind:
+    | 'temple' | 'statue' | 'puzzle' | 'ghost' | 'healer' | 'alchemist'
+    | 'secret' | 'secretPc' | 'secretWeakness' | 'secretItem'
   source: string
   /** Statue: difficulty info. */
   hcl?: number

@@ -9,6 +9,7 @@ import { useCampaignStore } from '../../state/campaignStore'
 import { D66_TILES } from '../../rulesets/expanded/tiles'
 import CombatPanel from './CombatPanel'
 import { ChoiceDialog } from './ChoiceDialog'
+import { DUNGEON_FEATURES, FEATURE_INFO } from '../../rulesets/expanded/features'
 
 /**
  * Dungeon screen (PROJECT_SPEC §23): the interactive map is the centerpiece.
@@ -16,7 +17,7 @@ import { ChoiceDialog } from './ChoiceDialog'
  * pinch/buttons to zoom, recenter on the party. Collapsible bottom panel.
  */
 export default function DungeonScreen() {
-  const { dungeon, log, busy, error, ensureDungeon, explore, search, pendingFind, claimFind, clearError, beginCombat } =
+  const { dungeon, log, busy, error, ensureDungeon, explore, search, pendingFind, claimFind, clearError, beginCombat, beginSecretReveal, beginSecretItem, useTreasureLocation } =
     useDungeonStore()
   const { campaign, party, loadLastCampaign } = useCampaignStore()
   const [panelOpen, setPanelOpen] = useState(true)
@@ -265,7 +266,7 @@ export default function DungeonScreen() {
             )}
             {content?.kind === 'specialFeature' && (
               <p className="mb-2 text-parchment/80">
-                Special feature #{content.specialFeatureRoll}. (features land in Phase 5)
+                {FEATURE_INFO[DUNGEON_FEATURES[content.specialFeatureRoll! - 1]].text}
               </p>
             )}
             {content?.kind === 'dragonLair' && (
@@ -279,6 +280,37 @@ export default function DungeonScreen() {
                 className="mb-2 rounded border border-torch/40 bg-torch/10 px-3 py-1.5 text-torch"
               >
                 Search this tile
+              </button>
+            )}
+            {/* Location secrets (FADEE p.122): usable in the right tiles. */}
+            {campaign.secrets?.includes('treasure-location') &&
+              tile.contentRoll !== null &&
+              !content?.encounter &&
+              tile.id !== dungeon.tiles[0].id && (
+                <button
+                  onClick={() => void useTreasureLocation()}
+                  className="mb-2 rounded border border-stone-600 bg-stone-800 px-3 py-1.5 text-xs text-parchment"
+                >
+                  Speak the password (hidden treasure — 3d6×10 gp)
+                </button>
+              )}
+            {campaign.secrets?.includes('item-location') &&
+              tile.contentRoll !== null &&
+              !content?.encounter &&
+              tile.id !== dungeon.tiles[0].id && (
+                <button
+                  onClick={() => void beginSecretItem()}
+                  className="mb-2 rounded border border-stone-600 bg-stone-800 px-3 py-1.5 text-xs text-parchment"
+                >
+                  Speak the password (hidden magic item)
+                </button>
+              )}
+            {(campaign.clues ?? 0) >= 3 && !dungeon.pendingChoice && (
+              <button
+                onClick={() => void beginSecretReveal()}
+                className="mb-2 rounded border border-torch/40 bg-torch/10 px-3 py-1.5 text-xs text-torch"
+              >
+                Reveal a Secret (spend 3 Clues — {campaign.clues} in pool)
               </button>
             )}
             {tile.searchResult === 'find' && !pendingFind && (
