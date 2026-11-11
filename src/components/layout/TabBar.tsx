@@ -6,16 +6,14 @@ export default function TabBar() {
   return (
     <nav
       aria-label="Main navigation"
-      className="flex shrink-0 border-t border-stone-800 bg-stone-900/95 pb-[env(safe-area-inset-bottom)]"
+      className="flex shrink-0 border-t-2 border-parchment bg-stone-900/95 pb-[env(safe-area-inset-bottom)]"
     >
       {TABS.map((tab) => (
         <NavLink
           key={tab.id}
           to={tab.path}
           className={({ isActive }) =>
-            `flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] tracking-wide uppercase ${
-              isActive ? 'text-torch' : 'text-parchment/60'
-            }`
+            `ribbon-tab flex-1 ${isActive ? 'ribbon-tab-active' : ''}`
           }
         >
           <span aria-hidden="true" className="text-base leading-none">

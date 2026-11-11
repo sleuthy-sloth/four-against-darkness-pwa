@@ -63,7 +63,7 @@ export default function CampaignDashboard() {
         <div className="flex w-full max-w-xs flex-col gap-3">
           <button
             onClick={() => navigate(party.length === 4 ? '/party' : '/party/new')}
-            className="rounded-lg border border-torch/40 bg-torch/10 px-6 py-3 text-lg text-torch active:bg-torch/20"
+            className="btn-wax px-6 py-3 text-lg"
           >
             {party.length === 4 ? 'Continue' : 'Form your party'}
           </button>
@@ -75,12 +75,12 @@ export default function CampaignDashboard() {
             onChange={(e) => setName(e.target.value)}
             placeholder="Campaign name"
             maxLength={40}
-            className="rounded-md border border-stone-700 bg-stone-900 px-3 py-2 text-sm text-parchment placeholder:text-parchment/30"
+            className="ledger-input"
           />
           <button
             onClick={startNew}
             disabled={loading}
-            className="rounded-lg border border-torch/40 bg-torch/10 px-6 py-3 text-torch disabled:opacity-40"
+            className="btn-wax px-6 py-3 disabled:opacity-40"
           >
             {loading ? 'Creating…' : 'Create campaign'}
           </button>
@@ -91,7 +91,7 @@ export default function CampaignDashboard() {
       ) : (
         <button
           onClick={() => setCreating(true)}
-          className="rounded-lg border border-torch/40 bg-torch/10 px-6 py-3 text-lg text-torch active:bg-torch/20"
+          className="btn-wax px-6 py-3 text-lg"
         >
           New campaign
         </button>

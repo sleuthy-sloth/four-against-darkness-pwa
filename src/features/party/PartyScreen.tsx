@@ -41,7 +41,7 @@ export default function PartyScreen() {
           </p>
           <button
             onClick={() => navigate(campaign ? '/party/new' : '/campaign')}
-            className="rounded-lg border border-torch/40 bg-torch/10 px-6 py-3 text-torch active:bg-torch/20"
+            className="btn-wax px-6 py-3"
           >
             {campaign ? 'Form your party' : 'Start a campaign first'}
           </button>
@@ -52,7 +52,7 @@ export default function PartyScreen() {
             const def = CORE_CLASSES.find((x) => x.id === c.classId)!
             const hpPct = (c.currentLife / c.maxLife) * 100
             return (
-              <div key={c.id} className="rounded-lg border border-stone-700 bg-stone-800/60 p-3">
+              <div key={c.id} className="card-folio p-3">
                 <button
                   onClick={() => navigate(`/party/${encodeURIComponent(c.id)}`)}
                   className="block w-full text-left active:opacity-80"

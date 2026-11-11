@@ -182,13 +182,13 @@ export default function DungeonScreen() {
             <pattern id="stoneFloor" width="1" height="1" patternUnits="userSpaceOnUse">
               <rect width="1" height="1" fill="#6b5f46" />
               <rect width="1" height="1" fill="#544b38" opacity="0.35" />
-              <path d="M0 0.5h1M0.5 0v1" className="stroke-stone-950" strokeWidth={0.06} />
+              <path d="M0 0.5h1M0.5 0v1" className="stroke-parchment/30" strokeWidth={0.06} />
             </pattern>
             {/* torch-lit variant for the current tile */}
             <pattern id="stoneFloorLit" width="1" height="1" patternUnits="userSpaceOnUse">
               <rect width="1" height="1" fill="#8a7147" />
               <rect width="1" height="1" fill="#a3742c" opacity="0.3" />
-              <path d="M0 0.5h1M0.5 0v1" className="stroke-stone-950" strokeWidth={0.06} />
+              <path d="M0 0.5h1M0.5 0v1" className="stroke-parchment/30" strokeWidth={0.06} />
             </pattern>
           </defs>
           <g transform={`translate(${2 - bounds.minCol}, ${2 - bounds.minRow})`}>
@@ -220,7 +220,7 @@ export default function DungeonScreen() {
                       y1={w.y1}
                       x2={w.x2}
                       y2={w.y2}
-                      className="stroke-stone-600"
+                      className="stroke-parchment"
                       strokeWidth={0.14}
                     />
                   ))}
@@ -231,7 +231,7 @@ export default function DungeonScreen() {
                       y1={w.y1}
                       x2={w.x2}
                       y2={w.y2}
-                      className="stroke-stone-200"
+                      className="stroke-faint"
                       strokeWidth={0.04}
                     />
                   ))}
@@ -273,7 +273,7 @@ export default function DungeonScreen() {
                   cx={tile.cells[0].col + 0.5}
                   cy={tile.cells[0].row + 0.5}
                   r={0.3}
-                  className="fill-torch stroke-stone-950"
+                  className="fill-torch stroke-parchment"
                   strokeWidth={0.05}
                 />
                 <MapIcon
@@ -281,7 +281,7 @@ export default function DungeonScreen() {
                   x={tile.cells[0].col + 0.5}
                   y={tile.cells[0].row + 0.5}
                   size={0.34}
-                  className="fill-stone-950"
+                  className="fill-parchment"
                 />
               </g>
             )}
@@ -296,7 +296,7 @@ export default function DungeonScreen() {
                   cx={x}
                   cy={y}
                   r={0.34}
-                  className={`cursor-pointer stroke-stone-950 ${
+                  className={`cursor-pointer stroke-parchment ${
                     unexplored ? 'fill-torch/80' : 'fill-parchment/50'
                   }`}
                   strokeWidth={0.05}

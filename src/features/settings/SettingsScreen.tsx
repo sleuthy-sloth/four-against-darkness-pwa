@@ -89,8 +89,8 @@ export default function SettingsScreen() {
         </p>
       )}
 
-      <section className="mt-4 rounded-lg border border-stone-700 bg-stone-900/70 p-3">
-        <p className="text-sm text-torch">Save management (PROJECT_SPEC §18)</p>
+      <section className="card-folio p-3">
+        <p className="text-sm text-torch font-display">Save management (PROJECT_SPEC §18)</p>
         {!live && <p className="mt-1 text-xs text-parchment/50">Create a campaign first — saves are per campaign.</p>}
         {live && (
           <>
@@ -140,8 +140,8 @@ export default function SettingsScreen() {
         )}
       </section>
 
-      <section className="mt-4 rounded-lg border border-stone-700 bg-stone-900/70 p-3">
-        <p className="text-sm text-torch">Ruleset</p>
+      <section className="card-folio p-3">
+        <p className="text-sm text-torch font-display">Ruleset</p>
         <p className="mt-1 text-xs text-parchment/70">
           Four Against Darkness — Expanded Edition. All mechanics are page-cited in
           docs/RULES_VERIFICATION.md; nothing is invented. Other environments and
@@ -149,8 +149,8 @@ export default function SettingsScreen() {
         </p>
       </section>
 
-      <section className="mt-4 rounded-lg border border-stone-700 bg-stone-900/70 p-3">
-        <p className="text-sm text-torch">Credits & licensing</p>
+      <section className="card-folio p-3">
+        <p className="text-sm text-torch font-display">Credits & licensing</p>
         <p className="mt-1 text-xs text-parchment/70">
           An original implementation of the Four Against Darkness rules. Game code and
           rules data: MIT. Icon art from game-icons.net (CC BY 3.0 — see

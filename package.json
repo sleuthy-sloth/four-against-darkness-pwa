@@ -12,6 +12,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@fontsource/eb-garamond": "^5.2.5",
+    "@fontsource/jetbrains-mono": "^5.2.5",
+    "@fontsource/noto-serif": "^5.2.5",
     "dexie": "^4.0.8",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

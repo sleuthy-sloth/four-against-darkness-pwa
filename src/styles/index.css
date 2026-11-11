@@ -1,3 +1,15 @@
+/* Tome & Delve OSR design system (Google Stitch, DESIGN.md).
+   Fonts are bundled via @fontsource — the PWA stays fully offline. */
+@import '@fontsource/noto-serif/400.css';
+@import '@fontsource/noto-serif/600.css';
+@import '@fontsource/noto-serif/700.css';
+@import '@fontsource/eb-garamond/400.css';
+@import '@fontsource/eb-garamond/700.css';
+@import '@fontsource/eb-garamond/400-italic.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/jetbrains-mono/700.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -9,8 +21,12 @@ body,
 }
 
 body {
-  @apply bg-stone-950 text-parchment font-display antialiased;
+  @apply bg-stone-950 text-parchment font-body antialiased;
   overscroll-behavior: none;
+}
+
+h1, h2, h3, h4, .font-headline {
+  @apply font-display;
 }
 
 /* Screen placeholder styling shared across Phase 1 nav stubs */
@@ -19,5 +35,69 @@ body {
 }
 
 .phase-note {
-  @apply text-xs text-parchment/50;
+  @apply text-xs text-faint;
+}
+
+/* --- OSR component kit (DESIGN.md) --- */
+
+/* Inked framing: 2px outer rule + 1px offset hairline, squared corners */
+.ink-frame {
+  border: 2px solid #2b241f;
+  outline: 1px solid #2b241f;
+  outline-offset: 2px;
+}
+
+/* Raised journal folio: freshest parchment + ink border + warm cast shadow */
+.card-folio {
+  @apply bg-stone-800 shadow-folio border border-parchment;
+  border-radius: 2px;
+}
+
+/* Primary action — dried-oxblood wax stamp */
+.btn-wax {
+  @apply bg-torch text-stone-800 font-display font-semibold shadow-folio active:translate-y-0.5;
+  border: 1px solid #1f1a16;
+  border-radius: 2px;
+}
+.btn-wax:hover {
+  background: #6e1c1c;
+}
+
+/* Secondary action — inked cartouche */
+.btn-cartouche {
+  @apply bg-stone-900 text-parchment border border-parchment shadow-folio active:translate-y-0.5;
+  border-radius: 2px;
+}
+.btn-cartouche:hover {
+  background: #dfd4bc;
+}
+
+/* Ledger input: heavy baseline rule, italic faded placeholder */
+.ledger-input {
+  @apply bg-transparent border-b-2 border-parchment font-body text-parchment px-1 py-1 w-full;
+}
+.ledger-input::placeholder {
+  @apply text-faint italic;
+}
+
+/* Quad-ruled graph canvas background */
+.graph-paper {
+  background-color: #dfd4bc;
+  background-image:
+    linear-gradient(#c8bca0 1px, transparent 1px),
+    linear-gradient(90deg, #c8bca0 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Ribbon bookmark for the bottom tab bar */
+.ribbon-tab {
+  @apply flex flex-col items-center justify-center gap-0.5 px-3 py-2 text-faint font-label text-[10px] tracking-wider;
+}
+.ribbon-tab-active {
+  @apply text-stone-800 bg-torch rounded-t-sm border border-parchment border-b-0 shadow-folio;
+}
+
+/* Chapter banner ornament */
+.chapter-banner {
+  @apply font-display uppercase tracking-widest text-torch text-center text-sm;
 }
