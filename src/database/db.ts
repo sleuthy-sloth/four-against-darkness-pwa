@@ -26,6 +26,14 @@ export interface CampaignMeta {
   createdAt: number
   lastModified: number
   saveVersion: number
+  /** Prepared tale this campaign was begun from (scenarios.ts), if any. */
+  scenarioId?: string
+  /**
+   * How-to-play tutorial state (Milestone 4). Optional; Dexie is schemaless
+   * for object properties, so no migration is needed. A campaign whose
+   * tutorial is 'done' or 'skipped' never shows the coach again.
+   */
+  tutorial?: { stepId: string; status: 'active' | 'done' | 'skipped' }
 }
 
 /** Full Character record (rulesets/schema/character.ts), indexed by campaign. */

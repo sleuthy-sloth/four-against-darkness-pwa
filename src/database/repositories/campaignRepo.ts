@@ -4,12 +4,20 @@ import type { Character } from '../../rulesets/schema/character'
 /**
  * Campaign persistence (PROJECT_SPEC Part VI §17-18). Transactional writes;
  * lastModified bumped on every mutation. Export/import arrive in Phase 6.
+ *
+ * A fixed seed always yields the same base id (`camp-<seed36>`), so scenario
+ * and tutorial campaigns — which reuse a fixed seed — pass a unique
+ * `idSuffix`, or a second start would overwrite the first campaign.
  */
 
-export async function createCampaign(name: string, seed: number): Promise<CampaignMeta> {
+export async function createCampaign(
+  name: string,
+  seed: number,
+  opts?: { idSuffix?: string; scenarioId?: string; tutorial?: CampaignMeta['tutorial'] },
+): Promise<CampaignMeta> {
   const db = getDb()
   const meta: CampaignMeta = {
-    id: `camp-${seed.toString(36)}`,
+    id: `camp-${seed.toString(36)}${opts?.idSuffix ? `-${opts.idSuffix}` : ''}`,
     name: name.trim() || 'New Campaign',
     ruleset: 'fadee-expanded',
     seed,
@@ -17,6 +25,8 @@ export async function createCampaign(name: string, seed: number): Promise<Campai
     createdAt: Date.now(),
     lastModified: Date.now(),
     saveVersion: 2,
+    ...(opts?.scenarioId ? { scenarioId: opts.scenarioId } : {}),
+    ...(opts?.tutorial ? { tutorial: opts.tutorial } : {}),
   }
   await db.transaction('rw', db.campaigns, async () => {
     await db.campaigns.put(meta)

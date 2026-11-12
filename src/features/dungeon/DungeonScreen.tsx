@@ -519,7 +519,15 @@ export default function DungeonScreen() {
                 </button>
               </div>
             )}
-            {tile.content?.cleared && !dungeon.combat && (
+            {/* Milestone 4: the button gate matches the engine's tileCleared
+                rule (engine/camp/rest.ts — an empty room with no Foes counts
+                as cleared). The old gate (`content?.cleared`) only ever
+                showed Rest on a room whose encounter was won, so an empty
+                room — the most common rest spot — never offered it, even
+                though rest() itself would have allowed it. Neighbours, doors
+                and nails are still enforced by canRest, with its reason shown
+                as the error if they fail. */}
+            {(!tile.content?.encounter || tile.content?.cleared) && !dungeon.combat && (
               <button
                 onClick={() => void rest()}
                 className="mb-2 rounded border border-stone-600 bg-stone-800 px-3 py-1.5 text-xs text-parchment"

@@ -21,6 +21,12 @@ export interface CreateCharacterRequest {
   traitRolls?: number[]
   /** Wizard/elf spell slot assignment (validated against the class list). */
   spells?: string[]
+  /**
+   * Extra starting gear beyond the class list (Milestone 4): the pre-formed
+   * tutorial party carries bags of nails so resting is actually doable in
+   * the guided delve. Validated against the shop stock / item names.
+   */
+  extraEquipment?: string[]
 }
 
 export class CreationError extends Error {
@@ -119,6 +125,8 @@ export function createCharacter(
     const rations = rng.formula('d6+3', 'starting rations (halfling)')
     equipment.push(`${rations} food rations`)
   }
+  // Pre-formed parties (Milestone 4 tutorial) may carry extra supplied kit.
+  if (req.extraEquipment) equipment.push(...req.extraEquipment)
 
   const character: Character = {
     id: `${campaignId}-${req.classId}-${rng.d(1000000)}`,

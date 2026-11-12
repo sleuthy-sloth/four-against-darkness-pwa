@@ -7,23 +7,29 @@ import { listCampaigns, loadParty } from '../../database/repositories/campaignRe
 import { deleteCampaignFull, duplicateCampaign } from '../../database/repositories/backupRepo'
 import Lockup from '../common/Lockup'
 import { ClassIcon } from '../common/ClassIcon'
+import { findActiveTutorialCampaign, getTaleScenarios, useTutorialStore } from '../tutorial/tutorialStore'
 
 /**
  * Campaign dashboard (PROJECT_SPEC §22): active campaign, continue, and the
  * campaign list with delete/duplicate (§17 — destructive ops confirm first).
+ * Milestone 4 adds the "Learn to play" entry and the prepared tales.
  */
 export default function CampaignDashboard() {
   const navigate = useNavigate()
   const { campaign, party, loadLastCampaign, newCampaign, loading, error } = useCampaignStore()
+  const { startTutorial, startScenario, busy: tutorialBusy, error: tutorialError } = useTutorialStore()
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
   const [campaigns, setCampaigns] = useState<CampaignMeta[]>([])
   const [parties, setParties] = useState<Record<string, Character[]>>({})
   const [confirmDelete, setConfirmDelete] = useState<CampaignMeta | null>(null)
+  const [hasLiveTutorial, setHasLiveTutorial] = useState(false)
+  const tales = getTaleScenarios()
 
   const refresh = useCallback(async () => {
     const list = await listCampaigns()
     setCampaigns(list)
+    setHasLiveTutorial(!!(await findActiveTutorialCampaign()))
     // Party composition per campaign card (D6): one Dexie read per campaign.
     const loaded: Record<string, Character[]> = {}
     await Promise.all(
@@ -61,8 +67,20 @@ export default function CampaignDashboard() {
     navigate('/party')
   }
 
+  /** Milestone 4: start (or resume) the guided first delve. */
+  const learnToPlay = async () => {
+    const route = await startTutorial()
+    if (route) navigate(route)
+  }
+
+  /** Milestone 4: begin a prepared tale — party and seed in one tap. */
+  const beginTale = async (scenarioId: string) => {
+    const route = await startScenario(scenarioId)
+    if (route) navigate(route)
+  }
+
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-6 p-6 text-center">
+    <div className="flex flex-1 flex-col items-center gap-6 overflow-y-auto p-6 text-center">
       <div className="space-y-2">
         <h1 className="sr-only">Four Against Darkness</h1>
         <Lockup className="mx-auto w-64" />
@@ -84,6 +102,13 @@ export default function CampaignDashboard() {
           {/* D6: starting a new campaign is a primary action beside Continue, not hidden */}
           <button onClick={() => setCreating(true)} className="btn-cartouche px-6 py-2.5">
             New campaign
+          </button>
+          <button
+            onClick={() => void learnToPlay()}
+            disabled={tutorialBusy}
+            className="btn-cartouche px-6 py-2.5 disabled:opacity-40"
+          >
+            {hasLiveTutorial ? 'Continue the tutorial' : 'Learn to play'}
           </button>
         </div>
       ) : creating ? (
@@ -107,13 +132,57 @@ export default function CampaignDashboard() {
           </button>
         </div>
       ) : (
-        <button
-          onClick={() => setCreating(true)}
-          className="btn-wax px-6 py-3 text-lg"
-        >
-          New campaign
-        </button>
+        <div className="flex w-full max-w-xs flex-col gap-3">
+          <button
+            onClick={() => setCreating(true)}
+            className="btn-wax px-6 py-3 text-lg"
+          >
+            New campaign
+          </button>
+          <button
+            onClick={() => void learnToPlay()}
+            disabled={tutorialBusy}
+            className="btn-cartouche px-6 py-2.5 disabled:opacity-40"
+          >
+            {hasLiveTutorial ? 'Continue the tutorial' : 'Learn to play'}
+          </button>
+        </div>
       )}
+
+      {tutorialError && <p className="text-sm text-ember">{tutorialError}</p>}
+
+      {/* Milestone 4: prepared tales — pre-formed parties on fixed seeds. */}
+      <div className="w-full max-w-md">
+        <p className="mb-1 text-xs uppercase tracking-wide text-parchment/40">Tales to begin</p>
+        <p className="mb-3 text-xs text-parchment/60">
+          Three delves, already prepared — the party is formed, the dungeon is seeded, and the
+          backstory is written in your journal when you begin.
+        </p>
+        <ul className="space-y-3 text-left">
+          {tales.map((tale) => (
+            <li key={tale.id} className="card-folio p-3">
+              <p className="font-display text-base text-torch">{tale.name}</p>
+              <p className="mt-1 text-sm leading-snug text-parchment">{tale.backstory}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                {tale.party.map((m) => (
+                  <span key={m.classId} className="flex items-center gap-1 text-xs text-parchment/80">
+                    <ClassIcon classId={m.classId} className="h-5 w-5" />
+                    {m.name}
+                  </span>
+                ))}
+              </div>
+              <p className="mt-2 text-xs italic text-faint">{tale.goal}</p>
+              <button
+                onClick={() => void beginTale(tale.id)}
+                disabled={tutorialBusy}
+                className="btn-cartouche mt-3 w-full px-4 py-2 disabled:opacity-40"
+              >
+                Begin this tale
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
 
       {/* campaign list (PROJECT_SPEC §17) */}
       {campaigns.length > 0 && (

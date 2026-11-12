@@ -167,6 +167,35 @@ function rollEncounterSimple(
   return enc
 }
 
+/** FADEE p.114: the 1-in-6 Wandering Monsters roll happens AFTER recovery. */
+async function rollWanderingAfterRest(
+  dungeon: DungeonState,
+  rng: Rng,
+  party: Character[],
+  campaign: { id: string; secrets?: string[] },
+): Promise<void> {
+  const roll = rng.d(6)
+  if (roll !== 1) {
+    appendLog([`Rest complete — no Wandering Monsters (rolled ${roll}). (FADEE p.114)`])
+    return
+  }
+  const tableRoll = rng.d(6)
+  const table = tableRoll <= 2 ? 'vermin' : tableRoll <= 4 ? 'minions' : tableRoll === 5 ? 'weird' : 'boss'
+  const enc = rollEncounterSimple(dungeon, rng, profileFor(table, tableRoll), Math.max(1, ...party.map((p) => p.level)))
+  enc.isFinalBoss = false
+  const enemies = [
+    makeEnemy(enc.monster, enc.table, enc.level, enc.count, lifeFromFormula(enc.level, enc.monster.lifeFormula, enc.monster.flatLife)),
+  ]
+  const combat = startCombat(dungeon.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng, {
+    marchingOrder: party.map((p) => p.id),
+    secrets: campaign.secrets,
+  })
+  dungeon.combat = combat
+  await persist(dungeon, rng, campaign.id)
+  appendLog(['Wandering Monsters burst in as the party rests — but the nailed doors gave the party the first attack! (FADEE p.114)', ...combat.log.map((l) => l.text)])
+  await appendEvents(campaign.id, 'combat', combat.log.map((l) => ({ ts: l.ts, text: l.text })))
+}
+
 /** Append messages, persist, and stash any player choice (FADEE pp.152-153). */
 async function finishFeature(
   state: DungeonState,
@@ -489,6 +518,16 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       { marchingOrder: party.map((p) => p.id), secrets: campaign.secrets },
     )
     dungeon.combat = combat
+    // A reaction can end the encounter before any blow is struck (FADEE
+    // p.91): the foes flee, ignore the party, or parley. The tile is
+    // cleared all the same — otherwise no combat action ever runs, the
+    // encounter stays uncleared, and Rest (FADEE p.114) is blocked forever
+    // in every room next to it. Victory by reaction clears the tile just
+    // as victory by sword does (see combatAttack/combatCast below).
+    if (combat.phase === 'won') {
+      const tile = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
+      if (tile?.content) tile.content.cleared = true
+    }
     await persist(dungeon, rng, campaign.id)
     set({
       dungeon: { ...dungeon },
@@ -506,6 +545,14 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     if (!pc) return
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     pcAttack(combat, rng, pc, enemyId)
+    // Victory clears the tile BEFORE persist: persist rewrites the campaign
+    // meta, which re-runs DungeonScreen's ensureDungeon and reloads the
+    // dungeon from Dexie — a flag set after persist is wiped on that reload
+    // (Rest, FADEE p.114, then fails in every room next to this one).
+    if (combat.phase === 'won') {
+      const t = dungeon.tiles.find((x) => x.id === dungeon.currentTileId)
+      if (t?.content) t.content.cleared = true
+    }
     await persist(dungeon, rng, campaign.id)
     set({
       dungeon: { ...dungeon },
@@ -565,6 +612,12 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     if (!pc) return
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     castSpell(combat, rng, pc, spell, enemyId)
+    // Victory clears the tile BEFORE persist (see combatAttack: a flag set
+    // after persist is wiped when ensureDungeon reloads from Dexie).
+    if (combat.phase === 'won') {
+      const t = dungeon.tiles.find((x) => x.id === dungeon.currentTileId)
+      if (t?.content) t.content.cleared = true
+    }
     await persist(dungeon, rng, campaign.id)
     set({
       dungeon: { ...dungeon },
@@ -640,6 +693,12 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     if (!pc) return
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     castScroll(combat, rng, pc, spell as ScrollSpell, enemyId)
+    // Victory clears the tile BEFORE persist (see combatAttack: a flag set
+    // after persist is wiped when ensureDungeon reloads from Dexie).
+    if (combat.phase === 'won') {
+      const t = dungeon.tiles.find((x) => x.id === dungeon.currentTileId)
+      if (t?.content) t.content.cleared = true
+    }
     await persist(dungeon, rng, campaign.id)
     set({
       dungeon: { ...dungeon },
@@ -1200,17 +1259,27 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     const outcome = beginRest(party, tile.exits.length)
     dungeon.rested = true
-    dungeon.pendingChoice = {
-      kind: 'rest',
-      source: 'FADEE p.114',
-      pcIds: outcome.pendingPcIds,
-      prompt: 'Each PC recovers 1 Life or 1 spent ability (spell or prayer).',
+    // If nobody has anything to recover, there is no pick to make — opening
+    // the rest dialog with an empty list would leave an undismissable
+    // overlay over the whole app. Go straight to the wandering-monster roll.
+    if (outcome.pendingPcIds.length > 0) {
+      dungeon.pendingChoice = {
+        kind: 'rest',
+        source: 'FADEE p.114',
+        pcIds: outcome.pendingPcIds,
+        prompt: 'Each PC recovers 1 Life or 1 spent ability (spell or prayer).',
+      }
+    } else {
+      dungeon.pendingChoice = null
     }
     await persist(dungeon, rng, campaign.id)
     const { saveParty } = await import('../database/repositories/campaignRepo')
     await saveParty(campaign.id, party)
     appendLog(outcome.messages)
     await appendEvents(campaign.id, 'event', outcome.messages.map((text) => ({ ts: Date.now(), text })))
+    if (outcome.pendingPcIds.length === 0) {
+      await rollWanderingAfterRest(dungeon, rng, party, campaign)
+    }
   },
 
   restPick: async (pcId, choice) => {
@@ -1233,26 +1302,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     // FADEE p.114: the 1-in-6 WM roll happens AFTER recovery; nailed doors
     // (always required here) mean the party attacks first even if surprised.
     if (!remaining.length) {
-      const roll = rng.d(6)
-      if (roll === 1) {
-        const tableRoll = rng.d(6)
-        const table = tableRoll <= 2 ? 'vermin' : tableRoll <= 4 ? 'minions' : tableRoll === 5 ? 'weird' : 'boss'
-        const enc = rollEncounterSimple(dungeon, rng, profileFor(table, tableRoll), Math.max(1, ...party.map((p) => p.level)))
-        enc.isFinalBoss = false
-        const enemies = [
-          makeEnemy(enc.monster, enc.table, enc.level, enc.count, lifeFromFormula(enc.level, enc.monster.lifeFormula, enc.monster.flatLife)),
-        ]
-        const combat = startCombat(dungeon.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng, {
-          marchingOrder: party.map((p) => p.id),
-          secrets: campaign.secrets,
-        })
-        dungeon.combat = combat
-        await persist(dungeon, rng, campaign.id)
-        appendLog(['Wandering Monsters burst in as the party rests — but the nailed doors gave the party the first attack! (FADEE p.114)', ...combat.log.map((l) => l.text)])
-        await appendEvents(campaign.id, 'combat', combat.log.map((l) => ({ ts: l.ts, text: l.text })))
-      } else {
-        appendLog([`Rest complete — no Wandering Monsters (rolled ${roll}). (FADEE p.114)`])
-      }
+      await rollWanderingAfterRest(dungeon, rng, party, campaign)
     }
   },
 

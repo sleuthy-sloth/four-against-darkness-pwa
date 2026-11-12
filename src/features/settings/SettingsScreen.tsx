@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useCampaignStore } from '../../state/campaignStore'
+import { useTutorialStore } from '../tutorial/tutorialStore'
 import {
   exportCampaign,
   importArchive,
@@ -37,7 +39,9 @@ function creditsByAuthor(): Array<{ author: string; icons: string[] }> {
     .sort((a, b) => a.author.localeCompare(b.author))
 }
 export default function SettingsScreen() {
+  const navigate = useNavigate()
   const { campaign, party, loadLastCampaign } = useCampaignStore()
+  const { startTutorial, busy: tutorialBusy } = useTutorialStore()
   const [checkpoints, setCheckpoints] = useState<CheckpointRecord[]>([])
   const [msg, setMsg] = useState<string | null>(null)
   const [confirmRestore, setConfirmRestore] = useState<CheckpointRecord | null>(null)
@@ -171,6 +175,28 @@ export default function SettingsScreen() {
           docs/RULES_VERIFICATION.md; nothing is invented. Other environments and
           supplements land in Release 0.5+.
         </p>
+      </section>
+
+      {/* Milestone 4: restart the guided first delve (or resume it). */}
+      <p className="chapter-banner mt-4">Learn to play</p>
+      <ChapterOrnament />
+      <section className="card-folio mt-2 p-3">
+        <p className="text-xs text-parchment/70">
+          A guided first delve: four adventurers, a real dungeon, and a patient voice
+          walking you through exploring, fighting, searching, and resting — one lesson
+          at a time. It starts a fresh tutorial campaign; a finished or skipped
+          tutorial never shows again.
+        </p>
+        <button
+          onClick={async () => {
+            const route = await startTutorial()
+            if (route) navigate(route)
+          }}
+          disabled={tutorialBusy}
+          className="btn-cartouche mt-2 px-4 py-2 text-sm disabled:opacity-40"
+        >
+          {tutorialBusy ? 'Preparing…' : 'Learn to play'}
+        </button>
       </section>
 
       <p className="chapter-banner mt-4">Credits</p>
