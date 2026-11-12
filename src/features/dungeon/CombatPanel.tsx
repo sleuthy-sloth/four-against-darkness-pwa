@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useDungeonStore } from '../../state/dungeonStore'
 import { useCampaignStore } from '../../state/campaignStore'
-import { describeEnemies, clericPrayersLeft } from '../../engine/combat/combat'
+import { canLeaveCombat, describeEnemies, clericPrayersLeft } from '../../engine/combat/combat'
 import { LogDie } from '../common/Die'
 import FragIcon from '../common/FragIcon'
 import { familyFrag } from './foeIcons'
@@ -20,7 +20,7 @@ import { hapticBuzz } from '../common/motion'
  * Victory / Fallen. All motion is gated by prefers-reduced-motion (CSS).
  */
 export default function CombatPanel() {
-  const { dungeon, combatAttack, combatCast, combatCastScroll, combatHeal, combatPotion, combatWait, combatPayBribe, combatFlee, spendXpRoll, pendingXp } =
+  const { dungeon, combatAttack, combatCast, combatCastScroll, combatHeal, combatPotion, combatWait, combatPayBribe, combatFlee, leaveCombat, spendXpRoll, pendingXp } =
     useDungeonStore()
   const { party } = useCampaignStore()
   const [targetId, setTargetId] = useState<string | null>(null)
@@ -51,7 +51,7 @@ export default function CombatPanel() {
   const fbMark = `fb-${combat.log.length}`
 
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto p-3 pb-4">
+    <div className="flex min-w-0 flex-1 flex-col overflow-y-auto p-3 pb-4">
       <div className="mb-2 flex items-baseline justify-between">
         {combat.phase === 'won' ? (
           <div className="victory-stamp" role="status">Victory</div>
@@ -290,6 +290,18 @@ export default function CombatPanel() {
         <p className="mb-2 text-xs text-parchment/50">
           Leave via a map exit — loot was rolled on victory and the Journal has the record.
         </p>
+      )}
+
+      {/* The victory panel must never trap the player: without a dismiss,
+          the tile actions (Rest, Search) stay replaced by this panel and
+          the only way out is leaving the room via a map exit. */}
+      {canLeaveCombat(combat.phase) && (
+        <button
+          onClick={() => void leaveCombat()}
+          className="btn-wax mb-2 w-full px-4 py-2 text-sm"
+        >
+          Back to the room
+        </button>
       )}
 
       {/* log */}

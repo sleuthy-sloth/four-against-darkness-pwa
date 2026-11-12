@@ -695,8 +695,14 @@ export default function DungeonScreen() {
 
       {/* bottom panel (mobile) / right rail (desktop): combat replaces exploration */}
       <div className="shrink-0 border-t border-stone-800 bg-stone-900/95 lg:flex lg:w-[380px] lg:shrink-0 lg:flex-col lg:border-l lg:border-t-0 lg:overflow-hidden">
+        {/* Combat max-h in dvh, not %: this panel is shrink-0 with an
+            indefinite height, so a % max-height resolves to none, the
+            panel grows to its content, and the flex-1 map above it is
+            squeezed to a sliver (34px in the victory state) — the exit
+            discs become unreachable and the player is trapped. The tile
+            panel below already uses max-h-[36vh] for the same reason. */}
         {dungeon.combat ? (
-          <div className="flex max-h-[45%] flex-col overflow-hidden lg:max-h-none lg:min-h-0 lg:flex-1">
+          <div className="flex max-h-[45dvh] flex-col overflow-hidden lg:max-h-none lg:min-h-0 lg:flex-1">
             <CombatPanel />
           </div>
         ) : (

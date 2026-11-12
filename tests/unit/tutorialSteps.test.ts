@@ -82,6 +82,16 @@ describe('tutorial steps', () => {
     expect(getTutorialStep('rest')!.satisfied!(snap({ rested: true }))).toBe(true)
   })
 
+  it('rest advances only on an actual rest — winning the fight is not enough', () => {
+    // The victory-screen trap: after the win the combat is resolved and
+    // the tile is cleared, but Lesson 8 still waits for the rest itself.
+    // The step must not auto-advance on the win (or the player would skip
+    // the lesson), and it must not be satisfiable without the Rest action.
+    const step = getTutorialStep('rest')!
+    expect(step.satisfied!(snap({ combatResolved: true, encounterCleared: true, rested: false }))).toBe(false)
+    expect(step.satisfied!(snap({ combatResolved: true, encounterCleared: true, rested: true }))).toBe(true)
+  })
+
   it('walks a full play-through in order', () => {
     // The coach shows each step in turn; the event steps fire as the player
     // does the thing, and the tap steps wait for the tap.

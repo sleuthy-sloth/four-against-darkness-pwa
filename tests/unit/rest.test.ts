@@ -30,6 +30,14 @@ describe('Resting eligibility (FADEE p.114)', () => {
     expect(canRest({ doorCount: 2, neighborsCleared: false, tileCleared: true, nailsHeld: 2, alreadyRested: false }).ok).toBe(false)
     expect(canRest({ doorCount: 3, neighborsCleared: true, tileCleared: true, nailsHeld: 2, alreadyRested: false }).ok).toBe(false)
   })
+
+  it('allows rest in the room just won (tutorial Lesson 8 state)', () => {
+    // The player's exact state after the first tutorial fight: the tile
+    // is cleared, the neighbours are explored and cleared, the warrior
+    // carries 4 bags of nails, one door to nail shut, no rest taken yet.
+    // The engine says rest is legal here — the trap was the UI, not the gate.
+    expect(canRest({ doorCount: 1, neighborsCleared: true, tileCleared: true, nailsHeld: 4, alreadyRested: false }).ok).toBe(true)
+  })
 })
 
 describe('Resting effects (FADEE p.114)', () => {

@@ -29,6 +29,7 @@ import {
   castBlessing,
   drinkHealingPotion,
   applyBandage,
+  canLeaveCombat,
   type CastableSpell,
   type ScrollSpell,
   type CombatState,
@@ -102,6 +103,8 @@ interface DungeonStoreState {
   combatWait: () => Promise<void>
   combatPayBribe: () => Promise<void>
   combatFlee: () => Promise<void>
+  /** Leave a concluded combat behind and return to the room's tile actions. */
+  leaveCombat: () => Promise<void>
   spendXpRoll: (pcId: string) => Promise<void>
   /** Answer a pending feature/event choice (FADEE pp.152-153). */
   chooseTemple: (pcId: string) => Promise<void>
@@ -793,6 +796,30 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       dungeon: { ...dungeon },
       log: [...get().log, ...combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text }))].slice(-100),
     })
+  },
+
+  /**
+   * Leave a concluded combat behind and return to the room's tile actions.
+   * The victory panel otherwise stays up with no dismiss: the tile panel
+   * (Rest, Search) is replaced by the combat panel whenever dungeon.combat
+   * exists, and the only other exits are explore() and combatFlee() — both
+   * leave the room. A win must not trap the player in the room they just
+   * cleared. Mutate first, then persist (same order as the Milestone 4
+   * cleared-flag fix: persist reloads the dungeon from Dexie, so a flag
+   * set after persist would be wiped). Unspent XP rolls are left exactly
+   * as explore() leaves them (pendingXp stays set); they are spent from
+   * the victory card before leaving.
+   */
+  leaveCombat: async () => {
+    await snap('leaveCombat', useCampaignStore.getState().campaign?.id ?? '')
+    const { dungeon } = get()
+    const { campaign } = useCampaignStore.getState()
+    if (!dungeon || !campaign || !dungeon.combat) return
+    if (!canLeaveCombat(dungeon.combat.phase)) return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    dungeon.combat = null
+    await persist(dungeon, rng, campaign.id)
+    set({ dungeon: { ...dungeon } })
   },
 
   spendXpRoll: async (pcId) => {

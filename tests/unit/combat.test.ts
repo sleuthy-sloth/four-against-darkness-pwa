@@ -4,6 +4,7 @@ import { profileFor } from '../../src/rulesets/expanded/monsters'
 import type { Character } from '../../src/rulesets/schema/character'
 import {
   attackBonusFor,
+  canLeaveCombat,
   combatOver,
   defenseBonusFor,
   fleeCombat,
@@ -244,5 +245,34 @@ describe('victory and XP accounting (FADEE pp.94, 105, 117)', () => {
     const due = xpDue(state)
     expect(due.majorSlain).toBe(1)
     expect(due.finalBoss).toBe(false)
+  })
+})
+
+describe('leaving a concluded combat (victory-screen trap)', () => {
+  it('a reaction flee resolves the combat as won, and a won combat can be left', () => {
+    // The player's exact path: Wait for Reactions → foes flee if
+    // outnumbered → the encounter is won without a blow struck, and the
+    // combat object stays in state with phase 'won' until it is left.
+    const party = [pc('warrior', 'A'), pc('cleric', 'B'), pc('rogue', 'C'), pc('wizard', 'D')]
+    const enemy = makeEnemy(profileFor('minions', 2), 'minions', 3, 2, 1)
+    const state = startCombat('t', party, [enemy], rng(1))
+    let tries = 0
+    while (!enemy.fled && tries < 200) {
+      enemy.fled = false
+      state.log = []
+      rollReactions(state, rng(tries + 1))
+      tries++
+    }
+    expect(enemy.fled).toBe(true)
+    expect(state.phase).toBe('won')
+    expect(canLeaveCombat(state.phase)).toBe(true)
+  })
+
+  it('only concluded phases can be left; a live fight cannot be dismissed', () => {
+    expect(canLeaveCombat('won')).toBe(true)
+    expect(canLeaveCombat('lost')).toBe(true)
+    expect(canLeaveCombat('opening')).toBe(false)
+    expect(canLeaveCombat('pcTurn')).toBe(false)
+    expect(canLeaveCombat('foesTurn')).toBe(false)
   })
 })

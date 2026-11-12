@@ -42,6 +42,20 @@ export type CombatPhase =
   | 'lost'
   | 'fled'
 
+/**
+ * A concluded combat (won or lost) can be left behind: the fight is over,
+ * the tile is cleared on victory, and the player returns to the room's
+ * actions (Rest, Search, exits). A live combat (opening / pcTurn /
+ * foesTurn) cannot be dismissed — the only way out mid-fight is Flee
+ * (FADEE p.97) or an exit. Without this, a victory left the combat panel
+ * up with no dismiss and the tile actions unreachable (the victory-screen
+ * trap: Rest is gated on !dungeon.combat, and the panel replaces the tile
+ * panel whenever dungeon.combat exists).
+ */
+export function canLeaveCombat(phase: CombatPhase): boolean {
+  return phase === 'won' || phase === 'lost'
+}
+
 export interface CombatState {
   tileId: string
   enemies: EnemyInstance[]
