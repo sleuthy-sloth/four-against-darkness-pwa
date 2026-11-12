@@ -15,6 +15,7 @@ import type { CheckpointRecord } from '../../database/db'
 import attribution from '../../assets/icons/attribution.json'
 import { ChapterOrnament } from '../common/Ornament'
 import { hapticsEnabled, setHapticsEnabled } from '../common/motion'
+import { INSTALL_PROMPT_EVENT, isInstalled, isStandaloneMode } from '../common/installPrompt'
 
 /**
  * Settings (PROJECT_SPEC §27): save management (named checkpoints, JSON
@@ -224,6 +225,31 @@ export default function SettingsScreen() {
           Off by default. Never vibrates when your device asks for reduced motion.
         </p>
       </section>
+
+      {/* Phase H: the install sheet stays reachable after its one
+          auto-showing (or after a dismiss) — hidden once installed. */}
+      {!isStandaloneMode(
+        (q) => window.matchMedia(q),
+        (navigator as { standalone?: unknown }).standalone,
+      ) &&
+        !isInstalled(localStorage) && (
+          <>
+            <p className="chapter-banner mt-4">Install the app</p>
+            <ChapterOrnament />
+            <section className="card-folio mt-2 p-3">
+              <p className="text-xs text-parchment/70">
+                Put the tome on your home screen — Four Against Darkness plays offline
+                after install, no account, no signal needed.
+              </p>
+              <button
+                onClick={() => window.dispatchEvent(new Event(INSTALL_PROMPT_EVENT))}
+                className="btn-cartouche mt-2 px-4 py-2 text-sm"
+              >
+                Install the app
+              </button>
+            </section>
+          </>
+        )}
 
       <p className="chapter-banner mt-4">Credits</p>
       <ChapterOrnament />

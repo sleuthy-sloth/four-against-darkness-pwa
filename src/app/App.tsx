@@ -3,6 +3,7 @@ import TabBar from '../components/layout/TabBar'
 import Router from './router'
 import { TextureOverlay } from '../features/common/Ornament'
 import TutorialCoach from '../features/tutorial/TutorialCoach'
+import InstallPrompt from '../features/common/InstallPrompt'
 
 export default function App() {
   const location = useLocation()
@@ -19,6 +20,9 @@ export default function App() {
       {/* Milestone 4: the how-to-play coach sits above the tab bar while a
           tutorial campaign is live; null otherwise. */}
       <TutorialCoach />
+      {/* Phase H: the install sheet shows once after the first delve;
+          null until then. */}
+      <InstallPrompt />
       <TabBar />
       {/* C7 parchment grain over the whole app — fixed, pointer-transparent */}
       <TextureOverlay />

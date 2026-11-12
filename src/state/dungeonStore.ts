@@ -157,6 +157,20 @@ function appendLog(messages: string[]): void {
   useDungeonStore.setState({ log: [...log, ...messages.map((text) => ({ ts: Date.now(), text }))].slice(-100) })
 }
 
+/**
+ * Mirror an XP award into both the store (the victory card and the exit
+ * gates read it) and the dungeon record (Dexie, so a reload mid-victory
+ * keeps the roll). The two must never drift: a roll that exists in one
+ * but not the other is either unspendable or silently lost.
+ */
+function setPendingXp(
+  dungeon: DungeonState,
+  xp: { major: number; minor: boolean; boss: boolean } | null,
+): void {
+  dungeon.pendingXp = xp
+  useDungeonStore.setState({ pendingXp: xp })
+}
+
 /** Encounter roll for event-spawned Wandering Monsters (FADEE p.153). */
 function rollEncounterSimple(
   state: DungeonState,
@@ -398,7 +412,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     try {
       const existing = await loadDungeon(campaign.id)
       if (existing) {
-        set({ dungeon: existing, busy: false })
+        // A reload mid-victory restores the unspent roll with the dungeon;
+        // without this the XP card never renders and the roll is lost.
+        set({ dungeon: existing, busy: false, pendingXp: existing.pendingXp ?? null })
         return
       }
       const rng = Rng.deserialize(JSON.parse(campaign.rngState))
@@ -422,6 +438,15 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     const { dungeon } = get()
     const { campaign, party } = useCampaignStore.getState()
     if (!dungeon || !campaign) return
+    // XP rolls are assigned before leaving a victory (FADEE p.117): a map
+    // exit must not carry an unspent roll out of the room, where it would
+    // resurface on a later victory's card or be overwritten by the next win.
+    if (get().pendingXp) {
+      appendLog([
+        'Assign your XP rolls before leaving the room — each roll goes to one adventurer (FADEE p.117).',
+      ])
+      return
+    }
     const hcl = Math.max(1, ...party.map((p) => p.level))
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     dungeon.combat = null // leaving any concluded fight behind
@@ -597,7 +622,11 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
         if (carrier && loot.magic) {
           carrier.equipment.push(loot.magic.name)
         }
-        set({ pendingXp: rolls > 0 ? { major: rolls, minor: due.minorEncounter, boss: due.finalBoss } : null })
+        const xp = rolls > 0 ? { major: rolls, minor: due.minorEncounter, boss: due.finalBoss } : null
+        setPendingXp(dungeon, xp)
+        // Persist the award with the dungeon: a reload before the roll is
+        // assigned must restore it, not drop it.
+        await persist(dungeon, rng, campaign.id)
         await appendEvents(campaign.id, 'loot', [
           { ts: Date.now(), text: loot.text },
         ])
@@ -661,7 +690,11 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
         const carrier = party.find((p) => p.status !== 'dead')
         if (carrier && loot.scroll) carrier.equipment.push(`scroll of ${loot.scroll.spell}`)
         if (carrier && loot.magic) carrier.equipment.push(loot.magic.name)
-        set({ pendingXp: rolls > 0 ? { major: rolls, minor: due.minorEncounter, boss: due.finalBoss } : null })
+        const xp = rolls > 0 ? { major: rolls, minor: due.minorEncounter, boss: due.finalBoss } : null
+        setPendingXp(dungeon, xp)
+        // Persist the award with the dungeon: a reload before the roll is
+        // assigned must restore it, not drop it.
+        await persist(dungeon, rng, campaign.id)
         await appendEvents(campaign.id, 'loot', [{ ts: Date.now(), text: loot.text }])
       }
     }
@@ -806,9 +839,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
    * leave the room. A win must not trap the player in the room they just
    * cleared. Mutate first, then persist (same order as the Milestone 4
    * cleared-flag fix: persist reloads the dungeon from Dexie, so a flag
-   * set after persist would be wiped). Unspent XP rolls are left exactly
-   * as explore() leaves them (pendingXp stays set); they are spent from
-   * the victory card before leaving.
+   * set after persist would be wiped). An unspent XP roll holds the party
+   * here: both exits refuse while pendingXp is set, so the roll is spent
+   * from the victory card before leaving (FADEE p.117).
    */
   leaveCombat: async () => {
     await snap('leaveCombat', useCampaignStore.getState().campaign?.id ?? '')
@@ -816,6 +849,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     const { campaign } = useCampaignStore.getState()
     if (!dungeon || !campaign || !dungeon.combat) return
     if (!canLeaveCombat(dungeon.combat.phase)) return
+    // Backstop for the disabled button: an unspent roll holds the party in
+    // the room until it is assigned (FADEE p.117).
+    if (get().pendingXp) return
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     dungeon.combat = null
     await persist(dungeon, rng, campaign.id)
@@ -843,11 +879,14 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       pc.currentLife += 1
       entries.push({ ts: Date.now(), text: `${pc.name} reaches L${pc.level}: +1 max and current Life, bonuses increase.` })
     }
-    // Consume one available roll (Major/boss rolls are per-kill; minors accrue)
+    // Consume one available roll (Major/boss rolls are per-kill; minors accrue).
+    // Mirror into the dungeon record so a reload after spending keeps the
+    // remaining count; the persist below saves it.
     const { pendingXp } = get()
     if (pendingXp) {
       const remaining = pendingXp.major > 0 ? pendingXp.major - 1 : 0
-      set({ pendingXp: remaining > 0 ? { ...pendingXp, major: remaining } : null })
+      dungeon.pendingXp = remaining > 0 ? { ...pendingXp, major: remaining } : null
+      set({ pendingXp: dungeon.pendingXp })
     }
     const { saveParty } = await import('../database/repositories/campaignRepo')
     await saveParty(campaign.id, party)

@@ -105,6 +105,10 @@ export interface DungeonState {
   pendingAmbush?: EncounterRoll | null
   /** Minor encounters defeated toward the next XP roll (FADEE p.117). */
   minorEncountersTally?: number
+  /** XP rolls earned by the current victory, awaiting assignment (FADEE
+      p.117). Lives on the dungeon so a reload mid-victory keeps the roll;
+      the store mirrors it for the UI. Null when no roll is due. */
+  pendingXp?: { major: number; minor: boolean; boss: boolean } | null
   /** Fountains seen this adventure (first one heals, FADEE p.152). */
   fountainsSeen?: number
   /** Healer/alchemist met this adventure (once only, FADEE p.153). */

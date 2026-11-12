@@ -107,7 +107,7 @@ function MapIcon({ frag, x, y, size = 0.62, className = 'map-icon' }: { frag: st
  */
 export default function DungeonScreen() {
   const navigate = useNavigate()
-  const { dungeon, log, busy, error, ensureDungeon, explore, search, pendingFind, claimFind, clearError, beginCombat, beginSecretReveal, beginSecretItem, useTreasureLocation, rest, claimQuest, requestUndo, cancelUndo, performUndo, confirmUndo } =
+  const { dungeon, log, busy, error, ensureDungeon, explore, search, pendingFind, claimFind, clearError, beginCombat, beginSecretReveal, beginSecretItem, useTreasureLocation, rest, claimQuest, requestUndo, cancelUndo, performUndo, confirmUndo, pendingXp } =
     useDungeonStore()
   const { campaign, party, loadLastCampaign } = useCampaignStore()
   const [panelOpen, setPanelOpen] = useState(true)
@@ -596,7 +596,11 @@ export default function DungeonScreen() {
                 fill="url(#torchFalloff)"
                 pointerEvents="none"
               />
-              {/* exit tap targets: glowing = unexplored (generate), dim = move through */}
+              {/* exit tap targets: glowing = unexplored (generate), dim = move through.
+                  While an XP roll is unspent the exits are closed: the roll is
+                  assigned from the victory card before leaving (FADEE p.117),
+                  so the discs dim and ignore taps (the store guards explore
+                  too, and the panel explains why). */}
               {tile.exits.map((e) => {
                 const x = e.cell.col + (e.edge === 'E' ? 1 : e.edge === 'W' ? 0 : 0.5)
                 const y = e.cell.row + (e.edge === 'S' ? 1 : e.edge === 'N' ? 0 : 0.5)
@@ -607,11 +611,12 @@ export default function DungeonScreen() {
                     cx={x}
                     cy={y}
                     r={0.34}
-                    className={`cursor-pointer stroke-parchment ${
+                    className={`${pendingXp ? 'pointer-events-none opacity-40' : 'cursor-pointer'} stroke-parchment ${
                       unexplored ? 'fill-torch/80' : 'fill-parchment/50'
                     }`}
                     strokeWidth={0.05}
                     onPointerUp={(ev) => {
+                      if (pendingXp) return
                       if (!dragRef.current?.moved) {
                         ev.stopPropagation()
                         void explore(e.id)

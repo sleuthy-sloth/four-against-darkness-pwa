@@ -288,17 +288,24 @@ export default function CombatPanel() {
       )}
       {(combat.phase === 'won' || combat.phase === 'lost') && (
         <p className="mb-2 text-xs text-parchment/50">
-          Leave via a map exit — loot was rolled on victory and the Journal has the record.
+          {pendingXp
+            ? 'Assign your XP rolls above before leaving — each roll goes to one adventurer (FADEE p.117).'
+            : 'Leave via a map exit — loot was rolled on victory and the Journal has the record.'}
         </p>
       )}
 
       {/* The victory panel must never trap the player: without a dismiss,
           the tile actions (Rest, Search) stay replaced by this panel and
-          the only way out is leaving the room via a map exit. */}
+          the only way out is leaving the room via a map exit. A roll
+          earned here holds the party in the room until it is assigned
+          (FADEE p.117) — the button stays visible but disabled so the
+          reason is in plain sight, and the store guards both exits. */}
       {canLeaveCombat(combat.phase) && (
         <button
           onClick={() => void leaveCombat()}
-          className="btn-wax mb-2 w-full px-4 py-2 text-sm"
+          disabled={!!pendingXp}
+          aria-disabled={!!pendingXp}
+          className="btn-wax mb-2 w-full px-4 py-2 text-sm disabled:opacity-50"
         >
           Back to the room
         </button>
