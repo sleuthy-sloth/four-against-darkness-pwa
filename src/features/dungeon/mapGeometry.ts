@@ -38,6 +38,40 @@ export interface TileGeometry {
   doors: DoorMark[]
 }
 
+/**
+ * Corner caps (Milestone 5 — C4): points where two wall segments meet at a
+ * right angle, so the carved wall treatment gets a square cap at each
+ * corner instead of a mitre gap. T-junctions (three segments) and straight
+ * joins (two collinear segments) are not corners.
+ */
+export function wallCorners(walls: WallSeg[]): Array<{ x: number; y: number }> {
+  const at = new Map<string, Array<{ dx: number; dy: number }>>()
+  const add = (x: number, y: number, dx: number, dy: number) => {
+    const k = `${x},${y}`
+    const list = at.get(k) ?? []
+    list.push({ dx, dy })
+    at.set(k, list)
+  }
+  for (const w of walls) {
+    const dx = Math.sign(w.x2 - w.x1)
+    const dy = Math.sign(w.y2 - w.y1)
+    add(w.x1, w.y1, dx, dy)
+    add(w.x2, w.y2, -dx, -dy)
+  }
+  const corners: Array<{ x: number; y: number }> = []
+  for (const [k, dirs] of at) {
+    if (dirs.length !== 2) continue
+    const [a, b] = dirs
+    // Perpendicular: dot product zero (and neither is a zero vector, which
+    // cannot happen for a wall segment).
+    if (a.dx * b.dx + a.dy * b.dy === 0) {
+      const [x, y] = k.split(',').map(Number)
+      corners.push({ x, y })
+    }
+  }
+  return corners
+}
+
 /** Compute wall segments and door marks for one placed tile. */
 export function tileGeometry(tile: PlacedTile): TileGeometry {
   const cellSet = new Set(tile.cells.map((c) => `${c.row},${c.col}`))

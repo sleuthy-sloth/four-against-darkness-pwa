@@ -43,7 +43,7 @@ export function ChoiceDialog() {
 
   return (
     <div className="fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
-      <div className="w-full rounded-lg border border-torch/40 bg-stone-900 p-4">
+      <div className="panel-in w-full rounded-lg border border-torch/40 bg-stone-900 p-4">
         <p className="text-sm text-torch">{choice.prompt}</p>
         <p className="mt-1 text-[10px] text-parchment/50">{choice.source}</p>
         <div className="mt-3 space-y-2">

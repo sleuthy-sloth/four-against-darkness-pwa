@@ -867,6 +867,11 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
           ? 'The secret door hides a SAFE SHORTCUT OUT of the dungeon! (FADEE p.108)'
           : 'A secret door is drawn on the map — roll a fresh tile beyond it when you step through.',
       })
+      // Milestone 5 (C4): the found door is drawn on the map as a badge on
+      // this tile. Display only — the engine adds no exit for it.
+      const foundTile = dungeon.tiles.find((t) => t.id === pendingFind.tileId)
+      if (foundTile) foundTile.secretDoorFound = true
+      set({ dungeon })
     } else {
       const cs = useCampaignStore.getState()
       if (cs.campaign) {

@@ -1,13 +1,23 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDungeonStore } from '../../state/dungeonStore'
 import { useCampaignStore } from '../../state/campaignStore'
 import { describeEnemies, clericPrayersLeft } from '../../engine/combat/combat'
 import { LogDie } from '../common/Die'
+import FragIcon from '../common/FragIcon'
+import { familyFrag } from './foeIcons'
+import { feedbackForLogLine, feedbackTargetName } from './combatFeedback'
+import { hapticBuzz } from '../common/motion'
 
 /**
  * Combat interface (PROJECT_SPEC §13): party health, enemy group, actions,
  * target selection, and the full combat log. Mechanics resolve in the engine;
  * the player picks targets, waits for reactions, pays bribes, or flees.
+ *
+ * Milestone 5 (D3/E): foes show their family icon + count + level (not a
+ * generic sphere); every numeral is tabular JetBrains Mono; the single
+ * animate-pulse became a real feedback set — hit flash on the foe, a shake
+ * on a failed defense, a slump when foes break morale, and a wax-stamp
+ * Victory / Fallen. All motion is gated by prefers-reduced-motion (CSS).
  */
 export default function CombatPanel() {
   const { dungeon, combatAttack, combatCast, combatCastScroll, combatHeal, combatPotion, combatWait, combatPayBribe, combatFlee, spendXpRoll, pendingXp } =
@@ -17,29 +27,53 @@ export default function CombatPanel() {
   const [showLog, setShowLog] = useState(true)
 
   const combat = dungeon?.combat
+  // Haptics (E): a buzz on victory / defeat, behind the Settings toggle.
+  const prevPhase = useRef(combat?.phase)
+  useEffect(() => {
+    if (combat && prevPhase.current !== combat.phase) {
+      if (combat.phase === 'won') hapticBuzz(10)
+      if (combat.phase === 'lost') hapticBuzz([10, 60, 10])
+      prevPhase.current = combat.phase
+    }
+  }, [combat?.phase])
+
   if (!combat) return null
   const active = combat.enemies.find((e) => !e.fled && e.count > 0 && e.life > 0)
   const bribe = combat.pendingBribe
   const living = party.filter((p) => p.status !== 'dead')
 
+  // Feedback from the engine's latest log line (D3): which foe was hit,
+  // whether a defense failed, whether foes broke morale. The `fb-N` marker
+  // class changes with every log line, so a repeated hit replays its flash.
+  const lastLog = combat.log[combat.log.length - 1]?.text ?? ''
+  const fbKind = feedbackForLogLine(lastLog)
+  const fbTarget = feedbackTargetName(lastLog, combat.enemies.map((e) => e.profile.name))
+  const fbMark = `fb-${combat.log.length}`
+
   return (
     <div className="flex flex-1 flex-col overflow-y-auto p-3 pb-4">
       <div className="mb-2 flex items-baseline justify-between">
-        <h2 className="text-lg text-ember">
-          {combat.phase === 'won' && '⚔ Victory!'}
-          {combat.phase === 'lost' && '☠ The party has fallen'}
-          {combat.phase === 'fled' && 'You fled'}
-          {combat.phase === 'foesTurn' && '⚔ Foes attack!'}
-          {combat.phase === 'pcTurn' && '⚔ Your turn'}
-          {combat.phase === 'opening' && '⚔ Encounter!'}
-        </h2>
-        <span className="text-xs text-parchment/50">round {combat.round}</span>
+        {combat.phase === 'won' ? (
+          <div className="victory-stamp" role="status">Victory</div>
+        ) : combat.phase === 'lost' ? (
+          <div className="victory-stamp" role="status">Fallen</div>
+        ) : (
+          <h2 className="text-lg text-ember">
+            {combat.phase === 'fled' && 'You fled'}
+            {combat.phase === 'foesTurn' && 'Foes attack!'}
+            {combat.phase === 'pcTurn' && 'Your turn'}
+            {combat.phase === 'opening' && 'Encounter!'}
+          </h2>
+        )}
+        <span className="num-tabular font-mono text-xs text-parchment/50">round {combat.round}</span>
       </div>
 
-      {/* enemies */}
+      {/* enemies: family icon + count + level, tabular numerals */}
       <div className="mb-2 space-y-1">
         {combat.enemies.map((e) => {
           const dead = e.fled || e.count === 0 || e.life === 0
+          const hitFlash = fbKind === 'hit' && fbTarget === e.profile.name
+          const moraleSlump = fbKind === 'morale' && e.fled
           return (
             <button
               key={e.id}
@@ -51,26 +85,29 @@ export default function CombatPanel() {
                   : targetId === e.id || (!targetId && active?.id === e.id)
                     ? 'border-ember bg-ember/15 text-parchment'
                     : 'border-stone-700 bg-stone-800/60 text-parchment'
-              }`}
+              } ${hitFlash ? `combat-hit-flash ${fbMark}` : ''} ${moraleSlump ? `combat-morale-slump ${fbMark}` : ''}`}
             >
-              <span className="font-medium">{e.profile.name}</span>
-              <span className="ml-1 text-xs text-parchment/60">
-                {e.profile.major
-                  ? `L${e.level} · Life ${e.life}/${e.maxLife}${e.isFinalBossFlag ? ' · FINAL BOSS' : ''}`
-                  : `L${e.level} · ${e.count} left`}
-                {e.fled && ' · fled'}
+              <span className="flex items-center gap-2">
+                <FragIcon frag={familyFrag(e.profile.family)} size={20} label={e.profile.name} />
+                <span className="font-medium">{e.profile.name}</span>
+                <span className="num-tabular ml-1 font-mono text-xs text-parchment/60">
+                  {e.profile.major
+                    ? `L${e.level} · Life ${e.life}/${e.maxLife}${e.isFinalBossFlag ? ' · FINAL BOSS' : ''}`
+                    : `L${e.level} · ${e.count} left`}
+                  {e.fled && ' · fled'}
+                </span>
               </span>
             </button>
           )
         })}
       </div>
 
-      {/* party */}
-      <div className="mb-2 grid grid-cols-4 gap-1">
+      {/* party: Life numerals tabular; the row shakes on a failed defense */}
+      <div className={`mb-2 grid grid-cols-4 gap-1 ${fbKind === 'defense-fail' ? `combat-defense-shake ${fbMark}` : ''}`}>
         {party.map((p) => (
           <div key={p.id} className="rounded bg-stone-800/60 px-1.5 py-1 text-center">
             <div className="truncate text-[11px] text-parchment">{p.name}</div>
-            <div className={`text-xs ${p.status === 'dead' ? 'text-ember' : 'text-parchment/70'}`}>
+            <div className={`num-tabular font-mono text-xs ${p.status === 'dead' ? 'text-ember' : 'text-parchment/70'}`}>
               {p.currentLife}/{p.maxLife}
             </div>
           </div>
@@ -223,13 +260,14 @@ export default function CombatPanel() {
       )}
 
       {combat.phase === 'foesTurn' && (
-        <p className="mb-2 animate-pulse text-sm text-ember">The Foes attack — defense rolls resolve below…</p>
+        <p className="mb-2 text-sm text-ember">The Foes attack — defense rolls resolve below…</p>
       )}
 
-      {/* outcome */}
+      {/* outcome: the XP-roll prompt is a proper folio card (D3) */}
       {combat.phase === 'won' && pendingXp && (
-        <div className="mb-2 rounded border border-torch/40 bg-torch/10 p-2 text-sm">
-          <p className="text-parchment">
+        <div className="card-folio mb-2 p-3">
+          <p className="font-display text-sm text-torch">Spoils of victory</p>
+          <p className="num-tabular text-sm text-parchment">
             XP earned: {pendingXp.major > 0 && `${pendingXp.major} Major Foe roll(s) `}
             {pendingXp.minor && '1 Minor encounter '}
             {pendingXp.boss && '+ FINAL BOSS bonus'}
@@ -240,7 +278,7 @@ export default function CombatPanel() {
               <button
                 key={p.id}
                 onClick={() => void spendXpRoll(p.id)}
-                className="rounded bg-stone-800 px-2 py-1 text-xs text-parchment"
+                className="btn-cartouche px-2 py-1 text-xs"
               >
                 {p.name} (L{p.level})
               </button>
@@ -262,7 +300,7 @@ export default function CombatPanel() {
         Combat log {showLog ? '▾' : '▴'}
       </button>
       {showLog && (
-        <ul className="space-y-0.5 text-[11px] leading-relaxed text-parchment/70">
+        <ul className="num-tabular space-y-0.5 text-[11px] leading-relaxed text-parchment/70">
           {combat.log.slice(-14).map((l, i) => (
             <li key={i}>
               <LogDie text={l.text} />

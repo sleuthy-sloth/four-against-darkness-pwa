@@ -78,6 +78,13 @@ export interface PlacedTile {
   content: TileContent | null
   searchRoll: number | null // FADEE p.107: one search per tile
   searchResult: string | null
+  /**
+   * A secret door was found by searching this tile (FADEE p.108, Milestone
+   * 5 — C4). Display only: the map shows a secret-door badge on the tile.
+   * The found door has no edge in the engine, so it is a tile badge, not a
+   * door state.
+   */
+  secretDoorFound?: boolean
   /** True when the tile was reached through a secret door (peek rules apply). */
   viaSecretDoor?: boolean
 }

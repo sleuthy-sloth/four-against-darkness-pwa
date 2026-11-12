@@ -162,3 +162,122 @@ h1, h2, h3, h4, .font-headline {
     animation: none;
   }
 }
+
+/* --- Milestone 5 (Phase E motion & feedback, D1/D3) --- */
+
+/* Tabular numerals: JetBrains Mono figures at a fixed width, so the log
+   and the combat numerals never jitter when a number changes. */
+.num-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Log fade (D1): the bottom panel's log is capped at six lines and fades
+   out instead of running as an unbounded list. */
+.log-fade {
+  -webkit-mask-image: linear-gradient(to bottom, black 72%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 72%, transparent 100%);
+}
+
+/* Tile reveal (E): a newly generated tile fades/scales in, 150ms. Only the
+   newest tile gets the class, so retracing never replays it. */
+@keyframes tile-reveal {
+  0% { opacity: 0; transform: scale(0.94); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.tile-reveal {
+  animation: tile-reveal 0.15s ease-out 1;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* "You are here" pulse (C5): a slow ring breathing out from the party
+   token. No timer cause — it marks the party, so it runs while visible. */
+@keyframes party-pulse {
+  0% { transform: scale(1); opacity: 0.7; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+.party-pulse {
+  animation: party-pulse 2s ease-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* Combat feedback set (D3): hit flash, defense shake, morale slump.
+   The shake is the one decided exception to the subtle-motion rule, and
+   like everything here it is instant under reduced motion. */
+@keyframes combat-hit-flash {
+  0% { background-color: rgba(140, 38, 38, 0.45); }
+  100% { background-color: transparent; }
+}
+.combat-hit-flash {
+  animation: combat-hit-flash 0.3s ease-out 1;
+}
+@keyframes combat-defense-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  50% { transform: translateX(4px); }
+  75% { transform: translateX(-2px); }
+}
+.combat-defense-shake {
+  animation: combat-defense-shake 0.3s ease-in-out 1;
+}
+@keyframes combat-morale-slump {
+  0% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0.45; transform: translateY(2px); }
+}
+.combat-morale-slump {
+  animation: combat-morale-slump 0.4s ease-out 1;
+}
+
+/* Wax-stamp Victory / Fallen (D3): a rotated double-ruled oxblood stamp. */
+.victory-stamp {
+  display: inline-block;
+  font-family: 'Noto Serif', Georgia, serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #8c2626;
+  border: 3px double #8c2626;
+  border-radius: 2px;
+  padding: 0.05em 0.5em;
+  transform: rotate(-4deg);
+  animation: stamp-in 0.2s ease-out 1;
+}
+@keyframes stamp-in {
+  0% { opacity: 0; transform: rotate(-4deg) scale(1.4); }
+  100% { opacity: 1; transform: rotate(-4deg) scale(1); }
+}
+
+/* Panels & drawers (E): 200ms slide/fade on mount. */
+@keyframes panel-in {
+  0% { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.panel-in {
+  animation: panel-in 0.2s ease-out 1;
+}
+
+/* Tab switches (E): 120ms crossfade of the content area. */
+@keyframes tab-fade {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+.tab-fade {
+  animation: tab-fade 0.12s ease-out 1;
+}
+
+/* Reduced motion (E): every animation above becomes an instant state
+   change. The stamp keeps its styling; the pulse ring stays as a static
+   ring around the party token. */
+@media (prefers-reduced-motion: reduce) {
+  .tile-reveal,
+  .party-pulse,
+  .combat-hit-flash,
+  .combat-defense-shake,
+  .combat-morale-slump,
+  .victory-stamp,
+  .panel-in,
+  .tab-fade {
+    animation: none;
+  }
+}

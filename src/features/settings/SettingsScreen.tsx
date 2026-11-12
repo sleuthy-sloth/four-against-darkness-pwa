@@ -14,6 +14,7 @@ import {
 import type { CheckpointRecord } from '../../database/db'
 import attribution from '../../assets/icons/attribution.json'
 import { ChapterOrnament } from '../common/Ornament'
+import { hapticsEnabled, setHapticsEnabled } from '../common/motion'
 
 /**
  * Settings (PROJECT_SPEC §27): save management (named checkpoints, JSON
@@ -45,6 +46,8 @@ export default function SettingsScreen() {
   const [checkpoints, setCheckpoints] = useState<CheckpointRecord[]>([])
   const [msg, setMsg] = useState<string | null>(null)
   const [confirmRestore, setConfirmRestore] = useState<CheckpointRecord | null>(null)
+  // Milestone 5 (E): haptics toggle, default off, stored in localStorage.
+  const [haptics, setHaptics] = useState(hapticsEnabled())
   const fileRef = useRef<HTMLInputElement>(null)
 
   const refresh = useCallback(async (id?: string) => {
@@ -197,6 +200,29 @@ export default function SettingsScreen() {
         >
           {tutorialBusy ? 'Preparing…' : 'Learn to play'}
         </button>
+      </section>
+
+      {/* Milestone 5 (E): haptics — a short buzz on engage, victory, and
+          defeat, behind a toggle that defaults off. */}
+      <p className="chapter-banner mt-4">Feedback</p>
+      <ChapterOrnament />
+      <section className="card-folio mt-2 p-3">
+        <p className="text-sm text-torch font-display">Motion &amp; feedback</p>
+        <label className="mt-2 flex items-center gap-2 text-xs text-parchment/80">
+          <input
+            type="checkbox"
+            checked={haptics}
+            onChange={(e) => {
+              setHaptics(e.target.checked)
+              setHapticsEnabled(e.target.checked)
+            }}
+            className="h-4 w-4 accent-[#8c2626]"
+          />
+          Vibrate on engage, victory, and defeat
+        </label>
+        <p className="mt-1 text-[10px] text-parchment/50">
+          Off by default. Never vibrates when your device asks for reduced motion.
+        </p>
       </section>
 
       <p className="chapter-banner mt-4">Credits</p>
