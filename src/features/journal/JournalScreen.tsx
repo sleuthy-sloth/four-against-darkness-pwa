@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useCampaignStore } from '../../state/campaignStore'
 import { loadJournal, type JournalCategory } from '../../database/repositories/journalRepo'
 import type { EventRecord } from '../../database/db'
+import EmptyState from '../common/EmptyState'
+import { ChapterOrnament } from '../common/Ornament'
 
 /**
  * Journal screen (PROJECT_SPEC §26): chronological adventure history with
  * category filters. Events persist to Dexie from every engine action.
+ * Milestone 3 (D4): date separators, drop caps, kit-style filter chips,
+ * per-category ink, long-entry clamping with "read more", illustrated
+ * empty state.
  */
 const CATEGORIES: Array<JournalCategory | 'all'> = [
   'all',
@@ -13,9 +19,47 @@ const CATEGORIES: Array<JournalCategory | 'all'> = [
   'combat',
   'loot',
   'search',
+  'event',
 ]
 
+/** Per-category ink (D4): encounters oxblood, treasure brass, story ink. */
+const CATEGORY_INK: Record<JournalCategory, string> = {
+  explore: 'text-parchment',
+  combat: 'text-torch',
+  loot: 'text-brass',
+  search: 'text-faint',
+  event: 'text-ember',
+}
+
+const CLAMP_AT = 160
+
+function JournalEntry({ entry, dropCap }: { entry: EventRecord; dropCap: boolean }) {
+  const [expanded, setExpanded] = useState(false)
+  const text = String(entry.payload)
+  const long = text.length > CLAMP_AT
+  return (
+    <li className="rounded bg-stone-800/60 px-3 py-2 text-sm">
+      <span
+        className={`mr-2 rounded-sm border border-parchment/40 px-1.5 py-0.5 font-label text-[10px] uppercase ${CATEGORY_INK[entry.type as JournalCategory] ?? 'text-parchment'}`}
+      >
+        {entry.type}
+      </span>
+      {/* long entries clamp to three lines until expanded */}
+      <span className={`${dropCap ? 'drop-cap' : ''} ${long && !expanded ? 'line-clamp-3' : ''}`}>{text}</span>
+      {long && (
+        <button
+          onClick={() => setExpanded((e) => !e)}
+          className="ml-1 text-xs text-torch underline underline-offset-2"
+        >
+          {expanded ? 'show less' : 'read more'}
+        </button>
+      )}
+    </li>
+  )
+}
+
 export default function JournalScreen() {
+  const navigate = useNavigate()
   const { campaign, loadLastCampaign } = useCampaignStore()
   const [entries, setEntries] = useState<EventRecord[]>([])
   const [filter, setFilter] = useState<(typeof CATEGORIES)[number]>('all')
@@ -37,41 +81,80 @@ export default function JournalScreen() {
     [entries, filter],
   )
 
+  const counts = useMemo(() => {
+    const m = new Map<string, number>()
+    entries.forEach((e) => m.set(e.type, (m.get(e.type) ?? 0) + 1))
+    return m
+  }, [entries])
+
+  // Group by calendar date for separators (D4).
+  const groups = useMemo(() => {
+    const out: Array<{ date: string; entries: EventRecord[] }> = []
+    shown.forEach((e) => {
+      const date = new Date(e.timestamp).toLocaleDateString(undefined, {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+      })
+      const last = out[out.length - 1]
+      if (last && last.date === date) last.entries.push(e)
+      else out.push({ date, entries: [e] })
+    })
+    return out
+  }, [shown])
+
   return (
     <div className="flex flex-1 flex-col overflow-y-auto p-4 pb-6">
       <h1 className="text-xl text-torch">Journal</h1>
       <div className="mt-2 flex gap-1 overflow-x-auto pb-2">
-        {CATEGORIES.map((c) => (
-          <button
-            key={c}
-            onClick={() => setFilter(c)}
-            className={`shrink-0 rounded-full border px-3 py-1 text-xs ${
-              filter === c
-                ? 'border-torch bg-torch/15 text-torch'
-                : 'border-stone-700 bg-stone-800/60 text-parchment/60'
-            }`}
-          >
-            {c}
-          </button>
-        ))}
+        {CATEGORIES.map((c) => {
+          const count = c === 'all' ? entries.length : (counts.get(c) ?? 0)
+          return (
+            <button
+              key={c}
+              onClick={() => setFilter(c)}
+              className={`shrink-0 rounded-sm border px-3 py-1 font-label text-xs ${
+                filter === c
+                  ? 'border-torch bg-torch/15 text-torch'
+                  : 'border-parchment/40 bg-stone-800/60 text-parchment/60'
+              }`}
+            >
+              {c} · {count}
+            </button>
+          )
+        })}
       </div>
       {!loaded ? (
         <p className="text-parchment/50">Loading…</p>
       ) : shown.length === 0 ? (
-        <p className="mt-4 text-sm text-parchment/60">
-          Nothing recorded yet. Every room, fight and treasure is logged here.
-        </p>
+        <EmptyState
+          kind="journal"
+          title="Blank pages"
+          body="Nothing recorded yet. Every room, fight and treasure is logged here as you delve."
+          action={
+            <button onClick={() => navigate('/dungeon')} className="btn-wax px-6 py-3">
+              Explore the dungeon
+            </button>
+          }
+        />
       ) : (
-        <ul className="mt-2 space-y-1">
-          {shown.map((e) => (
-            <li key={e.id} className="rounded bg-stone-800/60 px-3 py-2 text-sm">
-              <span className="mr-2 rounded bg-stone-700 px-1.5 py-0.5 text-[10px] uppercase text-parchment/60">
-                {e.type}
-              </span>
-              {String(e.payload)}
-            </li>
+        <div className="mt-2 space-y-3">
+          {groups.map((g) => (
+            <section key={g.date}>
+              <div className="mb-1 flex items-center gap-2">
+                <span className="h-px flex-1 bg-parchment/30" />
+                <p className="chapter-banner !text-[11px]">{g.date}</p>
+                <span className="h-px flex-1 bg-parchment/30" />
+              </div>
+              <ul className="space-y-1">
+                {g.entries.map((e, i) => (
+                  <JournalEntry key={e.id} entry={e} dropCap={i === 0} />
+                ))}
+              </ul>
+            </section>
           ))}
-        </ul>
+          <ChapterOrnament className="pt-2" />
+        </div>
       )}
     </div>
   )

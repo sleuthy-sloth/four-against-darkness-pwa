@@ -1,25 +1,56 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useCampaignStore } from '../../state/campaignStore'
 import { useDungeonStore } from '../../state/dungeonStore'
 import { ITEM_INFO, SHOP_STOCK, sameBuild, NO_MAGIC_CLASSES } from '../../rulesets/expanded/features'
 import { applyBandage, drinkHealingPotion } from '../../engine/combat/combat'
 import { saveParty } from '../../database/repositories/campaignRepo'
 import type { Character } from '../../rulesets/schema/character'
+import ItemIcon from './ItemIcon'
+import EmptyState from '../common/EmptyState'
+import { CoinDevice } from '../common/Ornament'
 
 /**
  * Inventory screen (PROJECT_SPEC §25): party equipment, gold, consumables.
  * Exchange rules per FADEE p.111: outside combat; armor only between same
  * builds; spells/prayers are never equipment; scrolls can be exchanged.
+ * Milestone 3 (D5): every item gets its icon, gold is a brass numeral with
+ * a coin device, consumable counts are badges, and unusable-here items are
+ * visibly disabled with the reason instead of silently absent.
  */
 export default function InventoryScreen() {
-  const { party, campaign } = useCampaignStore()
+  const navigate = useNavigate()
+  const { party, campaign, loadLastCampaign } = useCampaignStore()
   const { dungeon, error, clearError, buyItem } = useDungeonStore()
   const [msg, setMsg] = useState<string | null>(null)
   const [moveItem, setMoveItem] = useState<{ pcId: string; item: string } | null>(null)
   const [buying, setBuying] = useState<string | null>(null)
+  const [loaded, setLoaded] = useState(false)
+
+  // Deep-link / PWA-relaunch safety: the store starts empty on a fresh
+  // load, so reload the last campaign like the other screens do — otherwise
+  // a real party would read as "Empty packs".
+  useEffect(() => {
+    loadLastCampaign().finally(() => setLoaded(true))
+  }, [loadLastCampaign])
+
+  if (!loaded) {
+    return <div className="screen-placeholder text-parchment/50">Loading…</div>
+  }
 
   if (!party.length) {
-    return <div className="p-4 text-parchment/60">Create a party first.</div>
+    return (
+      <EmptyState
+        kind="inventory"
+        title="Empty packs"
+        body="No party, no packs. Create a party first — every adventurer starts with a class kit."
+        action={
+          <button onClick={() => navigate(campaign ? '/party/new' : '/campaign')} className="btn-wax px-6 py-3">
+            {campaign ? 'Form your party' : 'Start a campaign first'}
+          </button>
+        }
+      />
+    )
   }
   const inCombat = !!dungeon?.combat
   const living = party.filter((p) => p.status !== 'dead')
@@ -70,6 +101,17 @@ export default function InventoryScreen() {
     }
   }
 
+  /** Collapse duplicate equipment strings into (item, count) rows. */
+  const grouped = (equipment: string[]): Array<{ item: string; count: number }> => {
+    const rows: Array<{ item: string; count: number }> = []
+    equipment.forEach((item) => {
+      const row = rows.find((r) => r.item === item)
+      if (row) row.count += 1
+      else rows.push({ item, count: 1 })
+    })
+    return rows
+  }
+
   return (
     <div className="flex flex-1 flex-col overflow-y-auto p-4 pb-6">
       <h1 className="text-xl text-torch">Inventory</h1>
@@ -87,9 +129,10 @@ export default function InventoryScreen() {
               <button
                 key={item}
                 onClick={() => setBuying(item)}
-                className="rounded border border-stone-600 bg-stone-800 px-2.5 py-1.5 text-xs text-parchment"
+                className="flex items-center gap-1.5 rounded border border-stone-600 bg-stone-800 px-2.5 py-1.5 text-xs text-parchment"
                 title={ITEM_INFO[item].text}
               >
+                <ItemIcon item={item} size={16} />
                 {item} · {ITEM_INFO[item].price}gp
               </button>
             ))}
@@ -104,45 +147,85 @@ export default function InventoryScreen() {
               <span className="text-parchment">
                 {pc.name} <span className="text-parchment/50">({pc.classId} L{pc.level})</span>
               </span>
-              <span className="text-torch">{pc.gold} gp</span>
+              <span className="flex items-center gap-1.5">
+                <CoinDevice size={14} />
+                <span className="font-mono text-sm font-bold text-brass">{pc.gold}</span>
+                <span className="text-xs text-parchment/60">gp</span>
+              </span>
             </div>
             {pc.status === 'dead' && <p className="text-xs text-ember">Dead — allies may loot the body (FADEE p.104).</p>}
             <ul className="mt-2 space-y-1">
-              {pc.equipment.map((item, i) => (
-                <li key={`${item}-${i}`} className="flex items-center gap-2 text-sm">
-                  <span className="flex-1 text-parchment/90">
-                    {item}
-                    {ITEM_INFO[item] && <span className="ml-1 text-[10px] text-parchment/40">{ITEM_INFO[item].source}</span>}
-                  </span>
-                  {NO_MAGIC_CLASSES.has(pc.classId) && (item.startsWith('scroll') || item === 'healing potion') && (
-                    <span className="text-[10px] text-ember">barbarians may not use this</span>
-                  )}
-                  {!NO_MAGIC_CLASSES.has(pc.classId) && (item === 'healing potion' || item === 'bandage') && pc.status !== 'dead' && (
-                    <button
-                      onClick={() => void useItem(pc, item)}
-                      className="rounded bg-stone-700 px-2 py-0.5 text-[10px] text-parchment"
-                    >
-                      use
-                    </button>
-                  )}
-                  {pc.status !== 'dead' && !item.startsWith('scroll of ') && !ITEM_INFO[item] && (
-                    <button
-                      onClick={() => setMoveItem({ pcId: pc.id, item })}
-                      className="rounded bg-stone-700 px-2 py-0.5 text-[10px] text-parchment"
-                    >
-                      give
-                    </button>
-                  )}
-                  {pc.status !== 'dead' && item.startsWith('scroll of ') && (
-                    <button
-                      onClick={() => setMoveItem({ pcId: pc.id, item })}
-                      className="rounded bg-stone-700 px-2 py-0.5 text-[10px] text-parchment"
-                    >
-                      give
-                    </button>
-                  )}
-                </li>
-              ))}
+              {grouped(pc.equipment).map(({ item, count }) => {
+                const noMagic = NO_MAGIC_CLASSES.has(pc.classId) && (item.startsWith('scroll') || item === 'healing potion')
+                const isBandage = item === 'bandage'
+                const isPotion = item === 'healing potion'
+                const usable = !noMagic && (isPotion || isBandage) && pc.status !== 'dead'
+                // Why an item can't be used here, shown instead of hiding the action (D5).
+                const disabledReason = noMagic
+                  ? 'barbarians may not use this'
+                  : isBandage && inCombat
+                    ? 'never in combat (p.83)'
+                    : isPotion && inCombat
+                      ? 'use in the combat panel'
+                      : null
+                return (
+                  <li key={item} className="flex items-center gap-2 text-sm">
+                    <ItemIcon item={item} size={20} />
+                    <span className="flex-1 text-parchment/90">
+                      {item}
+                      {count > 1 && (
+                        <span className="ml-1.5 rounded-full border border-torch/50 bg-torch/10 px-1.5 py-0.5 font-mono text-[10px] text-torch">
+                          ×{count}
+                        </span>
+                      )}
+                      {ITEM_INFO[item] && <span className="ml-1 text-[10px] text-parchment/40">{ITEM_INFO[item].source}</span>}
+                    </span>
+                    {disabledReason && <span className="text-[10px] text-ember">{disabledReason}</span>}
+                    {usable && !inCombat && (
+                      <button
+                        onClick={() => void useItem(pc, item)}
+                        className="rounded bg-stone-700 px-2 py-0.5 text-[10px] text-parchment"
+                      >
+                        use
+                      </button>
+                    )}
+                    {usable && inCombat && isPotion && (
+                      <button
+                        disabled
+                        title="Healing potions are used from the combat panel during a fight."
+                        className="rounded bg-stone-700 px-2 py-0.5 text-[10px] text-parchment/40"
+                      >
+                        use
+                      </button>
+                    )}
+                    {usable && inCombat && isBandage && (
+                      <button
+                        disabled
+                        title="Bandages may not be applied in combat. (FADEE p.83)"
+                        className="rounded bg-stone-700 px-2 py-0.5 text-[10px] text-parchment/40"
+                      >
+                        use
+                      </button>
+                    )}
+                    {pc.status !== 'dead' && !item.startsWith('scroll of ') && !ITEM_INFO[item] && (
+                      <button
+                        onClick={() => setMoveItem({ pcId: pc.id, item })}
+                        className="rounded bg-stone-700 px-2 py-0.5 text-[10px] text-parchment"
+                      >
+                        give
+                      </button>
+                    )}
+                    {pc.status !== 'dead' && item.startsWith('scroll of ') && (
+                      <button
+                        onClick={() => setMoveItem({ pcId: pc.id, item })}
+                        className="rounded bg-stone-700 px-2 py-0.5 text-[10px] text-parchment"
+                      >
+                        give
+                      </button>
+                    )}
+                  </li>
+                )
+              })}
             </ul>
             {pc.conditions.filter((c) => c !== 'prayer:healing:n' && c !== 'prayer:blessing:n').length > 0 && (
               <p className="mt-1 text-[10px] text-ember/80">
@@ -185,7 +268,10 @@ export default function InventoryScreen() {
       {buying && (
         <div className="fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
           <div className="w-full rounded-lg border border-torch/40 bg-stone-900 p-4">
-            <p className="text-sm text-torch">Who buys the {buying} ({ITEM_INFO[buying].price}gp)?</p>
+            <p className="flex items-center gap-1.5 text-sm text-torch">
+              Who buys the {buying} (<CoinDevice size={14} />
+              <span className="font-mono font-bold text-brass">{ITEM_INFO[buying].price}</span> gp)?
+            </p>
             <div className="mt-3 flex flex-wrap gap-2">
               {living.map((p) => (
                 <button
@@ -196,8 +282,9 @@ export default function InventoryScreen() {
                     setMsg(`${p.name} buys ${buying}.`)
                     setBuying(null)
                   }}
-                  className="rounded border border-stone-600 bg-stone-800 px-3 py-2 text-sm text-parchment disabled:opacity-40"
+                  className="flex items-center gap-1.5 rounded border border-stone-600 bg-stone-800 px-3 py-2 text-sm text-parchment disabled:opacity-40"
                 >
+                  <ItemIcon item={buying} size={16} />
                   {p.name} ({p.gold}gp)
                 </button>
               ))}

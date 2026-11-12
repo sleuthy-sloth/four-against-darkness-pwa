@@ -13,6 +13,27 @@ import demonFrag from '../../src/assets/icons/demon.svg.frag?raw'
 import beastFrag from '../../src/assets/icons/beast.svg.frag?raw'
 import constructFrag from '../../src/assets/icons/construct.svg.frag?raw'
 import skullFrag from '../../src/assets/icons/skull.svg.frag?raw'
+// Milestone 3 (C3): feature & treasure icons + consumable/equipment icons
+import fountainFrag from '../../src/assets/icons/fountain.svg.frag?raw'
+import secretDoorFrag from '../../src/assets/icons/secret-door.svg.frag?raw'
+import templeFrag from '../../src/assets/icons/temple.svg.frag?raw'
+import statueFrag from '../../src/assets/icons/statue.svg.frag?raw'
+import chestFrag from '../../src/assets/icons/chest.svg.frag?raw'
+import stairsFrag from '../../src/assets/icons/stairs.svg.frag?raw'
+import potionFrag from '../../src/assets/icons/potion.svg.frag?raw'
+import bandageFrag from '../../src/assets/icons/bandage.svg.frag?raw'
+import scrollFrag from '../../src/assets/icons/scroll.svg.frag?raw'
+import nailsFrag from '../../src/assets/icons/nails.svg.frag?raw'
+import ropeFrag from '../../src/assets/icons/rope.svg.frag?raw'
+import lanternFrag from '../../src/assets/icons/lantern.svg.frag?raw'
+import rationsFrag from '../../src/assets/icons/rations.svg.frag?raw'
+import lightArmorFrag from '../../src/assets/icons/light-armor.svg.frag?raw'
+import heavyArmorFrag from '../../src/assets/icons/heavy-armor.svg.frag?raw'
+import shieldFrag from '../../src/assets/icons/shield.svg.frag?raw'
+import handWeaponFrag from '../../src/assets/icons/hand-weapon.svg.frag?raw'
+import lightWeaponFrag from '../../src/assets/icons/light-weapon.svg.frag?raw'
+import bowFrag from '../../src/assets/icons/bow.svg.frag?raw'
+import lockpicksFrag from '../../src/assets/icons/lockpicks.svg.frag?raw'
 
 const FRAG =
   '<path d="M0 0h512v512H0z"/><path fill="#fff" d="M10 10h10v10H10z"/><path fill="#000" d="M20 20h5v5H20z"/>'
@@ -48,6 +69,27 @@ describe('cleanIconFragment (visual polish Fix #0)', () => {
     ['construct', constructFrag],
     // skull recentered in its frag (C2): glyph was at canvas (128,128)
     ['skull', skullFrag],
+    // Milestone 3 (C3): feature & treasure icons + consumable/equipment icons
+    ['fountain', fountainFrag],
+    ['secret-door', secretDoorFrag],
+    ['temple', templeFrag],
+    ['statue', statueFrag],
+    ['chest', chestFrag],
+    ['stairs', stairsFrag],
+    ['potion', potionFrag],
+    ['bandage', bandageFrag],
+    ['scroll', scrollFrag],
+    ['nails', nailsFrag],
+    ['rope', ropeFrag],
+    ['lantern', lanternFrag],
+    ['rations', rationsFrag],
+    ['light-armor', lightArmorFrag],
+    ['heavy-armor', heavyArmorFrag],
+    ['shield', shieldFrag],
+    ['hand-weapon', handWeaponFrag],
+    ['light-weapon', lightWeaponFrag],
+    ['bow', bowFrag],
+    ['lockpicks', lockpicksFrag],
   ])('cleans the real %s fragment: no white fill, no background square', (_name, frag) => {
     const out = cleanIconFragment(frag)
     expect(out).not.toContain('fill="#fff"')

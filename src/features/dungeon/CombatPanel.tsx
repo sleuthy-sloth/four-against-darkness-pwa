@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useDungeonStore } from '../../state/dungeonStore'
 import { useCampaignStore } from '../../state/campaignStore'
 import { describeEnemies, clericPrayersLeft } from '../../engine/combat/combat'
+import { LogDie } from '../common/Die'
 
 /**
  * Combat interface (PROJECT_SPEC §13): party health, enemy group, actions,
@@ -263,7 +264,10 @@ export default function CombatPanel() {
       {showLog && (
         <ul className="space-y-0.5 text-[11px] leading-relaxed text-parchment/70">
           {combat.log.slice(-14).map((l, i) => (
-            <li key={i}>· {l.text}</li>
+            <li key={i}>
+              <LogDie text={l.text} />
+              · {l.text}
+            </li>
           ))}
         </ul>
       )}

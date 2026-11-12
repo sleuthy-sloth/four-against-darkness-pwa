@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useCampaignStore } from '../../state/campaignStore'
 import {
   exportCampaign,
@@ -10,12 +10,32 @@ import {
   type CampaignArchive,
 } from '../../database/repositories/backupRepo'
 import type { CheckpointRecord } from '../../database/db'
+import attribution from '../../assets/icons/attribution.json'
+import { ChapterOrnament } from '../common/Ornament'
 
 /**
  * Settings (PROJECT_SPEC §27): save management (named checkpoints, JSON
  * export/import), ruleset/credits info. Sound/haptics toggles arrive with
  * the polish milestone.
+ * Milestone 3 (D6): grouped into Save / Ruleset / Credits with chapter
+ * banners; credits render from attribution.json (single source of truth).
  */
+
+/** Group attribution.json entries by author for the credits list. */
+function creditsByAuthor(): Array<{ author: string; icons: string[] }> {
+  const groups = new Map<string, string[]>()
+  Object.entries(attribution as Record<string, string>).forEach(([icon, source]) => {
+    const author = source.includes('/')
+      ? source.split('/')[0]
+      : 'Original art'
+    const list = groups.get(author) ?? []
+    list.push(icon)
+    groups.set(author, list)
+  })
+  return [...groups.entries()]
+    .map(([author, icons]) => ({ author, icons: icons.sort() }))
+    .sort((a, b) => a.author.localeCompare(b.author))
+}
 export default function SettingsScreen() {
   const { campaign, party, loadLastCampaign } = useCampaignStore()
   const [checkpoints, setCheckpoints] = useState<CheckpointRecord[]>([])
@@ -79,6 +99,7 @@ export default function SettingsScreen() {
   }
 
   const live = !!campaign && party.length > 0
+  const credits = useMemo(() => creditsByAuthor(), [])
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto p-4 pb-6">
@@ -89,7 +110,9 @@ export default function SettingsScreen() {
         </p>
       )}
 
-      <section className="card-folio p-3">
+      <p className="chapter-banner mt-4">Save</p>
+      <ChapterOrnament />
+      <section className="card-folio mt-2 p-3">
         <p className="text-sm text-torch font-display">Save management (PROJECT_SPEC §18)</p>
         {!live && <p className="mt-1 text-xs text-parchment/50">Create a campaign first — saves are per campaign.</p>}
         {live && (
@@ -140,24 +163,38 @@ export default function SettingsScreen() {
         )}
       </section>
 
-      <section className="card-folio p-3">
-        <p className="text-sm text-torch font-display">Ruleset</p>
-        <p className="mt-1 text-xs text-parchment/70">
+      <p className="chapter-banner mt-4">Ruleset</p>
+      <ChapterOrnament />
+      <section className="card-folio mt-2 p-3">
+        <p className="text-xs text-parchment/70">
           Four Against Darkness — Expanded Edition. All mechanics are page-cited in
           docs/RULES_VERIFICATION.md; nothing is invented. Other environments and
           supplements land in Release 0.5+.
         </p>
       </section>
 
-      <section className="card-folio p-3">
+      <p className="chapter-banner mt-4">Credits</p>
+      <ChapterOrnament />
+      <section className="card-folio mt-2 p-3">
         <p className="text-sm text-torch font-display">Credits & licensing</p>
         <p className="mt-1 text-xs text-parchment/70">
           An original implementation of the Four Against Darkness rules. Game code and
-          rules data: MIT. Icon art from game-icons.net (CC BY 3.0 — see
-          src/assets/icons/ATTRIBUTION.md). Four Against Darkness is © Andrea Sfiligoi /
+          rules data: MIT. Four Against Darkness is © Andrea Sfiligoi /
           Grieving Willow Games; no rulebook text or art is reproduced here. Not
           affiliated with or endorsed by the publisher.
         </p>
+        {/* Icon credits render from attribution.json — the single source of
+            truth (D6/C8). Full per-icon sources live in ATTRIBUTION.md. */}
+        <div className="mt-3 space-y-2">
+          {credits.map(({ author, icons }) => (
+            <div key={author}>
+              <p className="font-label text-[10px] uppercase tracking-wide text-faint">
+                {author === 'Original art' ? 'Original art' : `${author} · game-icons.net (CC BY 3.0)`}
+              </p>
+              <p className="text-xs text-parchment/70">{icons.join(' · ')}</p>
+            </div>
+          ))}
+        </div>
       </section>
 
       {confirmRestore && (

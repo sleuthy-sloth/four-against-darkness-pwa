@@ -13,6 +13,27 @@
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="icon" href="/icons/icon-192.png" />
     <title>Four Against Darkness</title>
+    <!-- B5: thin progress rule under the splash lockup. Inline here so it
+         animates during first paint, before the bundle (and index.css) loads. -->
+    <style>
+      @keyframes splash-progress {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(250%); }
+      }
+      .splash-progress {
+        width: 160px;
+        height: 2px;
+        overflow: hidden;
+        background: rgba(43, 36, 31, 0.15);
+      }
+      .splash-progress > span {
+        display: block;
+        width: 40%;
+        height: 100%;
+        background: #8c2626;
+        animation: splash-progress 1.2s ease-in-out infinite;
+      }
+    </style>
   </head>
   <body>
     <!-- First-paint splash (plan item B5): the Tome & Delve lockup on parchment
@@ -23,8 +44,10 @@
         style="
           min-height: 100dvh;
           display: flex;
+          flex-direction: column;
           align-items: center;
           justify-content: center;
+          gap: 28px;
           background: #e8dfca;
           padding: 24px;
         "
@@ -84,6 +107,7 @@
             Four Against Darkness
           </text>
         </svg>
+        <div class="splash-progress" aria-hidden="true"><span></span></div>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>

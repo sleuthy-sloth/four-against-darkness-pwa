@@ -112,3 +112,53 @@ h1, h2, h3, h4, .font-headline {
   paint-order: stroke;
   stroke-linejoin: round;
 }
+
+/* --- Milestone 3 (C7 texture & ornament, D2 life delta, D4 drop caps) --- */
+
+/* Soft vignette on full-screen views: darkens the corners so the centre
+   reads as torch-lit. Pointer-transparent; never intercepts taps. */
+.vignette {
+  background: radial-gradient(ellipse at center, transparent 62%, rgba(43, 36, 31, 0.16) 100%);
+}
+
+/* Journal drop cap (D4): the first letter of a date group's first entry
+   sets in Noto Serif, oxblood, three lines tall. */
+.drop-cap::first-letter {
+  font-family: 'Noto Serif', Georgia, serif;
+  font-weight: 700;
+  font-size: 2.6em;
+  line-height: 0.9;
+  float: left;
+  padding-right: 0.12em;
+  color: #8c2626;
+}
+
+/* Life-bar delta flash (D2): a one-shot 600ms ember pulse when a PC's Life
+   changes. Disabled under prefers-reduced-motion (instant state change). */
+@keyframes life-delta {
+  0% { background-color: #8c2626; }
+  100% { background-color: transparent; }
+}
+.life-delta {
+  animation: life-delta 0.6s ease-out 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .life-delta {
+    animation: none;
+  }
+}
+
+/* First-paint splash progress rule (B5): a thin oxblood rule with a slow
+   travelling segment while the bundle loads. */
+@keyframes splash-rule {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
+.splash-progress {
+  animation: splash-rule 1.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .splash-progress {
+    animation: none;
+  }
+}

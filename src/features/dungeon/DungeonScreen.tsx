@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   currentTile,
   openExits,
@@ -26,10 +27,16 @@ import statueIcon from '../../assets/icons/statue.svg.frag?raw'
 import altarIcon from '../../assets/icons/altar.svg.frag?raw'
 import boxIcon from '../../assets/icons/box.svg.frag?raw'
 import skullIcon from '../../assets/icons/skull.svg.frag?raw'
+import stairsIcon from '../../assets/icons/stairs.svg.frag?raw'
+import secretDoorIcon from '../../assets/icons/secret-door.svg.frag?raw'
 import partyIconFrag from '../../assets/icons/party.svg.frag?raw'
 import type { TileContent } from '../../engine/dungeon/generate'
 import type { MonsterFamily } from '../../rulesets/expanded/monsters'
 import { cleanIconFragment } from '../common/iconUtils'
+import { LogDie } from '../common/Die'
+import { TornEdge } from '../common/Ornament'
+import EmptyState from '../common/EmptyState'
+import FragIcon from '../common/FragIcon'
 
 /** Monster family → map icon (plan item C2). Goblinoid reuses the goblin-head. */
 const FAMILY_ICONS: Record<MonsterFamily, string> = {
@@ -43,8 +50,13 @@ const FAMILY_ICONS: Record<MonsterFamily, string> = {
 }
 
 /** Iconography lookup for a tile's content (FADEE p.152 kinds). */
-function contentIcon(content: TileContent | null): { frag: string; boss: boolean; size?: number } | null {
-  if (!content) return null
+function contentIcon(
+  content: TileContent | null,
+  isEntrance = false,
+): { frag: string; boss: boolean; size?: number } | null {
+  // The entrance tile never rolls content (FADEE p.104) — it gets the stairs
+  // down, so the way in reads as a way in (plan item C3).
+  if (!content) return isEntrance ? { frag: cleanIconFragment(stairsIcon), boss: false } : null
   const plain = (frag: string) => ({ frag: cleanIconFragment(frag), boss: false })
   switch (content.kind) {
     case 'treasure':
@@ -98,6 +110,7 @@ function MapIcon({ frag, x, y, size = 0.62, className = 'map-icon' }: { frag: st
  * pinch/buttons to zoom, recenter on the party. Collapsible bottom panel.
  */
 export default function DungeonScreen() {
+  const navigate = useNavigate()
   const { dungeon, log, busy, error, ensureDungeon, explore, search, pendingFind, claimFind, clearError, beginCombat, beginSecretReveal, beginSecretItem, useTreasureLocation, rest, claimQuest, requestUndo, cancelUndo, performUndo, confirmUndo } =
     useDungeonStore()
   const { campaign, party, loadLastCampaign } = useCampaignStore()
@@ -164,13 +177,31 @@ export default function DungeonScreen() {
   }
 
   if (!campaign) {
-    return <div className="screen-placeholder text-parchment/50">Start a campaign first.</div>
+    return (
+      <EmptyState
+        kind="campaign"
+        title="No campaign yet"
+        body="The delve begins with a campaign — four adventurers, one dungeon, one story."
+        action={
+          <button onClick={() => navigate('/campaign')} className="btn-wax px-6 py-3">
+            Start a campaign first
+          </button>
+        }
+      />
+    )
   }
   if (party.length < 4) {
     return (
-      <div className="screen-placeholder">
-        <p className="max-w-xs text-sm text-parchment/70">Form your party before delving.</p>
-      </div>
+      <EmptyState
+        kind="party"
+        title="Four chairs, empty"
+        body="A delve needs four adventurers. Form your party and the dungeon will wait."
+        action={
+          <button onClick={() => navigate('/party/new')} className="btn-wax px-6 py-3">
+            Form your party
+          </button>
+        }
+      />
     )
   }
   if (!dungeon || !tile || !bounds) {
@@ -220,7 +251,7 @@ export default function DungeonScreen() {
             {dungeon.tiles.map((t) => {
               const geo = tileGeometry(t)
               const isCurrent = t.id === tile.id
-              const icon = contentIcon(t.content)
+              const icon = contentIcon(t.content, t.id === dungeon.tiles[0].id)
               const cx = t.cells.reduce((n, c) => n + c.col, 0) / Math.max(1, t.cells.length) + 0.5
               const cy = t.cells.reduce((n, c) => n + c.row, 0) / Math.max(1, t.cells.length) + 0.5
               return (
@@ -344,6 +375,9 @@ export default function DungeonScreen() {
           </g>
         </svg>
 
+        {/* torch-lit vignette (C7): soft dark corners over the map, never intercepting taps */}
+        <div aria-hidden="true" className="vignette pointer-events-none absolute inset-0" />
+
         {/* map controls */}
         <div className="absolute right-2 top-2 flex flex-col gap-1">
           <button
@@ -373,6 +407,9 @@ export default function DungeonScreen() {
           </button>
         </div>
       </div>
+
+      {/* torn parchment edge (C7) between the map and the panel below it */}
+      <TornEdge />
 
       {/* bottom panel: combat replaces the exploration panel */}
       {dungeon.combat ? (
@@ -506,7 +543,11 @@ export default function DungeonScreen() {
                       className="rounded border border-stone-700 bg-stone-800 px-2 py-1 text-xs text-parchment disabled:opacity-40"
                     >
                       {choice === 'hidden-treasure' && 'Hidden treasure'}
-                      {choice === 'secret-door' && 'Secret door'}
+                      {choice === 'secret-door' && (
+                        <>
+                          <FragIcon frag={secretDoorIcon} size={14} label="Secret door" /> Secret door
+                        </>
+                      )}
                       {choice === 'secret-passage' && 'Secret passage (0.5)'}
                       {choice === 'clue' && '1 Clue'}
                     </button>
@@ -522,7 +563,10 @@ export default function DungeonScreen() {
             )}
             <ul className="space-y-0.5 text-xs text-parchment/60">
               {log.slice(-6).map((l, i) => (
-                <li key={i}>· {l.text}</li>
+                <li key={i}>
+                  <LogDie text={l.text} />
+                  · {l.text}
+                </li>
               ))}
             </ul>
             {error && (

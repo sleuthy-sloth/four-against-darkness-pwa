@@ -1,5 +1,6 @@
 import TabBar from '../components/layout/TabBar'
 import Router from './router'
+import { TextureOverlay } from '../features/common/Ornament'
 
 export default function App() {
   return (
@@ -8,6 +9,8 @@ export default function App() {
         <Router />
       </main>
       <TabBar />
+      {/* C7 parchment grain over the whole app — fixed, pointer-transparent */}
+      <TextureOverlay />
     </div>
   )
 }
