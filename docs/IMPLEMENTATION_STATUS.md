@@ -28,6 +28,33 @@
 
 - [ ] Release 0.5 scope: environments (caverns/grottoes tables + secret passages), quest types 3/4 (subdual capture, item retrieval), trinket magic-item effects, light/darkness, more XP systems
 
+## Completed Work (Visual polish milestone 2 — art direction, 2026-11-11)
+
+- [x] Portraits (plan C1): warrior → `delapouite/viking-head.svg`, cleric →
+  `delapouite/monk-face.svg`, halfling → `cathelineau/bad-gnome.svg` (all clean
+  line-art faces; the other five were already faces). Frags ship clean (no bg
+  square, no baked fill); attribution updated (CC BY 3.0). Verified in the
+  production build (Playwright): all 8 faces legible on the party screen at 28px
+- [x] Monster family icons (plan C2): vermin/rat, goblinoid/goblin-head, undead/ghost,
+  demon/imp-laugh, beast/bear-head, construct/golem-head, boss/skull; display-only
+  `family` field on all 24 profiles + the living-statue synthetic profile and test
+  fixtures; `DungeonScreen` maps family → icon. Boss/dragon-lair tiles: skull at
+  size 1.6 inside an oxblood ring (r=0.44). Verified in the production build:
+  Skeletal Rats tile → ghost, Hobgoblins tile → goblin-head, dragon lair → skull +
+  ring in the DOM (bossRing: 1); the ring geometry confirmed in a component render
+  after a bbox audit caught the skull glyph off-centre (see Fixed below)
+- [x] Lockup (plan B4): `src/features/common/Lockup.tsx` — open tome + arched stone
+  doorway with descending stair, oxblood wax seal, Noto Serif wordmark as real text;
+  wired into the dashboard and `index.html` first-paint splash. Legible at 200px
+  and 320px; the device silhouette reads at 32px (wordmark is a hairline there, as
+  expected). Raster concept art is direction only, never shipped
+- [x] Fixed: `badges/skull.svg` glyph was at canvas (128,128), not (256,256) like
+  every other icon — it rendered off-centre and tiny inside the boss ring. The frag
+  now centres the glyph (`<g transform="translate(128,127.5)">`); a bounding-box
+  audit of all 23 icons confirmed the skull was the only outlier
+- [x] Tests: `tests/unit/monsterFamilies.test.ts` (3 tests); `iconUtils` real-fragment
+  list extended to the 7 new/replaced frags + skull (135 tests green, build clean)
+
 ## Completed Work (Visual polish milestone 1 — 2026-11-11)
 
 - [x] Fix #0 (icon white-fill bug): shared `src/features/common/iconUtils.ts`

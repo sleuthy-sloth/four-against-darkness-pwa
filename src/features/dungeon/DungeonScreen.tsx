@@ -15,6 +15,11 @@ import { QUEST_TABLE } from '../../rulesets/expanded/quests'
 /** Map iconography — game-icons.net fragments rendered inside the SVG. */
 import chestIcon from '../../assets/icons/chest.svg.frag?raw'
 import monstersIcon from '../../assets/icons/monsters.svg.frag?raw'
+import verminIcon from '../../assets/icons/vermin.svg.frag?raw'
+import undeadIcon from '../../assets/icons/undead.svg.frag?raw'
+import demonIcon from '../../assets/icons/demon.svg.frag?raw'
+import beastIcon from '../../assets/icons/beast.svg.frag?raw'
+import constructIcon from '../../assets/icons/construct.svg.frag?raw'
 import fountainIcon from '../../assets/icons/fountain.svg.frag?raw'
 import templeIcon from '../../assets/icons/temple.svg.frag?raw'
 import statueIcon from '../../assets/icons/statue.svg.frag?raw'
@@ -23,32 +28,54 @@ import boxIcon from '../../assets/icons/box.svg.frag?raw'
 import skullIcon from '../../assets/icons/skull.svg.frag?raw'
 import partyIconFrag from '../../assets/icons/party.svg.frag?raw'
 import type { TileContent } from '../../engine/dungeon/generate'
+import type { MonsterFamily } from '../../rulesets/expanded/monsters'
 import { cleanIconFragment } from '../common/iconUtils'
 
+/** Monster family → map icon (plan item C2). Goblinoid reuses the goblin-head. */
+const FAMILY_ICONS: Record<MonsterFamily, string> = {
+  vermin: verminIcon,
+  goblinoid: monstersIcon,
+  undead: undeadIcon,
+  demon: demonIcon,
+  beast: beastIcon,
+  construct: constructIcon,
+  boss: skullIcon,
+}
+
 /** Iconography lookup for a tile's content (FADEE p.152 kinds). */
-function contentIcon(content: TileContent | null): string | null {
+function contentIcon(content: TileContent | null): { frag: string; boss: boolean; size?: number } | null {
   if (!content) return null
+  const plain = (frag: string) => ({ frag: cleanIconFragment(frag), boss: false })
   switch (content.kind) {
     case 'treasure':
     case 'treasureTrapped':
-      return cleanIconFragment(chestIcon)
+      return plain(chestIcon)
     case 'vermin':
     case 'minions':
-    case 'weird':
-      return content.cleared ? null : cleanIconFragment(monstersIcon)
+    case 'weird': {
+      if (content.cleared) return null
+      const family = content.encounter?.monster.family ?? 'vermin'
+      return plain(FAMILY_ICONS[family])
+    }
     case 'boss':
     case 'dragonLair':
-      // Final foes get the skull: a boss tile must read differently at a glance.
-      return content.cleared ? null : cleanIconFragment(skullIcon)
-    case 'specialFeature':
-      return [
+      // Final foes get the skull in an oxblood ring: a boss tile must read differently at a glance.
+      // The skull glyph only fills ~25% of its 512 canvas (vs ~93% for the
+      // goblin-head), so it renders at 1.6 to read as a skull inside the ring.
+      return content.cleared
+        ? null
+        : { frag: cleanIconFragment(skullIcon), boss: true, size: 1.6 }
+    case 'specialFeature': {
+      const frag = [
         cleanIconFragment(fountainIcon),
         cleanIconFragment(templeIcon),
         null, // armory — plain room
         cleanIconFragment(altarIcon),
         cleanIconFragment(statueIcon),
         cleanIconFragment(boxIcon),
-      ][(content.specialFeatureRoll ?? 1) - 1] ?? null
+      ][(content.specialFeatureRoll ?? 1) - 1]
+      return frag ? plain(frag) : null
+    }
     default:
       return null
   }
@@ -259,8 +286,15 @@ export default function DungeonScreen() {
                       </g>
                     )
                   })}
-                  {/* content iconography */}
-                  {icon && <MapIcon frag={icon} x={cx} y={cy} />}
+                  {/* content iconography; boss tiles get an oxblood ring around the skull */}
+                  {icon && (
+                    <>
+                      <MapIcon frag={icon.frag} x={cx} y={cy} size={icon.size} />
+                      {icon.boss && (
+                        <circle cx={cx} cy={cy} r={0.44} className="fill-none stroke-torch" strokeWidth={0.06} />
+                      )}
+                    </>
+                  )}
                 </g>
               )
             })}

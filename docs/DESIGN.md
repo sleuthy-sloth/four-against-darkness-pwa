@@ -28,7 +28,10 @@ Supporting surfaces (verified against `tailwind.config.js` on `main`):
 
 Three-font system with a real hierarchy. Keep it; extend it, don't replace it.
 
-- **Noto Serif** — display / headlines, chapter banners, lockup.
+- **Noto Serif** — display / headlines, chapter banners, lockup. The lockup
+  (milestone 2, plan B4) lives in `src/features/common/Lockup.tsx` — open tome +
+  arched stone doorway with descending stair, oxblood wax seal, wordmark as real
+  text; the same SVG is inlined in `index.html` as the first-paint splash.
 - **EB Garamond** — body text, journal entries, descriptions.
 - **JetBrains Mono** — labels, numbers, dice/roll log, tile labels (mono caps).
 

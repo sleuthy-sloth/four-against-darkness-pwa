@@ -31,6 +31,7 @@ function orcCombat(order: string[], secrets: string[]): ReturnType<typeof startC
       {
         roll: 4,
         name: 'Orcs',
+        family: 'goblinoid',
         category: '',
         levelOffset: 3,
         countFormula: '1',
@@ -70,6 +71,7 @@ describe('Secrets (FADEE pp.122-123)', () => {
         {
           roll: 2,
           name: 'Goblins',
+          family: 'goblinoid',
           category: '',
           levelOffset: 2,
           countFormula: '1',
@@ -104,6 +106,7 @@ describe('Secrets (FADEE pp.122-123)', () => {
         {
           roll: 2,
           name: 'Goblins',
+          family: 'goblinoid',
           category: '',
           levelOffset: 2,
           countFormula: '1',

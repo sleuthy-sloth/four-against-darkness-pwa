@@ -18,6 +18,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copyright and content policy
 - Deployment guide
 
+### Added — Visual polish milestone 2: art direction (2026-11-11)
+- Portraits (plan C1): the three non-face class portraits replaced with matching
+  faces from game-icons.net, all clean line art — warrior → `delapouite/viking-head.svg`
+  (was a full figure), cleric → `delapouite/monk-face.svg` (was praying hands),
+  halfling → `cathelineau/bad-gnome.svg` (was a door). The other five faces were
+  already faces and are unchanged. New frags ship clean (no background square, no
+  baked fill); `attribution.json` + `ATTRIBUTION.md` updated (all CC BY 3.0)
+- Monster family icons (plan C2): per-family set — vermin → `delapouite/rat.svg`,
+  goblinoid → `delapouite/goblin-head.svg` (existing), undead → `lorc/ghost.svg`,
+  demon → `lorc/imp-laugh.svg`, beast → `delapouite/bear-head.svg`,
+  construct → `delapouite/golem-head.svg`, boss → `badges/skull.svg`. Each of the
+  24 monster profiles carries a display-only `family` field (`MonsterFamily` in
+  `src/rulesets/expanded/monsters.ts`); `DungeonScreen` maps family → icon, so a
+  tile's encounter shows its family's glyph (e.g. Skeletal Rats → ghost,
+  Hobgoblins → goblin head). Boss/dragon-lair tiles show the skull in an oxblood
+  ring (`r=0.44`, `stroke-torch`); the skull renders at size 1.6 because its glyph
+  only fills ~25% of its 512 canvas (vs ~93% for the goblin-head)
+- Lockup (plan B4): original ink line art — open tome + arched stone doorway with a
+  descending stair, oxblood wax seal, wordmark in real Noto Serif text (not paths)
+  — in `src/features/common/Lockup.tsx`, wired into the campaign dashboard (replaces
+  the bare `<h1>`) and into `index.html` as the first-paint splash; the raster
+  concept art is direction only and is never shipped
+- Tests: `monsterFamilies` unit suite (every profile has a valid family, every
+  family is used); `iconUtils` real-fragment list extended to the new art + skull
+
+### Fixed — Visual polish milestone 2 (2026-11-11)
+- The `badges/skull.svg` glyph sits at canvas (128,128) instead of the (256,256)
+  centre every other icon uses, so at map scale it rendered off-centre (and, at
+  the default icon size, as a speck inside the boss ring). The frag now wraps the
+  path in `<g transform="translate(128,127.5)">` to centre the glyph; verified by
+  a bounding-box audit of all 23 icons (skull was the only outlier)
+
 ### Added — Visual polish milestone 1 (2026-11-11)
 - Fix #0: game-icons fragments bake `fill="#fff"` into every art path, overriding
   `currentColor` — class portraits rendered white-on-cream (invisible) and the

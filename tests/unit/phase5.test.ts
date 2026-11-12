@@ -44,6 +44,7 @@ function combatWith(pcs: Character[]): ReturnType<typeof startCombat> {
     {
       roll: 2,
       name: 'Goblins',
+      family: 'goblinoid',
       category: 'Chaos',
       levelOffset: 0,
       countFormula: '1',

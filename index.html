@@ -15,7 +15,77 @@
     <title>Four Against Darkness</title>
   </head>
   <body>
-    <div id="root"></div>
+    <!-- First-paint splash (plan item B5): the Tome & Delve lockup on parchment
+         while the bundle loads; React replaces #root on mount. Keep the SVG in
+         sync with src/features/common/Lockup.tsx. -->
+    <div id="root">
+      <div
+        style="
+          min-height: 100dvh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #e8dfca;
+          padding: 24px;
+        "
+      >
+        <svg
+          viewBox="0 0 480 310"
+          role="img"
+          aria-label="Four Against Darkness"
+          style="width: min(320px, 90vw); height: auto"
+          fill="none"
+          stroke="#2b241f"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M36 60 C 90 46, 130 48, 170 60 L170 190 C 130 174, 80 174, 36 190 Z" stroke-width="4" />
+          <path d="M364 60 C 310 46, 270 48, 230 60 L230 190 C 270 174, 320 174, 364 190 Z" stroke-width="4" />
+          <path d="M44 198 C 90 184, 130 182, 162 190" stroke-width="2" />
+          <path d="M238 190 C 270 182, 310 184, 356 198" stroke-width="2" />
+          <path d="M64 86 C 104 74, 134 74, 160 82" stroke-width="2" />
+          <path d="M64 102 C 104 90, 134 90, 160 98" stroke-width="2" />
+          <path d="M240 82 C 266 74, 296 74, 336 86" stroke-width="2" />
+          <path d="M240 98 C 266 90, 296 90, 336 102" stroke-width="2" />
+          <path d="M170 192 L170 60 A30 30 0 0 1 230 60 L230 192" stroke-width="4" />
+          <path d="M180 192 L180 60 A20 20 0 0 1 220 60 L220 192" stroke-width="2.5" />
+          <path d="M200 30 L200 40" stroke-width="2" />
+          <path d="M221.2 38.8 L214.1 45.9" stroke-width="2" />
+          <path d="M178.8 38.8 L185.9 45.9" stroke-width="2" />
+          <path d="M230 60 L220 60" stroke-width="2" />
+          <path d="M170 60 L180 60" stroke-width="2" />
+          <path d="M170 110 L180 110" stroke-width="2" />
+          <path d="M170 150 L180 150" stroke-width="2" />
+          <path d="M220 110 L230 110" stroke-width="2" />
+          <path d="M220 150 L230 150" stroke-width="2" />
+          <path d="M193 66 H207" stroke-width="2.5" />
+          <path d="M191 80 H209" stroke-width="2.5" />
+          <path d="M189 94 H211" stroke-width="2.5" />
+          <path d="M187 108 H213" stroke-width="2.5" />
+          <path d="M185 122 H215" stroke-width="2.5" />
+          <path d="M184 136 H216" stroke-width="2.5" />
+          <path d="M183 150 H217" stroke-width="2.5" />
+          <path d="M182 164 H218" stroke-width="2.5" />
+          <path d="M181 178 H219" stroke-width="2.5" />
+          <path d="M164 192 H236" stroke-width="3" />
+          <circle cx="200" cy="220" r="10" fill="#8c2626" stroke="none" />
+          <path d="M196 224 L196 218 A4 4 0 0 1 204 218 L204 224" stroke="#faf6ee" stroke-width="1.5" fill="none" />
+          <text
+            x="200"
+            y="292"
+            text-anchor="middle"
+            font-family="'Noto Serif', Georgia, serif"
+            font-size="30"
+            font-weight="700"
+            fill="#2b241f"
+            stroke="none"
+            letter-spacing="0.5"
+          >
+            Four Against Darkness
+          </text>
+        </svg>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

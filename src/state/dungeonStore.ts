@@ -870,6 +870,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
           {
             roll: 1,
             name: e.profile.name,
+            family: 'construct',
             category: e.profile.category ?? 'Artificial',
             levelOffset: 0,
             countFormula: '1',

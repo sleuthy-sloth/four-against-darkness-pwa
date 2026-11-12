@@ -4,6 +4,7 @@ import { useCampaignStore } from '../../state/campaignStore'
 import type { CampaignMeta } from '../../database/db'
 import { listCampaigns } from '../../database/repositories/campaignRepo'
 import { deleteCampaignFull, duplicateCampaign } from '../../database/repositories/backupRepo'
+import Lockup from '../common/Lockup'
 
 /**
  * Campaign dashboard (PROJECT_SPEC §22): active campaign, continue, and the
@@ -51,7 +52,8 @@ export default function CampaignDashboard() {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-6 p-6 text-center">
       <div className="space-y-2">
-        <h1 className="text-3xl text-torch">Four Against Darkness</h1>
+        <h1 className="sr-only">Four Against Darkness</h1>
+        <Lockup className="mx-auto w-64" />
         <p className="text-sm text-parchment/70">
           {campaign
             ? `${campaign.name} · ${party.length}/4 adventurers`
