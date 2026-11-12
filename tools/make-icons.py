@@ -1,62 +1,58 @@
 #!/usr/bin/env python3
-"""Regenerate the PWA icon set (interim mark, pending the B4 lockup).
+"""Regenerate the PWA icon set from the Delver at the Threshold mark.
 
-Draws a Tome & Delve interim mark — parchment field, ink double-rule frame,
-oxblood wax seal with "4AD" in Noto Serif Bold — and exports every size the
-manifest lists, plus a maskable variant, an Apple touch icon, and favicon.ico.
-It also copies the manifest screenshots from docs/screenshots/ into
+The mark is the generated delver logo (tools/delver-master.png, 1024x1024
+black ink line art on parchment). Icons are the ink mask of that mark on a
+parchment field — no text, no wax seal — drawn at every size the manifest
+lists, plus a maskable variant, an Apple touch icon, and favicon.ico. It
+also copies the manifest screenshots from docs/screenshots/ into
 public/screenshots/, so this one script regenerates every binary PWA asset
-from text sources (the icons are drawn; the screenshots are the README captures).
+from sources in the repo (the icons are drawn from the delver master; the
+screenshots are the README captures).
 
-Replaces the Phase 1 procedural placeholders, which were black squares with a
-malformed PNG encoding (one extra byte per scanline; undecodable by PIL and
-rejected by strict PNG decoders).
+The mask uses the same threshold as the SVG lockup trace (ink < 110 on the
+grayscale master; the parchment vignette stays above 120, so the background
+drops out cleanly). The mask is resized with LANCZOS, so its grey edge
+pixels anti-alias the mark when pasted.
 
 Usage:
     python3 tools/make-icons.py            # writes public/icons/*, public/favicon.ico
-    NOTO_SERIF_BOLD=/path/to/NotoSerif-Bold.ttf python3 tools/make-icons.py
 
-Requires: Pillow, and Noto Serif Bold (searched in the usual system font dirs).
+Requires: Pillow.
 """
 import os
 import shutil
 import sys
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "public", "icons")
+MASTER = os.path.join(ROOT, "tools", "delver-master.png")
 SCREENSHOTS = ["dungeon-mobile.png", "dungeon-desktop.png"]
 
 PARCHMENT = (232, 223, 202)   # stone-950
 INK = (43, 36, 31)            # parchment (iron-gall ink)
-FOLIO = (250, 246, 238)       # stone-800
-OXBLOOD = (140, 38, 38)       # torch
-OXBLOOD_DARK = (110, 28, 28)  # btn-wax hover
-EMBER = (168, 50, 50)         # ember
 
 SIZES = [72, 96, 128, 144, 152, 192, 384, 512]
 
-FONT_CANDIDATES = [
-    os.environ.get("NOTO_SERIF_BOLD", ""),
-    "/usr/share/fonts/truetype/noto/NotoSerif-Bold.ttf",
-    "/usr/share/fonts/noto/NotoSerif-Bold.ttf",
-    os.path.expanduser("~/Library/Fonts/NotoSerif-Bold.ttf"),
-    "/System/Library/Fonts/Supplemental/NotoSerif-Bold.ttf",
-]
+THRESHOLD = 110
 
 
-def find_font() -> str:
-    for path in FONT_CANDIDATES:
-        if path and os.path.exists(path):
-            return path
-    raise SystemExit(
-        "Noto Serif Bold not found; set NOTO_SERIF_BOLD to its path."
-    )
+def load_mark() -> Image.Image:
+    """Delver mark as a binary ink mask (white = ink), cropped tight."""
+    im = Image.open(MASTER).convert("L")
+    mask = im.point(lambda v: 255 if v < THRESHOLD else 0)
+    bbox = mask.getbbox()
+    if bbox is None:
+        raise SystemExit("delver master has no ink pixels")
+    return mask.crop(bbox)
 
 
-def draw_mark(size: int, *, maskable: bool, font_path: str) -> Image.Image:
-    """Draw the interim mark at `size` px. Maskable omits the edge frame and
-    keeps the seal inside the center 80% (maskable safe zone)."""
+def draw_mark(size: int, *, maskable: bool, mark: Image.Image) -> Image.Image:
+    """Delver mark centred on a parchment field at `size` px.
+
+    Maskable omits the edge frame and keeps the mark inside the center 80%
+    (maskable safe zone)."""
     img = Image.new("RGB", (size, size), PARCHMENT)
     d = ImageDraw.Draw(img)
     if not maskable:
@@ -69,36 +65,25 @@ def draw_mark(size: int, *, maskable: bool, font_path: str) -> Image.Image:
         inset2 = inset + max(3, round(size * 0.016))
         d.rectangle([inset2, inset2, size - 1 - inset2, size - 1 - inset2],
                     outline=INK, width=w_inner)
-    # Wax seal: oxblood disc, darker rim, ember inner ring.
-    r = size * (0.31 if maskable else 0.34)
-    cx = cy = size / 2
-    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=OXBLOOD)
-    d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=OXBLOOD_DARK,
-              width=max(2, round(size * 0.008)))
-    r2 = r * 0.88
-    d.ellipse([cx - r2, cy - r2, cx + r2, cy + r2], outline=EMBER,
-              width=max(1, round(size * 0.004)))
-    # "4AD" in Noto Serif Bold, scaled to fit 78% of the seal diameter.
-    font_size = int(size * 0.42)
-    while font_size > 8:
-        font = ImageFont.truetype(font_path, font_size)
-        bbox = d.textbbox((0, 0), "4AD", font=font)
-        if bbox[2] - bbox[0] <= 2 * r * 0.78:
-            break
-        font_size -= 4
-    d.text((cx, cy), "4AD", font=font, fill=FOLIO, anchor="mm")
+    # The mark is portrait: fit by height, centre horizontally.
+    frac = 0.74 if maskable else 0.84
+    target_h = int(size * frac)
+    target_w = round(mark.width * target_h / mark.height)
+    m = mark.resize((target_w, target_h), Image.LANCZOS)
+    ink = Image.new("RGB", (target_w, target_h), INK)
+    img.paste(ink, ((size - target_w) // 2, (size - target_h) // 2), m)
     return img
 
 
 def main() -> None:
-    font_path = find_font()
+    mark = load_mark()
     os.makedirs(OUT, exist_ok=True)
-    master = draw_mark(1024, maskable=False, font_path=font_path)
+    master = draw_mark(1024, maskable=False, mark=mark)
     for size in SIZES:
         master.resize((size, size), Image.LANCZOS).save(
             os.path.join(OUT, f"icon-{size}.png"))
         print(f"icon-{size}.png")
-    maskable = draw_mark(512, maskable=True, font_path=font_path)
+    maskable = draw_mark(512, maskable=True, mark=mark)
     maskable.save(os.path.join(OUT, "icon-512-maskable.png"))
     print("icon-512-maskable.png")
     master.resize((180, 180), Image.LANCZOS).save(

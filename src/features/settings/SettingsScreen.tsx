@@ -112,6 +112,19 @@ export default function SettingsScreen() {
   return (
     <div className="flex flex-1 flex-col overflow-y-auto p-4 pb-6">
       <h1 className="text-xl text-torch">Settings</h1>
+      <p className="chapter-banner mt-4">About</p>
+      <section className="card-folio mt-2 flex flex-col items-center p-4 text-center">
+        <img
+          src={`${import.meta.env.BASE_URL}art/splash-torch.webp`}
+          alt="A torch burning above a stone arch"
+          className="w-24"
+        />
+        <p className="mt-2 font-display text-lg text-torch">Four Against Darkness</p>
+        <p className="text-xs text-parchment/60">
+          A solo dungeon crawler for your pocket — offline after install, no account, no
+          signal needed.
+        </p>
+      </section>
       {msg && (
         <p className="mt-2 rounded bg-stone-800 px-3 py-2 text-xs text-parchment/80" onClick={() => setMsg(null)}>
           {msg}

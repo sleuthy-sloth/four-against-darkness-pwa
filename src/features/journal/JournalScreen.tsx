@@ -105,7 +105,14 @@ export default function JournalScreen() {
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto p-4 pb-6">
-      <h1 className="text-xl text-torch">Journal</h1>
+      {/* Delver artwork: quill, tome and candle above the journal. */}
+      <img
+        src={`${import.meta.env.BASE_URL}art/journal-header.webp`}
+        alt=""
+        aria-hidden="true"
+        className="-mx-4 -mt-4 h-28 w-[calc(100%+2rem)] max-w-none object-cover"
+      />
+      <h1 className="mt-3 text-xl text-torch">Journal</h1>
       <div className="mt-2 flex gap-1 overflow-x-auto pb-2">
         {CATEGORIES.map((c) => {
           const count = c === 'all' ? entries.length : (counts.get(c) ?? 0)

@@ -58,7 +58,14 @@ export default function PartyScreen() {
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto p-4 pb-6">
-      <h1 className="text-xl text-torch">Party</h1>
+      {/* Delver artwork: the dungeon entrance, cropped to a banner. */}
+      <img
+        src={`${import.meta.env.BASE_URL}art/delve-entrance.webp`}
+        alt=""
+        aria-hidden="true"
+        className="-mx-4 -mt-4 h-44 w-[calc(100%+2rem)] max-w-none object-cover object-top"
+      />
+      <h1 className="mt-3 text-xl text-torch">Party</h1>
       {campaign && <p className="text-xs text-parchment/50">{campaign.name}</p>}
 
       {party.length === 0 ? (

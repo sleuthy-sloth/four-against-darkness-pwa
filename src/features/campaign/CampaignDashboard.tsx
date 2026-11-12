@@ -81,9 +81,16 @@ export default function CampaignDashboard() {
 
   return (
     <div className="flex flex-1 flex-col items-center gap-6 overflow-y-auto p-6 text-center">
+      {/* Delver artwork: torch-lit corridor banner, full-bleed at the top. */}
+      <img
+        src={`${import.meta.env.BASE_URL}art/dashboard-hero.webp`}
+        alt=""
+        aria-hidden="true"
+        className="-mx-6 -mt-6 w-[calc(100%+3rem)] max-w-none object-cover"
+      />
       <div className="space-y-2">
         <h1 className="sr-only">Four Against Darkness</h1>
-        <Lockup className="mx-auto w-64" />
+        <Lockup className="mx-auto w-48" />
         <p className="text-sm text-parchment/70">
           {campaign
             ? `${campaign.name} · ${party.length}/4 adventurers`

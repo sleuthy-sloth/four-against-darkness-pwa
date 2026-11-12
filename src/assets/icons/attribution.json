@@ -36,5 +36,11 @@
   "hand-weapon": "lorc/broadsword.svg",
   "light-weapon": "lorc/stiletto.svg",
   "bow": "delapouite/bow-arrow.svg",
-  "lockpicks": "delapouite/lockpicks.svg"
+  "lockpicks": "delapouite/lockpicks.svg",
+  "lockup-delver": "Original art generated for this project (AI-generated line art, traced to SVG with VTracer; no third-party source)",
+  "app-icons": "Original art generated for this project (AI-generated line art; icon set derived from the delver mark; no third-party source)",
+  "art-dashboard-hero": "Original art generated for this project (AI-generated line art; no third-party source)",
+  "art-delve-entrance": "Original art generated for this project (AI-generated line art; no third-party source)",
+  "art-journal-header": "Original art generated for this project (AI-generated line art; no third-party source)",
+  "art-splash-torch": "Original art generated for this project (AI-generated line art; no third-party source)"
 }

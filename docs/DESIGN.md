@@ -29,9 +29,15 @@ Supporting surfaces (verified against `tailwind.config.js` on `main`):
 Three-font system with a real hierarchy. Keep it; extend it, don't replace it.
 
 - **Noto Serif** — display / headlines, chapter banners, lockup. The lockup
-  (milestone 2, plan B4) lives in `src/features/common/Lockup.tsx` — open tome +
-  arched stone doorway with descending stair, oxblood wax seal, wordmark as real
-  text; the same SVG is inlined in `index.html` as the first-paint splash.
+  lives in `src/features/common/Lockup.tsx` — the Delver at the Threshold: a
+  hooded delver with a raised torch before a tall pointed stone arch,
+  original AI-generated line art traced to SVG with VTracer (per-path
+  translate() transforms baked into the path data), oxblood wax seal,
+  wordmark as real text; the same SVG is inlined in `index.html` as the
+  first-paint splash. The four generated artworks (dashboard hero, delve
+  entrance, journal header, splash torch) live in `public/art/` as WebP
+  (PNG masters are the generation originals, not shipped) and are covered
+  in `attribution.json`.
 - **EB Garamond** — body text, journal entries, descriptions.
 - **JetBrains Mono** — labels, numbers, dice/roll log, tile labels (mono caps).
 

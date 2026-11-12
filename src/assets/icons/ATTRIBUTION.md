@@ -7,6 +7,11 @@ Code in this repository remains MIT; this directory carries its own license.
 ## Authors
 
 - `altar` — "delapouite/sword-altar.svg" by Delapouite (CC BY 3.0)
+- `app-icons` — original art generated for this project (AI-generated line art; icon set derived from the delver mark), no attribution required
+- `art-dashboard-hero` — original art generated for this project (AI-generated line art), no attribution required
+- `art-delve-entrance` — original art generated for this project (AI-generated line art), no attribution required
+- `art-journal-header` — original art generated for this project (AI-generated line art), no attribution required
+- `art-splash-torch` — original art generated for this project (AI-generated line art), no attribution required
 - `barbarian` — "delapouite/barbarian.svg" by Delapouite (CC BY 3.0)
 - `beast` — "delapouite/bear-head.svg" by Delapouite (CC BY 3.0)
 - `box` — "delapouite/puzzle.svg" by Delapouite (CC BY 3.0)
@@ -25,6 +30,7 @@ Code in this repository remains MIT; this directory carries its own license.
 - `light-armor` — "delapouite/leather-armor.svg" by Delapouite (CC BY 3.0)
 - `light-weapon` — "lorc/stiletto.svg" by Lorc (CC BY 3.0)
 - `lockpicks` — "delapouite/lockpicks.svg" by Delapouite (CC BY 3.0)
+- `lockup-delver` — original art generated for this project (AI-generated line art, traced to SVG with VTracer), no attribution required
 - `nails` — "lorc/nails.svg" by Lorc (CC BY 3.0)
 - `potion` — "lorc/drink-me.svg" by Lorc (CC BY 3.0)
 - `rations` — "delapouite/bread.svg" by Delapouite (CC BY 3.0)
