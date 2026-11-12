@@ -9,6 +9,10 @@ import {
   rollHiddenTreasure,
   searchTile,
   rollSecretDoorBonus,
+  generateSecretDoorTile,
+  profileForTable,
+  dragonForEnvironment,
+  rollRareMushroomName,
   type DungeonState,
   type EncounterRoll,
   type PendingChoicePayload,
@@ -19,6 +23,7 @@ import {
   lifeFromFormula,
   makeEnemy,
   payBribe,
+  payBribeWithFoolsGold,
   pcAttack,
   rollReactions,
   startCombat,
@@ -27,6 +32,11 @@ import {
   castHealing,
   castScroll,
   castBlessing,
+  castItemSpell,
+  useTeleportRing,
+  throwXicthulCap,
+  throwRedDeath,
+  spendTurn,
   drinkHealingPotion,
   applyBandage,
   canLeaveCombat,
@@ -34,9 +44,33 @@ import {
   type ScrollSpell,
   type CombatState,
 } from '../engine/combat/combat'
+import { computeLight, darknessPenalty } from '../engine/light'
+import { tierOf, tierTrainingCost, oldSchoolLevelCost, oldSchoolFoeXp, type XpSystem } from '../engine/xp'
+import {
+  canUseWand,
+  canUseStaff,
+  hasRing,
+  hasFoolsGold,
+  chargesOf,
+  setCharges,
+  useSlumberAmanita,
+  useSmokebomb,
+  useBrownCap,
+  usePhoenix,
+  useChanterelle,
+  useXicthulCap,
+  useRedDeath,
+  useMorelCrusher,
+  eatWhiteAngel,
+  amuletUnused,
+  spendAmulet,
+  hasOintment,
+  isSubdualImmune,
+} from '../engine/items/magicItems'
+import { useSettingsStore } from './settingsStore'
 import { getCampaign, touchCampaign } from '../database/repositories/campaignRepo'
 import { loadDungeon, saveDungeon } from '../database/repositories/dungeonRepo'
-import { rollLoot } from '../engine/treasure/loot'
+import { rollLoot, rollSpecialItem } from '../engine/treasure/loot'
 import {
   DUNGEON_EVENTS,
   DUNGEON_FEATURES,
@@ -46,10 +80,24 @@ import {
   EVENT_INFO,
   ITEM_INFO,
 } from '../rulesets/expanded/features'
+import {
+  CAVERN_FEATURES,
+  CAVERN_FEATURE_INFO,
+  CAVERN_EVENTS,
+  CAVERN_EVENT_INFO,
+  FUNGAL_EVENTS,
+  FUNGAL_EVENT_INFO,
+  CAVERN_TRAP_INFO,
+  FUNGAL_TRAP_INFO,
+  QUEST_RETRIEVAL_ITEMS,
+  cavernFeatureForRoll,
+  type EnvironmentId,
+} from '../rulesets/expanded/environments'
 import { canRest, beginRest, applyRestChoice } from '../engine/camp/rest'
 import { QUEST_TABLE, QUEST_SOURCES, EPIC_REWARDS } from '../rulesets/expanded/quests'
 import {
   profileFor,
+  tableKindFor,
 } from '../rulesets/expanded/monsters'
 import {
   attemptPuzzle,
@@ -57,6 +105,9 @@ import {
   resolveFeature,
   resolveTrap,
   rollDungeonEvent,
+  rollEnvEvent,
+  resolveEnvEvent,
+  resolveEnvTrap,
   touchStatue,
   type FeatureResult,
   type EventResult,
@@ -92,10 +143,12 @@ interface DungeonStoreState {
   ensureDungeon: () => Promise<void>
   explore: (exitId: string) => Promise<void>
   search: () => Promise<void>
-  claimFind: (choice: 'hidden-treasure' | 'secret-door' | 'clue') => Promise<void>
+  claimFind: (choice: 'hidden-treasure' | 'secret-door' | 'secret-passage' | 'listen' | 'rare-mushroom' | 'clue') => Promise<void>
   /** Begin combat from the current tile's encounter (FADEE p.90). */
   beginCombat: () => Promise<void>
   combatAttack: (pcId: string, enemyId: string) => Promise<void>
+  /** Subdual attack (R089): -1; a Major Foe at 0 Life is captured alive. */
+  combatAttackSubdue: (pcId: string, enemyId: string) => Promise<void>
   combatCast: (pcId: string, spell: CastableSpell, enemyId: string | null) => Promise<void>
   combatCastScroll: (pcId: string, spell: string, enemyId: string | null) => Promise<void>
   combatHeal: (pcId: string, targetId: string) => Promise<void>
@@ -103,6 +156,36 @@ interface DungeonStoreState {
   combatWait: () => Promise<void>
   combatPayBribe: () => Promise<void>
   combatFlee: () => Promise<void>
+  /** Magic-item combat actions (R151-R154). */
+  combatUseWand: (pcId: string, enemyId: string | null) => Promise<void>
+  combatUseStaff: (pcId: string, enemyId: string | null) => Promise<void>
+  combatUseRing: (pcId: string) => Promise<void>
+  combatUseFoolsGold: () => Promise<void>
+  combatUseSmokebomb: (pcId: string) => Promise<void>
+  combatUseXicthul: (pcId: string, enemyId: string) => Promise<void>
+  combatUseRedDeath: (pcId: string, enemyId: string, mode: 'damage' | 'weaken') => Promise<void>
+  combatUseMorel: (pcId: string) => Promise<void>
+  combatPickupLantern: (pcId: string) => Promise<void>
+  /** Light (R093/R094). */
+  lightTorch: () => Promise<void>
+  extinguishTorch: () => Promise<void>
+  pickupLantern: () => Promise<void>
+  /** Secret passages (R126) and secret doors (R125). */
+  claimPassage: (env: EnvironmentId) => Promise<void>
+  buyPassage: (env: EnvironmentId) => Promise<void>
+  peekSecretDoor: () => Promise<void>
+  enterSecretDoor: () => Promise<void>
+  /** Cavern water pools (R142). */
+  dipPool: (pcId: string) => Promise<void>
+  /** Special-item uses (R153). */
+  useMapFragment: (pcId: string) => Promise<void>
+  useOintment: (pcId: string) => Promise<void>
+  /** Inventory consumables (R152/R154). */
+  useInventoryItem: (pcId: string, item: string) => Promise<void>
+  /** XP systems (R172-R174). */
+  spendLevelUp: (pcId: string) => Promise<void>
+  spendStoredXp: (pcId: string, extra?: number) => Promise<void>
+  spendOldSchoolXp: (pcId: string) => Promise<void>
   /** Leave a concluded combat behind and return to the room's tile actions. */
   leaveCombat: () => Promise<void>
   spendXpRoll: (pcId: string) => Promise<void>
@@ -184,6 +267,165 @@ function rollEncounterSimple(
   return enc
 }
 
+/** Combat options derived from the dungeon's light, terrain and quest state. */
+function combatOpts(
+  dungeon: DungeonState,
+  party: Character[],
+): {
+  darknessPenalty: number
+  noExplosions: boolean
+  foeLevelPenaltyTurn1: number
+  fungalSlippery: boolean
+  questTargetName: string | null
+  marchingOrder: string[]
+} {
+  const tile = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
+  const env = tile?.environment ?? dungeon.environment ?? 'dungeon'
+  const glowmaggots = tile?.content?.encounter?.monster.name === 'Glowmaggots'
+  const light = computeLight(party, {
+    torchLit: dungeon.torchLit ?? false,
+    torchRooms: dungeon.torchRooms ?? 0,
+    lanternDropped: dungeon.lanternDropped ?? false,
+    glowmaggots,
+  })
+  return {
+    darknessPenalty: darknessPenalty(light),
+    noExplosions: tile?.cavernFeature === 'stalagmites',
+    foeLevelPenaltyTurn1: tile?.viaSecretDoor ? 1 : 0,
+    fungalSlippery: env === 'fungal',
+    questTargetName: dungeon.quest?.roll === 3 ? (dungeon.quest.target ?? null) : null,
+    marchingOrder: party.map((p) => p.id),
+  }
+}
+
+/** Mirror combat light flags back onto the dungeon (lantern drop, torch out). */
+function syncLightFlags(dungeon: DungeonState): void {
+  const combat = dungeon.combat
+  if (!combat) return
+  if (combat.lanternDropped) dungeon.lanternDropped = true
+  if (combat.torchExtinguished) {
+    dungeon.torchLit = false
+    combat.torchExtinguished = false
+  }
+}
+
+/**
+ * The single victory-award path (Release 0.5, A6): EVERY victory — melee,
+ * spell, scroll, reaction-flee, bribe — awards XP rolls and loot through
+ * here, so a scroll-kill or reaction win can no longer earn nothing.
+ * XP handling depends on the selected XP system (R171-R174); the Classical
+ * gate (pendingXp) is preserved under every system that has rolls to assign.
+ */
+async function awardVictory(
+  dungeon: DungeonState,
+  combat: CombatState,
+  rng: Rng,
+  party: Character[],
+  campaignId: string,
+): Promise<void> {
+  const system: XpSystem = useSettingsStore.getState().settings.xpSystem
+  const tile = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
+  const env = tile?.environment ?? dungeon.environment ?? 'dungeon'
+  const due = xpDue(combat)
+  // Quest type 1: the named Boss was slain.
+  if (dungeon.quest && dungeon.quest.roll === 1 && !dungeon.quest.complete) {
+    const slainName = combat.enemies[0]?.profile.name
+    if (slainName && slainName === dungeon.quest.target && combat.enemies[0]?.life === 0) {
+      dungeon.quest.progress += 1
+      appendLog([`Quest progress: the ${slainName} is slain! Bring its head to the Quest-giver's tile. (FADEE p.161)`])
+    }
+  }
+  // Quest type 3: the target was subdued (attack or Sleep). A target put
+  // to Sleep and then killed outright (normal attacks to 0 Life) does NOT
+  // count — it must be bound alive: either subdued by a subdual attack
+  // (life 0, subdued flag) or still living while slept.
+  const subduedEnemy = combat.enemies.find(
+    (e) =>
+      dungeon.quest?.roll === 3 &&
+      e.profile.name === dungeon.quest.target &&
+      (e.subdued || (e.subduedBySleep && e.life > 0)),
+  )
+  if (subduedEnemy && dungeon.quest && !dungeon.quest.complete) {
+    dungeon.quest.subdued = true
+    dungeon.quest.progress = 1
+    appendLog([
+      `Quest progress: the ${subduedEnemy.profile.name} is subdued alive! Bind it with a rope and bring it to the Quest-giver's tile.`,
+    ])
+  }
+  // Loot: once per cleared encounter (FADEE p.99), Foe's treasure modifier,
+  // environment table (R150). Treasure behind a secret door is doubled (R125).
+  const mod = combat.enemies[0]?.profile.treasure ?? '0'
+  const loot = rollLoot(rng, mod, env)
+  if (tile?.viaSecretDoor && loot.gold > 0) {
+    loot.gold *= 2
+    loot.text += ' (Doubled — treasure behind a secret door!)'
+  }
+  if (loot.gold > 0) {
+    const living = party.filter((p) => p.status !== 'dead')
+    if (living.length) {
+      const each = Math.floor(loot.gold / living.length)
+      living.forEach((p) => (p.gold += each))
+    }
+  }
+  const carrier = party.find((p) => p.status !== 'dead')
+  if (carrier && loot.scroll) carrier.equipment.push(`scroll of ${loot.scroll.spell}`)
+  if (carrier && loot.item) carrier.equipment.push(loot.item)
+  if (carrier && loot.rations) {
+    for (let i = 0; i < loot.rations; i++) carrier.equipment.push('rations')
+  }
+  await appendEvents(campaignId, 'loot', [{ ts: Date.now(), text: loot.text }])
+  appendLog([loot.text])
+
+  // Quest type 4: 1-in-6 per Major Foe slain — did it carry the item?
+  if (dungeon.quest?.roll === 4 && !dungeon.quest.complete && !dungeon.quest.itemFound && due.majorSlain > 0) {
+    for (let i = 0; i < due.majorSlain; i++) {
+      if (rng.d(6) === 6) {
+        dungeon.quest.itemFound = true
+        if (carrier) carrier.equipment.push(`quest item: ${dungeon.quest.itemName}`)
+        appendLog([`Quest progress: a slain Major Foe carried ${dungeon.quest.itemName}! Bring it, unused, to the Quest-giver's tile.`])
+        break
+      }
+    }
+  }
+
+  // XP, per system.
+  let rolls = due.majorSlain + (due.finalBoss ? 1 : 0)
+  if (due.minorEncounter) {
+    dungeon.minorEncountersTally = (dungeon.minorEncountersTally ?? 0) + 1
+    if (dungeon.minorEncountersTally >= 10) {
+      dungeon.minorEncountersTally -= 10
+      rolls += 1
+    }
+  }
+  if (system === 'classical') {
+    const xp = rolls > 0 ? { major: rolls, minor: due.minorEncounter, boss: due.finalBoss } : null
+    setPendingXp(dungeon, xp)
+  } else if (system === 'slow') {
+    if (due.finalBoss) {
+      dungeon.pendingLevelUps = (dungeon.pendingLevelUps ?? 0) + 1
+      appendLog(['Slow and Sure: the Final Boss is slain — 1 Level to one surviving PC. Choose below.'])
+    }
+  } else if (system === 'oldSchool') {
+    let tally = 0
+    for (const e of combat.enemies) {
+      const slainCount = e.profile.major ? (e.life === 0 ? 1 : 0) : Math.max(0, e.initialCount - e.count)
+      if (slainCount > 0) {
+        tally += oldSchoolFoeXp(!!e.profile.major, e.table === 'vermin', e.level, e.maxLife, slainCount)
+      }
+    }
+    tally += loot.gold // +1 XP per gp collected (R173)
+    dungeon.oldSchoolXp = (dungeon.oldSchoolXp ?? 0) + tally
+    appendLog([`Old School: +${tally} XP (tally now ${dungeon.oldSchoolXp}). Level up costs (Tier+2)×100 XP.`])
+  } else {
+    // Slower Advancement: Classical earning, stored as points.
+    dungeon.storedXp = (dungeon.storedXp ?? 0) + rolls
+    if (rolls > 0) appendLog([`Slower Advancement: +${rolls} stored XP (total ${dungeon.storedXp}). Spend the target level in XP to roll for a level.`])
+  }
+  const { saveParty } = await import('../database/repositories/campaignRepo')
+  await saveParty(campaignId, party)
+  await persist(dungeon, rng, campaignId)
+}
+
 /** FADEE p.114: the 1-in-6 Wandering Monsters roll happens AFTER recovery. */
 async function rollWanderingAfterRest(
   dungeon: DungeonState,
@@ -198,13 +440,14 @@ async function rollWanderingAfterRest(
   }
   const tableRoll = rng.d(6)
   const table = tableRoll <= 2 ? 'vermin' : tableRoll <= 4 ? 'minions' : tableRoll === 5 ? 'weird' : 'boss'
-  const enc = rollEncounterSimple(dungeon, rng, profileFor(table, tableRoll), Math.max(1, ...party.map((p) => p.level)))
+  const env = dungeon.environment ?? 'dungeon'
+  const enc = rollEncounterSimple(dungeon, rng, profileForTable(env, table, tableRoll), Math.max(1, ...party.map((p) => p.level)))
   enc.isFinalBoss = false
   const enemies = [
     makeEnemy(enc.monster, enc.table, enc.level, enc.count, lifeFromFormula(enc.level, enc.monster.lifeFormula, enc.monster.flatLife)),
   ]
   const combat = startCombat(dungeon.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng, {
-    marchingOrder: party.map((p) => p.id),
+    ...combatOpts(dungeon, party),
     secrets: campaign.secrets,
   })
   dungeon.combat = combat
@@ -243,11 +486,18 @@ async function finishEvent(
 ): Promise<void> {
   const messages = [...er.messages]
   if (er.trap) {
-    const info = TRAP_INFO[er.trap]
-    messages.push(`${info.text} (${info.source})`)
-    const tr = resolveTrap(rng, party, er.trap, hcl, leaderIndex)
-    messages.push(...tr.messages)
-    await appendEvents(campaignId, 'event', tr.messages.map((text) => ({ ts: Date.now(), text })))
+    // Miners' Amulet (R153): the position-1 wearer ignores 1 trap once/adventure.
+    const leader = party.filter((p) => p.status !== 'dead')[leaderIndex] ?? party[0]
+    if (leader && amuletUnused(leader)) {
+      spendAmulet(leader)
+      messages.push(`The trap fires — but ${leader.name}'s Miners' Amulet turns it aside (once per adventure).`)
+    } else {
+      const info = TRAP_INFO[er.trap]
+      messages.push(`${info.text} (${info.source})`)
+      const tr = resolveTrap(rng, party, er.trap, hcl, leaderIndex)
+      messages.push(...tr.messages)
+      await appendEvents(campaignId, 'event', tr.messages.map((text) => ({ ts: Date.now(), text })))
+    }
   }
   state.pendingChoice = er.choice ? { ...er.choice, prompt: promptFor(er.choice as PendingChoicePayload, party) } : null
   void questActive
@@ -256,8 +506,8 @@ async function finishEvent(
   appendLog(messages)
   if (er.ambush) {
     // Wandering Monsters from the events table (FADEE p.153): surprise combat.
-    const { profileFor } = await import('../rulesets/expanded/monsters')
-    const profile = profileFor(er.ambush.table, er.ambush.tableRoll)
+    const env = state.environment ?? 'dungeon'
+    const profile = profileForTable(env, er.ambush.table, er.ambush.tableRoll)
     const enc = rollEncounterSimple(state, rng, profile, er.ambush.hcl)
     const enemies = [
       makeEnemy(
@@ -269,6 +519,7 @@ async function finishEvent(
       ),
     ]
     const combat = startCombat(state.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng, {
+      ...combatOpts(state, party),
       forceSurprise: true,
     })
     state.combat = combat
@@ -368,6 +619,8 @@ function promptFor(choice: NonNullable<PendingChoicePayload>, party: Character[]
       return 'The healer heals 1 Life per 10gp. Choose a PC and how many points.'
     case 'alchemist':
       return 'Buy a healing potion (50gp, heals all) or blade poison (30gp, +1 vs. first Foe)?'
+    case 'passage':
+      return 'A secret passage! Which environment does it lead to?'
     default:
       return 'Choose.'
   }
@@ -441,7 +694,8 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     // XP rolls are assigned before leaving a victory (FADEE p.117): a map
     // exit must not carry an unspent roll out of the room, where it would
     // resurface on a later victory's card or be overwritten by the next win.
-    if (get().pendingXp) {
+    // Slow and Sure level-ups gate the same way.
+    if (get().pendingXp || (dungeon.pendingLevelUps ?? 0) > 0) {
       appendLog([
         'Assign your XP rolls before leaving the room — each roll goes to one adventurer (FADEE p.117).',
       ])
@@ -451,6 +705,26 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     dungeon.combat = null // leaving any concluded fight behind
     const result = exploreThrough(dungeon, rng, exitId, hcl)
+    // Torch life (R094): 6 rooms with a lit torch, then it burns out.
+    if (result.state.torchLit && party.some((p) => p.status !== 'dead' && p.equipment.includes('torch'))) {
+      result.state.torchRooms = (result.state.torchRooms ?? 0) + 1
+      if (result.state.torchRooms >= 6) {
+        result.state.torchLit = false
+        result.events.push('The torch burns out after its sixth room — the dark closes in.')
+      }
+    }
+    // Phoenix Mushroom (R152): +1 Defense/Saves for 3 tiles, then 1 Life.
+    for (const pc of party) {
+      const left = result.state.phoenixTiles?.[pc.id]
+      if (left !== undefined && left > 0) {
+        result.state.phoenixTiles![pc.id] = left - 1
+        if (left - 1 === 0) {
+          pc.currentLife = Math.max(0, pc.currentLife - 1)
+          if (pc.currentLife === 0) pc.status = 'dead'
+          result.events.push(`The Phoenix Mushroom's warmth fades — ${pc.name} loses 1 Life.`)
+        }
+      }
+    }
     await persist(result.state, rng, campaign.id)
     set({
       dungeon: result.state,
@@ -471,8 +745,8 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
         ),
       ]
       const combat = startCombat(dungeon.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng, {
+        ...combatOpts(dungeon, party),
         forceSurprise: true,
-        marchingOrder: party.map((p) => p.id),
         secrets: campaign.secrets,
       })
       dungeon.combat = combat
@@ -489,33 +763,98 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     const content = tile?.content
     if (content && !result.state.pendingChoice) {
       const tier = Math.ceil(Math.max(...party.map((p) => p.level)) / 2)
-      if (content.kind === 'specialFeature' && content.specialFeatureRoll) {
-        const feature = DUNGEON_FEATURES[content.specialFeatureRoll - 1]
-        const fr = resolveFeature(
-          rng,
-          party,
-          feature,
-          result.state.fountainsSeen ?? 0,
-          hcl,
-          tier,
-        )
-        if (feature === 'fountain') result.state.fountainsSeen = (result.state.fountainsSeen ?? 0) + 1
-        await finishFeature(result.state, rng, campaign.id, fr, party)
+      const env = tile.environment ?? result.state.environment ?? 'dungeon'
+      if (content.kind === 'secretPassage') {
+        // Fungal Tile Content 5 (R114/R126): a passage to another environment.
+        result.state.pendingChoice = {
+          kind: 'passage',
+          source: 'FADEE pp.108, 152',
+          prompt: 'A secret passage! Which environment does it lead to?',
+        }
+        await persist(result.state, rng, campaign.id)
+        set({ dungeon: { ...result.state } })
+        appendLog(['A secret passage opens — choose where it leads.'])
+      } else if (content.kind === 'specialFeature' && content.specialFeatureRoll) {
+        if (env === 'caverns') {
+          // Cavern Special Feature (R114): roll the cavern feature table.
+          const feature = cavernFeatureForRoll(content.specialFeatureRoll)
+          tile.cavernFeature = feature
+          const info = CAVERN_FEATURE_INFO[feature]
+          await persist(result.state, rng, campaign.id)
+          appendLog([`Cavern feature: ${feature} — ${info.text}`])
+          await appendEvents(campaign.id, 'event', [{ ts: Date.now(), text: `Cavern feature: ${feature}` }])
+        } else {
+          const feature = DUNGEON_FEATURES[content.specialFeatureRoll - 1]
+          const fr = resolveFeature(
+            rng,
+            party,
+            feature,
+            result.state.fountainsSeen ?? 0,
+            hcl,
+            tier,
+          )
+          if (feature === 'fountain') result.state.fountainsSeen = (result.state.fountainsSeen ?? 0) + 1
+          await finishFeature(result.state, rng, campaign.id, fr, party)
+        }
       } else if (content.kind === 'specialEvents' && !content.eventRoll) {
         // Rooms roll the Special Events Table once (FADEE p.152 row 4).
-        const event = rollDungeonEvent(rng)
-        content.eventRoll = DUNGEON_EVENTS.indexOf(event) + 1
-        const er = resolveEvent(
-          rng,
-          party,
-          event,
-          hcl,
-          !!result.state.healerMet,
-          !!result.state.alchemistMet,
-        )
-        if (event === 'healer') result.state.healerMet = true
-        if (event === 'alchemist') result.state.alchemistMet = true
-        await finishEvent(result.state, rng, campaign.id, er, party, hcl, 0, !!result.state.quest, !!result.state.ladyRefused)
+        if (env === 'dungeon') {
+          const event = rollDungeonEvent(rng)
+          content.eventRoll = DUNGEON_EVENTS.indexOf(event) + 1
+          const er = resolveEvent(
+            rng,
+            party,
+            event,
+            hcl,
+            !!result.state.healerMet,
+            !!result.state.alchemistMet,
+          )
+          if (event === 'healer') result.state.healerMet = true
+          if (event === 'alchemist') result.state.alchemistMet = true
+          await finishEvent(result.state, rng, campaign.id, er, party, hcl, 0, !!result.state.quest, !!result.state.ladyRefused)
+        } else {
+          // Cavern/fungal events (R160, pp.155-156).
+          const event = rollEnvEvent(rng, env)
+          const list = env === 'caverns' ? CAVERN_EVENTS : FUNGAL_EVENTS
+          content.eventRoll = (list as readonly string[]).indexOf(event) + 1
+          const info = env === 'caverns' ? CAVERN_EVENT_INFO[event as keyof typeof CAVERN_EVENT_INFO] : FUNGAL_EVENT_INFO[event as keyof typeof FUNGAL_EVENT_INFO]
+          const er = resolveEnvEvent(rng, party, event, env, hcl)
+          const messages = [info ? `${info.text}` : event, ...er.messages]
+          if (er.gold) {
+            const living = party.filter((p) => p.status !== 'dead')
+            const each = Math.floor(er.gold / Math.max(1, living.length))
+            living.forEach((p) => (p.gold += each))
+          }
+          if (er.trap) {
+            const trapInfo = env === 'caverns'
+              ? CAVERN_TRAP_INFO[er.trap as keyof typeof CAVERN_TRAP_INFO]
+              : FUNGAL_TRAP_INFO[er.trap as keyof typeof FUNGAL_TRAP_INFO]
+            messages.push(trapInfo ? trapInfo.text : `Trap: ${er.trap}`)
+            const leader = party.filter((p) => p.status !== 'dead')[0]
+            if (leader && amuletUnused(leader)) {
+              spendAmulet(leader)
+              messages.push(`The trap fires — but ${leader.name}'s Miners' Amulet turns it aside (once per adventure).`)
+            } else {
+              const tr = resolveEnvTrap(rng, party, er.trap, env, hcl, 0)
+              messages.push(...tr.messages)
+              if (tr.wanderingMonsters) {
+                const tableRoll = rng.d(6)
+                const table = tableRoll <= 2 ? 'vermin' : tableRoll <= 4 ? 'minions' : tableRoll === 5 ? 'weird' : 'boss'
+                const enc = rollEncounterSimple(result.state, rng, profileForTable(env, table, tableRoll), hcl)
+                const enemies = [makeEnemy(enc.monster, enc.table, enc.level, enc.count, lifeFromFormula(enc.level, enc.monster.lifeFormula, enc.monster.flatLife))]
+                const combat = startCombat(result.state.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng, {
+                  ...combatOpts(result.state, party),
+                  forceSurprise: true,
+                })
+                result.state.combat = combat
+                messages.push(...combat.log.map((l) => l.text))
+              }
+            }
+          }
+          await persist(result.state, rng, campaign.id)
+          appendLog(messages)
+          await appendEvents(campaign.id, 'event', messages.map((text) => ({ ts: Date.now(), text })))
+        }
       }
     }
   },
@@ -538,12 +877,13 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       ),
     ]
     enemies[0].isFinalBossFlag = !!enc.isFinalBoss
+    const opts = combatOpts(dungeon, party)
     const combat = startCombat(
       dungeon.currentTileId,
       party.filter((p) => p.status !== 'dead'),
       enemies,
       rng,
-      { marchingOrder: party.map((p) => p.id), secrets: campaign.secrets },
+      { ...opts, secrets: campaign.secrets },
     )
     dungeon.combat = combat
     // A reaction can end the encounter before any blow is struck (FADEE
@@ -561,6 +901,11 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       dungeon: { ...dungeon },
       log: [...get().log, ...combat.log.map((l) => ({ ts: l.ts, text: l.text }))].slice(-100),
     })
+    // A6: a reaction win on Engage awards XP + loot like any victory.
+    if (combat.phase === 'won') {
+      await awardVictory(dungeon, combat, rng, party, campaign.id)
+      set({ dungeon: { ...dungeon } })
+    }
   },
 
   combatAttack: async (pcId, enemyId) => {
@@ -572,6 +917,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     const pc = party.find((p) => p.id === pcId)
     if (!pc) return
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    // Attacking from the opening phase is the "attack immediately" choice:
+    // it forgoes Reactions and moves to the party's turn (Release 0.5, A6).
+    if (combat.phase === 'opening') combat.phase = 'pcTurn'
     pcAttack(combat, rng, pc, enemyId)
     // Victory clears the tile BEFORE persist: persist rewrites the campaign
     // meta, which re-runs DungeonScreen's ensureDungeon and reloads the
@@ -581,56 +929,58 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       const t = dungeon.tiles.find((x) => x.id === dungeon.currentTileId)
       if (t?.content) t.content.cleared = true
     }
+    syncLightFlags(dungeon)
     await persist(dungeon, rng, campaign.id)
     set({
       dungeon: { ...dungeon },
       log: [...get().log, ...combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text }))].slice(-100),
     })
     await appendEvents(campaign.id, 'combat', combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text })))
-    if (combat.phase === 'won' || combat.phase === 'lost') {
-      // Sync party casualties/levels to Dexie; surface XP due on victory
+    if (combat.phase === 'won') {
+      await awardVictory(dungeon, combat, rng, party, campaign.id)
+      set({ dungeon: { ...dungeon } })
+    } else if (combat.phase === 'lost') {
       const { saveParty } = await import('../database/repositories/campaignRepo')
       await saveParty(campaign.id, party)
-      if (combat.phase === 'won') {
-        const t = dungeon.tiles.find((x) => x.id === dungeon.currentTileId)
-        if (t?.content) t.content.cleared = true
-        const due = xpDue(combat)
-        // Classical XP (FADEE p.117): 1 roll per Major Foe (+1 Final Boss);
-        // Minors accrue 1 roll per 10 encounters.
-        let rolls = due.majorSlain + (due.finalBoss ? 1 : 0)
-        if (due.minorEncounter) {
-          dungeon.minorEncountersTally = (dungeon.minorEncountersTally ?? 0) + 1
-          if (dungeon.minorEncountersTally >= 10) {
-            dungeon.minorEncountersTally -= 10
-            rolls += 1
-          }
-        }
-        // Loot: once per cleared encounter (FADEE p.99), Foe's treasure modifier.
-        const mod = combat.enemies[0]?.profile.treasure ?? '0'
-        const loot = rollLoot(rng, mod)
-        if (loot.gold > 0) {
-          const living = party.filter((p) => p.status !== 'dead')
-          if (living.length) {
-            const each = Math.floor(loot.gold / living.length)
-            living.forEach((p) => (p.gold += each))
-          }
-        }
-        const carrier = party.find((p) => p.status !== 'dead')
-        if (carrier && loot.scroll) {
-          carrier.equipment.push(`scroll of ${loot.scroll.spell}`)
-        }
-        if (carrier && loot.magic) {
-          carrier.equipment.push(loot.magic.name)
-        }
-        const xp = rolls > 0 ? { major: rolls, minor: due.minorEncounter, boss: due.finalBoss } : null
-        setPendingXp(dungeon, xp)
-        // Persist the award with the dungeon: a reload before the roll is
-        // assigned must restore it, not drop it.
-        await persist(dungeon, rng, campaign.id)
-        await appendEvents(campaign.id, 'loot', [
-          { ts: Date.now(), text: loot.text },
-        ])
-      }
+    }
+  },
+
+  combatAttackSubdue: async (pcId, enemyId) => {
+    await snap('combatAttackSubdue', useCampaignStore.getState().campaign?.id ?? '')
+    const { dungeon } = get()
+    const { campaign, party } = useCampaignStore.getState()
+    const combat = dungeon?.combat
+    if (!dungeon || !campaign || !combat) return
+    const pc = party.find((p) => p.id === pcId)
+    if (!pc) return
+    const enemy = combat.enemies.find((e) => e.id === enemyId)
+    if (!enemy) return
+    // Subdual (R089): not possible vs Unliving, hordes, Vermin, pain-immune.
+    if (isSubdualImmune(enemy.profile, enemy.table)) {
+      set({ error: `${enemy.profile.name} cannot be subdued (Unliving, Vermin, or pain-immune).` })
+      return
+    }
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    // As in combatAttack: subduing from the opening phase forgoes Reactions.
+    if (combat.phase === 'opening') combat.phase = 'pcTurn'
+    pcAttack(combat, rng, pc, enemyId, { subdual: true })
+    if (combat.phase === 'won') {
+      const t = dungeon.tiles.find((x) => x.id === dungeon.currentTileId)
+      if (t?.content) t.content.cleared = true
+    }
+    syncLightFlags(dungeon)
+    await persist(dungeon, rng, campaign.id)
+    set({
+      dungeon: { ...dungeon },
+      log: [...get().log, ...combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text }))].slice(-100),
+    })
+    await appendEvents(campaign.id, 'combat', combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text })))
+    if (combat.phase === 'won') {
+      await awardVictory(dungeon, combat, rng, party, campaign.id)
+      set({ dungeon: { ...dungeon } })
+    } else if (combat.phase === 'lost') {
+      const { saveParty } = await import('../database/repositories/campaignRepo')
+      await saveParty(campaign.id, party)
     }
   },
 
@@ -650,53 +1000,18 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       const t = dungeon.tiles.find((x) => x.id === dungeon.currentTileId)
       if (t?.content) t.content.cleared = true
     }
+    syncLightFlags(dungeon)
     await persist(dungeon, rng, campaign.id)
     set({
       dungeon: { ...dungeon },
       log: [...get().log, ...combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text }))].slice(-100),
     })
-    if (combat.phase === 'won' || combat.phase === 'lost') {
+    if (combat.phase === 'won') {
+      await awardVictory(dungeon, combat, rng, party, campaign.id)
+      set({ dungeon: { ...dungeon } })
+    } else if (combat.phase === 'lost') {
       const { saveParty } = await import('../database/repositories/campaignRepo')
       await saveParty(campaign.id, party)
-      if (combat.phase === 'won') {
-        const t = dungeon.tiles.find((x) => x.id === dungeon.currentTileId)
-        if (t?.content) t.content.cleared = true
-        // Quest type 1 progress: the named Boss was slain (FADEE p.161).
-        if (dungeon.quest && dungeon.quest.roll === 1 && !dungeon.quest.complete) {
-          const slainName = combat.enemies[0]?.profile.name
-          if (slainName && slainName === dungeon.quest.target) {
-            dungeon.quest.progress += 1
-            appendLog([`Quest progress: the ${slainName} is slain! Bring its head to the Quest-giver's tile. (FADEE p.161)`])
-          }
-        }
-        const due = xpDue(combat)
-        let rolls = due.majorSlain + (due.finalBoss ? 1 : 0)
-        if (due.minorEncounter) {
-          dungeon.minorEncountersTally = (dungeon.minorEncountersTally ?? 0) + 1
-          if (dungeon.minorEncountersTally >= 10) {
-            dungeon.minorEncountersTally -= 10
-            rolls += 1
-          }
-        }
-        const mod = combat.enemies[0]?.profile.treasure ?? '0'
-        const loot = rollLoot(rng, mod)
-        if (loot.gold > 0) {
-          const living = party.filter((p) => p.status !== 'dead')
-          if (living.length) {
-            const each = Math.floor(loot.gold / living.length)
-            living.forEach((p) => (p.gold += each))
-          }
-        }
-        const carrier = party.find((p) => p.status !== 'dead')
-        if (carrier && loot.scroll) carrier.equipment.push(`scroll of ${loot.scroll.spell}`)
-        if (carrier && loot.magic) carrier.equipment.push(loot.magic.name)
-        const xp = rolls > 0 ? { major: rolls, minor: due.minorEncounter, boss: due.finalBoss } : null
-        setPendingXp(dungeon, xp)
-        // Persist the award with the dungeon: a reload before the roll is
-        // assigned must restore it, not drop it.
-        await persist(dungeon, rng, campaign.id)
-        await appendEvents(campaign.id, 'loot', [{ ts: Date.now(), text: loot.text }])
-      }
     }
   },
 
@@ -735,12 +1050,19 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       const t = dungeon.tiles.find((x) => x.id === dungeon.currentTileId)
       if (t?.content) t.content.cleared = true
     }
+    syncLightFlags(dungeon)
     await persist(dungeon, rng, campaign.id)
     set({
       dungeon: { ...dungeon },
       log: [...get().log, ...combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text }))].slice(-100),
     })
-    await savePartyIfCombatOver(dungeon, campaign.id, combat.phase, party)
+    // A6: a scroll-kill is a victory like any other — same XP + loot path.
+    if (combat.phase === 'won') {
+      await awardVictory(dungeon, combat, rng, party, campaign.id)
+      set({ dungeon: { ...dungeon } })
+    } else {
+      await savePartyIfCombatOver(dungeon, campaign.id, combat.phase, party)
+    }
   },
 
   /** Healing potion mid-combat: free action, 1 per PC per adventure (p.83). */
@@ -771,16 +1093,30 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   combatWait: async () => {
     await snap('combatWait', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign } = useCampaignStore.getState()
+    const { campaign, party } = useCampaignStore.getState()
     const combat = dungeon?.combat
     if (!dungeon || !campaign || !combat || combat.phase !== 'opening') return
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     rollReactions(combat, rng)
+    // rollReactions mutates combat.phase (TS still narrows it to 'opening'
+    // from the guard above, so read it through a string comparison).
+    const reactionWon = (combat.phase as string) === 'won'
+    if (reactionWon) {
+      const tile = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
+      if (tile?.content) tile.content.cleared = true
+    }
+    syncLightFlags(dungeon)
     await persist(dungeon, rng, campaign.id)
     set({
       dungeon: { ...dungeon },
       log: [...get().log, ...combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text }))].slice(-100),
     })
+    // A6: a reaction win (foes flee, ignore, or parley) awards XP + loot
+    // through the same path as a sword win.
+    if (reactionWon) {
+      await awardVictory(dungeon, combat, rng, party, campaign.id)
+      set({ dungeon: { ...dungeon } })
+    }
   },
 
   combatPayBribe: async () => {
@@ -807,6 +1143,14 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       dungeon: { ...dungeon },
       log: [...get().log, ...combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text }))].slice(-100),
     })
+    // A6: a bribe that ends the encounter is a victory too (loot + tally).
+    if (combat.phase === 'won') {
+      const tile = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
+      if (tile?.content) tile.content.cleared = true
+      const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+      await awardVictory(dungeon, combat, rng, party, campaign.id)
+      set({ dungeon: { ...dungeon } })
+    }
   },
 
   combatFlee: async () => {
@@ -817,6 +1161,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     if (!dungeon || !campaign || !combat) return
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     fleeCombat(combat, rng)
+    syncLightFlags(dungeon)
     // FADEE p.98: flee to a visited tile — use the way we came in.
     const here = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
     const back = here?.exits.find((e) => e.toTileId)
@@ -829,6 +1174,208 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       dungeon: { ...dungeon },
       log: [...get().log, ...combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text }))].slice(-100),
     })
+  },
+
+  /** Shared post-action handling for item casts (persist + victory award). */
+  combatUseWand: async (pcId, enemyId) => {
+    await snap('combatUseWand', useCampaignStore.getState().campaign?.id ?? '')
+    const { dungeon } = get()
+    const { campaign, party } = useCampaignStore.getState()
+    const combat = dungeon?.combat
+    if (!dungeon || !campaign || !combat) return
+    const pc = party.find((p) => p.id === pcId)
+    if (!pc || !canUseWand(pc)) return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    // Slumber Amanita (R152): +Tier to a Sleep casting, consumed.
+    let bonus = pc.level
+    if (useSlumberAmanita(pc)) {
+      bonus += tierOf(pc.level)
+      appendLog([`${pc.name} eats a Slumber Amanita: +${tierOf(pc.level)} to this Sleep casting.`])
+    }
+    try {
+      castItemSpell(combat, rng, pc, 'sleep', enemyId, bonus)
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) })
+      return
+    }
+    setCharges(pc, 'Wand of Sleep', chargesOf(pc, 'Wand of Sleep') - 1)
+    if (combat.phase === 'won') {
+      const t = dungeon.tiles.find((x) => x.id === dungeon.currentTileId)
+      if (t?.content) t.content.cleared = true
+    }
+    syncLightFlags(dungeon)
+    await persist(dungeon, rng, campaign.id)
+    set({ dungeon: { ...dungeon }, log: [...get().log, ...combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text }))].slice(-100) })
+    if (combat.phase === 'won') {
+      await awardVictory(dungeon, combat, rng, party, campaign.id)
+      set({ dungeon: { ...dungeon } })
+    }
+  },
+
+  combatUseStaff: async (pcId, enemyId) => {
+    await snap('combatUseStaff', useCampaignStore.getState().campaign?.id ?? '')
+    const { dungeon } = get()
+    const { campaign, party } = useCampaignStore.getState()
+    const combat = dungeon?.combat
+    if (!dungeon || !campaign || !combat) return
+    const pc = party.find((p) => p.id === pcId)
+    if (!pc || !canUseStaff(pc)) return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    try {
+      castItemSpell(combat, rng, pc, 'fireball', enemyId, pc.level)
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) })
+      return
+    }
+    setCharges(pc, 'Fireball Staff', chargesOf(pc, 'Fireball Staff') - 1)
+    if (combat.phase === 'won') {
+      const t = dungeon.tiles.find((x) => x.id === dungeon.currentTileId)
+      if (t?.content) t.content.cleared = true
+    }
+    syncLightFlags(dungeon)
+    await persist(dungeon, rng, campaign.id)
+    set({ dungeon: { ...dungeon }, log: [...get().log, ...combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text }))].slice(-100) })
+    if (combat.phase === 'won') {
+      await awardVictory(dungeon, combat, rng, party, campaign.id)
+      set({ dungeon: { ...dungeon } })
+    }
+  },
+
+  combatUseRing: async (pcId) => {
+    await snap('combatUseRing', useCampaignStore.getState().campaign?.id ?? '')
+    const { dungeon } = get()
+    const { campaign, party } = useCampaignStore.getState()
+    const combat = dungeon?.combat
+    if (!dungeon || !campaign || !combat) return
+    const pc = party.find((p) => p.id === pcId)
+    if (!pc || !hasRing(pc)) return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    useTeleportRing(combat, pc)
+    syncLightFlags(dungeon)
+    await persist(dungeon, rng, campaign.id)
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    set({ dungeon: { ...dungeon }, log: [...get().log, ...combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text }))].slice(-100) })
+  },
+
+  combatUseFoolsGold: async () => {
+    await snap('combatUseFoolsGold', useCampaignStore.getState().campaign?.id ?? '')
+    const { dungeon } = get()
+    const { campaign, party } = useCampaignStore.getState()
+    const combat = dungeon?.combat
+    if (!dungeon || !campaign || !combat || !combat.pendingBribe) return
+    if (!hasFoolsGold(party)) return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    payBribeWithFoolsGold(combat, party)
+    await persist(dungeon, rng, campaign.id)
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    set({ dungeon: { ...dungeon }, log: [...get().log, ...combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text }))].slice(-100) })
+    if (combat.phase === 'won') {
+      const tile = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
+      if (tile?.content) tile.content.cleared = true
+      await awardVictory(dungeon, combat, rng, party, campaign.id)
+      set({ dungeon: { ...dungeon } })
+    }
+  },
+
+  combatUseSmokebomb: async (pcId) => {
+    await snap('combatUseSmokebomb', useCampaignStore.getState().campaign?.id ?? '')
+    const { dungeon } = get()
+    const { campaign, party } = useCampaignStore.getState()
+    const combat = dungeon?.combat
+    if (!dungeon || !campaign || !combat) return
+    const pc = party.find((p) => p.id === pcId)
+    if (!pc || !useSmokebomb(pc)) return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    fleeCombat(combat, rng, { unattacked: true })
+    syncLightFlags(dungeon)
+    const here = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
+    const back = here?.exits.find((e) => e.toTileId)
+    if (back?.toTileId) dungeon.currentTileId = back.toTileId
+    dungeon.combat = null
+    await persist(dungeon, rng, campaign.id)
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    set({ dungeon: { ...dungeon }, log: [...get().log, ...combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text }))].slice(-100) })
+  },
+
+  combatUseXicthul: async (pcId, enemyId) => {
+    await snap('combatUseXicthul', useCampaignStore.getState().campaign?.id ?? '')
+    const { dungeon } = get()
+    const { campaign, party } = useCampaignStore.getState()
+    const combat = dungeon?.combat
+    if (!dungeon || !campaign || !combat) return
+    const pc = party.find((p) => p.id === pcId)
+    if (!pc || !useXicthulCap(pc)) return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    throwXicthulCap(combat, rng, pc, enemyId)
+    if (combat.phase === 'won') {
+      const t = dungeon.tiles.find((x) => x.id === dungeon.currentTileId)
+      if (t?.content) t.content.cleared = true
+    }
+    syncLightFlags(dungeon)
+    await persist(dungeon, rng, campaign.id)
+    set({ dungeon: { ...dungeon }, log: [...get().log, ...combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text }))].slice(-100) })
+    if (combat.phase === 'won') {
+      await awardVictory(dungeon, combat, rng, party, campaign.id)
+      set({ dungeon: { ...dungeon } })
+    }
+  },
+
+  combatUseRedDeath: async (pcId, enemyId, mode) => {
+    await snap('combatUseRedDeath', useCampaignStore.getState().campaign?.id ?? '')
+    const { dungeon } = get()
+    const { campaign, party } = useCampaignStore.getState()
+    const combat = dungeon?.combat
+    if (!dungeon || !campaign || !combat) return
+    const pc = party.find((p) => p.id === pcId)
+    if (!pc || !useRedDeath(pc)) return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    throwRedDeath(combat, rng, pc, enemyId, mode)
+    if (combat.phase === 'won') {
+      const t = dungeon.tiles.find((x) => x.id === dungeon.currentTileId)
+      if (t?.content) t.content.cleared = true
+    }
+    syncLightFlags(dungeon)
+    await persist(dungeon, rng, campaign.id)
+    set({ dungeon: { ...dungeon }, log: [...get().log, ...combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text }))].slice(-100) })
+    if (combat.phase === 'won') {
+      await awardVictory(dungeon, combat, rng, party, campaign.id)
+      set({ dungeon: { ...dungeon } })
+    }
+  },
+
+  combatUseMorel: async (pcId) => {
+    await snap('combatUseMorel', useCampaignStore.getState().campaign?.id ?? '')
+    const { dungeon } = get()
+    const { campaign, party } = useCampaignStore.getState()
+    const combat = dungeon?.combat
+    if (!dungeon || !campaign || !combat) return
+    const pc = party.find((p) => p.id === pcId)
+    if (!pc || !useMorelCrusher(pc)) return
+    combat.moraleMod = -1
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    await persist(dungeon, rng, campaign.id)
+    appendLog([`${pc.name} crushes a Morel: the next Morale test is at -1.`])
+    set({ dungeon: { ...dungeon } })
+  },
+
+  combatPickupLantern: async (pcId) => {
+    await snap('combatPickupLantern', useCampaignStore.getState().campaign?.id ?? '')
+    const { dungeon } = get()
+    const { campaign, party } = useCampaignStore.getState()
+    const combat = dungeon?.combat
+    if (!dungeon || !campaign || !combat || !combat.lanternDropped) return
+    const pc = party.find((p) => p.id === pcId && p.status !== 'dead')
+    if (!pc) return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    combat.lanternDropped = false
+    dungeon.lanternDropped = false
+    appendLog([`${pc.name} picks up the dropped lantern (1 turn).`])
+    spendTurn(combat, rng)
+    await persist(dungeon, rng, campaign.id)
+    set({ dungeon: { ...dungeon }, log: [...get().log, ...combat.log.slice(-6).map((l) => ({ ts: l.ts, text: l.text }))].slice(-100) })
   },
 
   /**
@@ -850,8 +1397,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     if (!dungeon || !campaign || !dungeon.combat) return
     if (!canLeaveCombat(dungeon.combat.phase)) return
     // Backstop for the disabled button: an unspent roll holds the party in
-    // the room until it is assigned (FADEE p.117).
-    if (get().pendingXp) return
+    // the room until it is assigned (FADEE p.117). Slow and Sure level-ups
+    // gate the same way.
+    if (get().pendingXp || (dungeon.pendingLevelUps ?? 0) > 0) return
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     dungeon.combat = null
     await persist(dungeon, rng, campaign.id)
@@ -894,13 +1442,122 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     set({ log: [...get().log, ...entries].slice(-100) })
   },
 
+  /** Slow and Sure (R172): assign the earned Level to one surviving PC. */
+  spendLevelUp: async (pcId) => {
+    await snap('spendLevelUp', useCampaignStore.getState().campaign?.id ?? '')
+    const { dungeon } = get()
+    const { campaign, party } = useCampaignStore.getState()
+    if (!dungeon || !campaign || (dungeon.pendingLevelUps ?? 0) <= 0) return
+    const pc = party.find((p) => p.id === pcId)
+    if (!pc || pc.status === 'dead') return
+    pc.level += 1
+    pc.maxLife += 1
+    pc.currentLife += 1
+    dungeon.pendingLevelUps = (dungeon.pendingLevelUps ?? 1) - 1
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    await persist(dungeon, rng, campaign.id)
+    set({
+      dungeon: { ...dungeon },
+      log: [...get().log, { ts: Date.now(), text: `Slow and Sure: ${pc.name} gains 1 Level → L${pc.level} (+1 max and current Life).` }].slice(-100),
+    })
+  },
+
+  /** Slower Advancement (R174): spend the target level in stored XP to roll. */
+  spendStoredXp: async (pcId, extra = 0) => {
+    await snap('spendStoredXp', useCampaignStore.getState().campaign?.id ?? '')
+    const { dungeon } = get()
+    const { campaign, party } = useCampaignStore.getState()
+    if (!dungeon || !campaign) return
+    const pc = party.find((p) => p.id === pcId)
+    if (!pc || pc.status === 'dead') return
+    const targetLevel = pc.level + 1
+    const cost = targetLevel + extra
+    if ((dungeon.storedXp ?? 0) < cost) {
+      set({ error: `Slower Advancement: levelling ${pc.name} to L${targetLevel} costs ${cost} stored XP (have ${dungeon.storedXp ?? 0}).` })
+      return
+    }
+    // Tier training (R174): crossing into T2-5 costs gp.
+    const training = tierTrainingCost(targetLevel)
+    if (training > 0 && pc.gold < training) {
+      set({ error: `Tier training to L${targetLevel} costs ${training}gp — ${pc.name} has ${pc.gold}gp.` })
+      return
+    }
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    dungeon.storedXp = (dungeon.storedXp ?? 0) - cost
+    if (training > 0) pc.gold -= training
+    const roll = rng.d(6) + extra
+    const success = roll > pc.level || roll >= 6
+    const entries: LogEntry[] = [
+      { ts: Date.now(), text: `Slower Advancement: ${pc.name} spends ${cost} XP (target L${targetLevel}) — d6=${roll - extra}${extra ? ` +${extra}` : ''} vs L${pc.level} → ${success ? 'LEVEL UP!' : 'no level'}` },
+    ]
+    if (success) {
+      pc.level += 1
+      pc.maxLife += 1
+      pc.currentLife += 1
+      entries.push({ ts: Date.now(), text: `${pc.name} reaches L${pc.level}: +1 max and current Life.` })
+    }
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    await persist(dungeon, rng, campaign.id)
+    set({ dungeon: { ...dungeon }, log: [...get().log, ...entries].slice(-100) })
+  },
+
+  /** Old School (R173): spend (Tier+2)×100 XP to level up. */
+  spendOldSchoolXp: async (pcId) => {
+    await snap('spendOldSchoolXp', useCampaignStore.getState().campaign?.id ?? '')
+    const { dungeon } = get()
+    const { campaign, party } = useCampaignStore.getState()
+    if (!dungeon || !campaign) return
+    const pc = party.find((p) => p.id === pcId)
+    if (!pc || pc.status === 'dead') return
+    const living = party.filter((p) => p.status !== 'dead')
+    if (living.length > 1 && dungeon.lastLevelUpPcId === pcId) {
+      set({ error: 'Old School: no PC levels up twice in a row (unless sole survivor).' })
+      return
+    }
+    const cost = oldSchoolLevelCost(pc.level)
+    if ((dungeon.oldSchoolXp ?? 0) < cost) {
+      set({ error: `Old School: levelling ${pc.name} costs ${cost} XP (tally ${dungeon.oldSchoolXp ?? 0}).` })
+      return
+    }
+    dungeon.oldSchoolXp = (dungeon.oldSchoolXp ?? 0) - cost
+    dungeon.lastLevelUpPcId = pcId
+    pc.level += 1
+    pc.maxLife += 1
+    pc.currentLife += 1
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    await persist(dungeon, rng, campaign.id)
+    set({
+      dungeon: { ...dungeon },
+      log: [...get().log, { ts: Date.now(), text: `Old School: ${pc.name} spends ${cost} XP and reaches L${pc.level} (+1 max and current Life).` }].slice(-100),
+    })
+  },
+
   search: async () => {
     await snap('search', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
-    const { campaign } = useCampaignStore.getState()
+    const { campaign, party } = useCampaignStore.getState()
     if (!dungeon || !campaign) return
+    // Darkness (R093): no Search without a working light.
+    const tile = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
+    const env = tile?.environment ?? dungeon.environment ?? 'dungeon'
+    const glowmaggots = tile?.content?.encounter?.monster.name === 'Glowmaggots'
+    const light = computeLight(party, {
+      torchLit: dungeon.torchLit ?? false,
+      torchRooms: dungeon.torchRooms ?? 0,
+      lanternDropped: dungeon.lanternDropped ?? false,
+      glowmaggots,
+    })
+    if (!light.hasLight) {
+      set({ error: 'Too dark to search — the party needs a working light (lantern, lit torch, or Glittering Crystal).' })
+      return
+    }
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
-    const result = searchTile(dungeon, rng, dungeon.currentTileId)
+    const result = searchTile(dungeon, rng, dungeon.currentTileId, party.map((p) => p.classId))
     await persist(result.state, rng, campaign.id)
     const log = [...get().log, { ts: Date.now(), text: `Search: ${result.result}` }]
     if (result.result === 'find') {
@@ -913,31 +1570,57 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   claimFind: async (choice) => {
     await snap('claimFind', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon, pendingFind } = get()
-    const { campaign } = useCampaignStore.getState()
+    const { campaign, party } = useCampaignStore.getState()
     if (!dungeon || !campaign || !pendingFind) return
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     const entries: LogEntry[] = []
     if (choice === 'hidden-treasure') {
-      const hcl = Math.max(1)
+      const hcl = Math.max(1, ...party.map((p) => p.level))
       const result = rollHiddenTreasure(dungeon, rng, hcl)
+      const living = party.filter((p) => p.status !== 'dead')
+      const each = Math.floor(result.gold / Math.max(1, living.length))
+      living.forEach((p) => (p.gold += each))
       entries.push({
         ts: Date.now(),
-        text: `Hidden treasure: ${result.gold} gp! ${result.complication}`,
+        text: `Hidden treasure: ${result.gold} gp (${each} each)! ${result.complication}`,
       })
-      // Gold lands in the party ledger in Phase 5 (inventory); recorded now.
+      const { saveParty } = await import('../database/repositories/campaignRepo')
+      await saveParty(campaign.id, party)
     } else if (choice === 'secret-door') {
-      const bonus = rollSecretDoorBonus(rng)
-      entries.push({
-        ts: Date.now(),
-        text: bonus.safeExit
-          ? 'The secret door hides a SAFE SHORTCUT OUT of the dungeon! (FADEE p.108)'
-          : 'A secret door is drawn on the map — roll a fresh tile beyond it when you step through.',
-      })
-      // Milestone 5 (C4): the found door is drawn on the map as a badge on
-      // this tile. Display only — the engine adds no exit for it.
+      // Release 0.5 (R125): the door connects to a real tile the party can
+      // peek at and enter through — not just a badge.
+      const hcl = Math.max(1, ...party.map((p) => p.level))
+      const gen = generateSecretDoorTile(dungeon, rng, hcl)
+      entries.push(...gen.events.map((text) => ({ ts: Date.now(), text })))
       const foundTile = dungeon.tiles.find((t) => t.id === pendingFind.tileId)
       if (foundTile) foundTile.secretDoorFound = true
-      set({ dungeon })
+      set({ dungeon: gen.state })
+    } else if (choice === 'secret-passage') {
+      // Found via Search (R126): choose the other environment now.
+      dungeon.pendingChoice = {
+        kind: 'passage',
+        source: 'FADEE pp.108, 113',
+        prompt: 'A secret passage! Which environment does it lead to?',
+      }
+      set({ dungeon: { ...dungeon } })
+    } else if (choice === 'listen') {
+      // Cavern Search (R143): pre-roll the tile beyond a chosen opening.
+      const shape = rng.d66()
+      dungeon.listenShape = shape
+      entries.push({ ts: Date.now(), text: `Listen: beyond the opening, the next tile will be shape ${shape}.` })
+    } else if (choice === 'rare-mushroom') {
+      // Fungal Search (R144): roll on the Rare Mushroom Table (R152).
+      const sp = rollSpecialItem(rng, 'mushroom')
+      const carrier = party.find((p) => p.status !== 'dead')
+      if (carrier && sp.item) carrier.equipment.push(sp.item)
+      if (sp.gold > 0) {
+        const living = party.filter((p) => p.status !== 'dead')
+        const each = Math.floor(sp.gold / Math.max(1, living.length))
+        living.forEach((p) => (p.gold += each))
+      }
+      entries.push({ ts: Date.now(), text: `Search: ${sp.text}` })
+      const { saveParty } = await import('../database/repositories/campaignRepo')
+      await saveParty(campaign.id, party)
     } else {
       const cs = useCampaignStore.getState()
       if (cs.campaign) {
@@ -950,12 +1633,241 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     set({
       pendingFind: null,
       log: [...get().log, ...entries].slice(-100),
-      ...(choice === 'hidden-treasure' ? {} : {}),
     })
     // Persist only RNG-consuming choices
     if (choice !== 'clue') {
       await persist(dungeon, rng, campaign.id)
     }
+  },
+
+  /** Choose the environment a secret passage leads to (R126). */
+  claimPassage: async (env) => {
+    const { dungeon } = get()
+    const { campaign } = useCampaignStore.getState()
+    if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'passage') return
+    const current = dungeon.environment ?? 'dungeon'
+    if (env === current) {
+      set({ error: 'The passage leads to a *different* environment.' })
+      return
+    }
+    dungeon.environment = env
+    dungeon.pendingChoice = null
+    // A passage tile is spent once chosen.
+    const tile = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
+    if (tile?.content?.kind === 'secretPassage') tile.content.cleared = true
+    // The tile the party stands on joins the new environment — otherwise
+    // the header (which reads the tile first) would still say Dungeon
+    // after the log says the party entered the caverns.
+    if (tile) tile.environment = env
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    await persist(dungeon, rng, campaign.id)
+    appendLog([`The secret passage leads into the ${env === 'caverns' ? 'caverns' : 'fungal grottoes'} — the next tiles use its Foe, trap and treasure tables.`])
+    set({ dungeon: { ...dungeon } })
+  },
+
+  /** Tile Content 9 (R126): spend 2 Clues for a secret passage. */
+  buyPassage: async (env) => {
+    const { dungeon } = get()
+    const { campaign } = useCampaignStore.getState()
+    if (!dungeon || !campaign) return
+    const cs = useCampaignStore.getState()
+    if ((cs.campaign?.clues ?? 0) < 2) {
+      set({ error: 'A secret passage costs 2 Clues.' })
+      return
+    }
+    if (env === (dungeon.environment ?? 'dungeon')) {
+      set({ error: 'The passage leads to a *different* environment.' })
+      return
+    }
+    await touchCampaign(campaign.id, { clues: (cs.campaign?.clues ?? 0) - 2 })
+    useCampaignStore.setState({ campaign: { ...cs.campaign!, clues: (cs.campaign?.clues ?? 0) - 2 } })
+    dungeon.environment = env
+    // As in claimPassage: the tile the party stands on joins the new
+    // environment, so the header follows the log.
+    const tile = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
+    if (tile) tile.environment = env
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    await persist(dungeon, rng, campaign.id)
+    appendLog([`2 Clues spent: a secret passage opens into the ${env === 'caverns' ? 'caverns' : 'fungal grottoes'}.`])
+    set({ dungeon: { ...dungeon } })
+  },
+
+  /** Peek at the tile beyond a found secret door (R125). */
+  peekSecretDoor: async () => {
+    const { dungeon } = get()
+    const { campaign } = useCampaignStore.getState()
+    if (!dungeon || !campaign || !dungeon.secretDoor) return
+    const to = dungeon.tiles.find((t) => t.id === dungeon.secretDoor!.toTileId)
+    if (!to) return
+    dungeon.secretDoor.peeked = true
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    await persist(dungeon, rng, campaign.id)
+    const c = to.content
+    const what = c?.encounter
+      ? `${c.encounter.count}× ${c.encounter.monster.name} (L${c.encounter.level})`
+      : c?.kind === 'treasure' || c?.kind === 'treasureTrapped'
+        ? 'treasure'
+        : c?.kind === 'specialFeature'
+          ? 'a special feature'
+          : c?.kind === 'secretPassage'
+            ? 'a secret passage'
+            : 'an empty tile'
+    appendLog([`Peek through the secret door: ${what}. Enter, or refuse and stay.`])
+    set({ dungeon: { ...dungeon } })
+  },
+
+  /** Step through a found secret door (R125): Foes are surprised (L-1, turn 1). */
+  enterSecretDoor: async () => {
+    await snap('enterSecretDoor', useCampaignStore.getState().campaign?.id ?? '')
+    const { dungeon } = get()
+    const { campaign } = useCampaignStore.getState()
+    if (!dungeon || !campaign || !dungeon.secretDoor) return
+    const toId = dungeon.secretDoor.toTileId
+    const fromId = dungeon.currentTileId
+    if (fromId !== dungeon.secretDoor.fromTileId) return
+    dungeon.currentTileId = toId
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    await persist(dungeon, rng, campaign.id)
+    appendLog(['The party slips through the secret door — the Foes beyond are surprised (their L is -1 on turn 1).'])
+    set({ dungeon: { ...dungeon } })
+  },
+
+  /** Dip in a cavern water pool (R142). */
+  dipPool: async (pcId) => {
+    await snap('dipPool', useCampaignStore.getState().campaign?.id ?? '')
+    const { dungeon } = get()
+    const { campaign, party } = useCampaignStore.getState()
+    if (!dungeon || !campaign) return
+    const tile = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
+    if (!tile || tile.cavernFeature !== 'waterPools') return
+    const pc = party.find((p) => p.id === pcId && p.status !== 'dead')
+    if (!pc) return
+    if ((dungeon.poolDippedPcIds ?? []).includes(pcId)) {
+      set({ error: `${pc.name} already dipped in a pool this adventure.` })
+      return
+    }
+    dungeon.poolDippedPcIds = [...(dungeon.poolDippedPcIds ?? []), pcId]
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    const roll = rng.d(6)
+    if (roll === 1) {
+      pc.conditions.push('contaminated')
+      appendLog([`${pc.name} dips in — the water is contaminated: -1 to Saves until Healing or Blessing.`])
+    } else if (roll <= 4) {
+      appendLog([`${pc.name} dips in — the water is still and tasteless. Nothing happens.`])
+    } else {
+      pc.currentLife = Math.min(pc.maxLife, pc.currentLife + 1)
+      appendLog([`${pc.name} dips in — the water is sweet: +1 Life (${pc.currentLife}/${pc.maxLife}).`])
+    }
+    await persist(dungeon, rng, campaign.id)
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    set({ dungeon: { ...dungeon } })
+  },
+
+  /** Light a carried torch (R094): 6 rooms, then it burns out. */
+  lightTorch: async () => {
+    const { dungeon } = get()
+    const { campaign, party } = useCampaignStore.getState()
+    if (!dungeon || !campaign) return
+    if (!party.some((p) => p.status !== 'dead' && p.equipment.includes('torch'))) {
+      set({ error: 'Nobody carries a torch.' })
+      return
+    }
+    dungeon.torchLit = true
+    dungeon.torchRooms = 0
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    await persist(dungeon, rng, campaign.id)
+    appendLog(['A torch is lit — 6 rooms of light.'])
+    set({ dungeon: { ...dungeon } })
+  },
+
+  extinguishTorch: async () => {
+    const { dungeon } = get()
+    const { campaign } = useCampaignStore.getState()
+    if (!dungeon || !campaign || !dungeon.torchLit) return
+    dungeon.torchLit = false
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    await persist(dungeon, rng, campaign.id)
+    appendLog(['The torch is put out.'])
+    set({ dungeon: { ...dungeon } })
+  },
+
+  /** Pick up a dropped lantern out of combat (R094: 1 turn in combat). */
+  pickupLantern: async () => {
+    const { dungeon } = get()
+    const { campaign } = useCampaignStore.getState()
+    if (!dungeon || !campaign || !dungeon.lanternDropped) return
+    dungeon.lanternDropped = false
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    await persist(dungeon, rng, campaign.id)
+    appendLog(['The dropped lantern is picked up.'])
+    set({ dungeon: { ...dungeon } })
+  },
+
+  /** Use a Map Fragment (R153): pre-roll the next tile once. */
+  useMapFragment: async (pcId) => {
+    const { dungeon } = get()
+    const { campaign, party } = useCampaignStore.getState()
+    if (!dungeon || !campaign) return
+    const pc = party.find((p) => p.id === pcId && p.status !== 'dead')
+    if (!pc || !pc.equipment.includes('Map Fragment')) return
+    pc.equipment.splice(pc.equipment.indexOf('Map Fragment'), 1)
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    const shape = rng.d66()
+    dungeon.nextTileShape = shape
+    await persist(dungeon, rng, campaign.id)
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    appendLog([`${pc.name} studies the Map Fragment: the next tile will be shape ${shape}.`])
+    set({ dungeon: { ...dungeon } })
+  },
+
+  /** Use Miners' Ointment (R153): ignore the next Wandering Monsters arrival. */
+  useOintment: async (pcId) => {
+    const { dungeon } = get()
+    const { campaign, party } = useCampaignStore.getState()
+    if (!dungeon || !campaign) return
+    const pc = party.find((p) => p.id === pcId && p.status !== 'dead')
+    if (!pc || !pc.equipment.includes("Miners' Ointment")) return
+    pc.equipment.splice(pc.equipment.indexOf("Miners' Ointment"), 1)
+    dungeon.ointmentArmed = true
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    await persist(dungeon, rng, campaign.id)
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    appendLog([`${pc.name} smears on Miners' Ointment — the next Wandering Monsters will pass by.`])
+    set({ dungeon: { ...dungeon } })
+  },
+
+  /** Eat/use an inventory consumable (R152/R154). */
+  useInventoryItem: async (pcId, item) => {
+    const { dungeon } = get()
+    const { campaign, party } = useCampaignStore.getState()
+    if (!dungeon || !campaign) return
+    const pc = party.find((p) => p.id === pcId && p.status !== 'dead')
+    if (!pc) return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    if (item === "Healer's Chanterelle") {
+      const res = useChanterelle(pc)
+      if (!res) return
+      appendLog([`${pc.name} eats a Healer's Chanterelle and recovers ALL lost Life (${pc.currentLife}/${pc.maxLife}).`])
+    } else if (item === 'Phoenix Mushroom') {
+      if (!usePhoenix(pc)) return
+      dungeon.phoenixTiles = { ...(dungeon.phoenixTiles ?? {}), [pc.id]: 3 }
+      appendLog([`${pc.name} eats a Phoenix Mushroom: +1 Defense and Saves for 3 tiles — then 1 Life.`])
+    } else if (item.startsWith('white angel')) {
+      if (!eatWhiteAngel(pc)) return
+      appendLog([`${pc.name} eats a white angel: a ration, and +2 Life (${pc.currentLife}/${pc.maxLife}).`])
+    } else if (item === 'Brown Cap Delight') {
+      if (!useBrownCap(pc)) return
+      appendLog([`${pc.name} eats a Brown Cap Delight: it counts as 1 ration.`])
+    } else {
+      return
+    }
+    await persist(dungeon, rng, campaign.id)
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    set({ dungeon: { ...dungeon } })
   },
 
   // ---------- feature/event choices (FADEE pp.152-153) ----------
@@ -1021,8 +1933,8 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       )
       enemies[0].isFinalBossFlag = !!sr.combat.isFinalBoss
       const combat = startCombat(dungeon.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng, {
+        ...combatOpts(dungeon, party),
         forceSurprise: false,
-        marchingOrder: party.map((p) => p.id),
         secrets: campaign.secrets,
       })
       dungeon.combat = combat
@@ -1196,13 +2108,27 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     const pc = party.find((p) => p.id === pcId && p.status !== 'dead')
     if (!pc) return
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
-    const roll = rng.d(6)
-    const success = roll > pc.level || roll === 6
-    const entries: string[] = [`Secret XP roll for ${pc.name}: d6=${roll} vs L${pc.level} → ${success ? 'LEVEL UP!' : 'no level'} (FADEE p.122)`]
-    if (success) {
-      pc.level += 1
-      pc.maxLife += 1
-      pc.currentLife += 1
+    const system: XpSystem = useSettingsStore.getState().settings.xpSystem
+    const entries: string[] = []
+    if (system === 'slow') {
+      dungeon.pendingLevelUps = (dungeon.pendingLevelUps ?? 0) + 1
+      entries.push(`Secret revealed by ${pc.name}: Slow and Sure — 1 Level to assign below.`)
+    } else if (system === 'oldSchool') {
+      const xp = tierOf(pc.level) * 100
+      dungeon.oldSchoolXp = (dungeon.oldSchoolXp ?? 0) + xp
+      entries.push(`Secret revealed by ${pc.name}: Old School — +${xp} XP (Tier×100) to the tally.`)
+    } else if (system === 'slower') {
+      dungeon.storedXp = (dungeon.storedXp ?? 0) + 1
+      entries.push(`Secret revealed by ${pc.name}: Slower Advancement — +1 stored XP.`)
+    } else {
+      const roll = rng.d(6)
+      const success = roll > pc.level || roll === 6
+      entries.push(`Secret XP roll for ${pc.name}: d6=${roll} vs L${pc.level} → ${success ? 'LEVEL UP!' : 'no level'} (FADEE p.122)`)
+      if (success) {
+        pc.level += 1
+        pc.maxLife += 1
+        pc.currentLife += 1
+      }
     }
     if (pendingSecret.id === 'weakness') {
       // species chosen next
@@ -1308,6 +2234,11 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     if (!dungeon || !campaign) return
     const tile = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
     if (!tile) return
+    // Caverns (R141): openings have NO doors, so resting is impossible there.
+    if ((tile.environment ?? dungeon.environment ?? 'dungeon') === 'caverns') {
+      set({ error: 'Cavern openings have no doors — resting is impossible here.' })
+      return
+    }
     const nails = party.reduce((n, p) => n + p.equipment.filter((e) => e === 'bag of nails').length, 0)
     // Neighbors: every linked exit's target must be explored and cleared.
     const neighborsCleared = tile.exits
@@ -1410,18 +2341,29 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     const roll = rng.d(6)
     let target = ''
     let amount = 0
+    let itemName: string | undefined
     if (roll === 1 || roll === 3) {
       // Roll on any Boss Monster Table to select the target (p.161).
-      target = profileFor('boss', rng.d(6)).name
+      // Type 3: reroll subdual-immune targets (R155/R089).
+      for (let tries = 0; tries < 10; tries++) {
+        const candidate = profileFor('boss', rng.d(6))
+        if (roll === 3 && isSubdualImmune(candidate, 'boss')) continue
+        target = candidate.name
+        break
+      }
+      if (!target) target = profileFor('boss', 1).name
     } else if (roll === 2) {
       amount = rng.roll(1, 6, 0, 'quest gold d6 (p.161)') * 50
       const held = party.reduce((n, p) => n + p.gold, 0)
       if (held >= amount) amount *= 2 // already carrying it: double (p.161)
+    } else if (roll === 4) {
+      // Fetch a rolled rare item (R155); 1-in-6 per Major Foe slain.
+      itemName = QUEST_RETRIEVAL_ITEMS[rng.d(6) - 1]
     }
-    dungeon.quest = { roll, target, amount, giverTileId: dungeon.currentTileId, progress: 0, complete: false }
+    dungeon.quest = { roll, target, amount, giverTileId: dungeon.currentTileId, progress: 0, complete: false, itemName }
     dungeon.pendingChoice = null
     await persist(dungeon, rng, campaign.id)
-    appendLog([`Quest accepted: ${QUEST_TABLE[roll - 1]} (${QUEST_SOURCES[roll]})`])
+    appendLog([`Quest accepted: ${QUEST_TABLE[roll - 1]}${itemName ? ` — fetch ${itemName}` : ''} (${QUEST_SOURCES[roll]})`])
     await appendEvents(campaign.id, 'event', [{ ts: Date.now(), text: `Quest ${roll} accepted: ${dungeon.quest.target || dungeon.quest.amount || ''}` }])
   },
 
@@ -1449,6 +2391,20 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       const held = party.reduce((n, p) => n + p.gold, 0)
       eligible = held >= q.amount && atGiver
     }
+    else if (q.roll === 3) {
+      // Subdued alive AND bound with a rope (R155/R089), at the giver's tile.
+      const hasRope = party.some((p) => p.equipment.includes('rope'))
+      eligible = !!q.subdued && hasRope && atGiver
+      if (!eligible && q.subdued && !hasRope) {
+        set({ error: 'The captive must be bound with a rope before it can be delivered — buy one at the outfitter.' })
+        return
+      }
+    }
+    else if (q.roll === 4) {
+      // The item was found and is still carried, unused, at the giver's tile.
+      const carried = party.some((p) => p.equipment.includes(`quest item: ${q.itemName}`))
+      eligible = !!q.itemFound && carried && atGiver
+    }
     else if (q.roll === 5) eligible = q.progress >= 3
     else if (q.roll === 6) {
       // Interpretation (noted in RULES_VERIFICATION): layout complete = no
@@ -1457,7 +2413,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       const noOpen = dungeon.tiles.every((t) => t.exits.every((e) => e.toTileId))
       eligible = allCleared && noOpen
     }
-    else eligible = false // types 3/4: capture/retrieval mechanics pending
+    else eligible = false
     if (!eligible) {
       set({ error: 'The Quest is not complete yet (or you are not at the Quest-giver’s tile).' })
       return
@@ -1477,14 +2433,39 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     const pc = party.find((p) => p.id === pcId && p.status !== 'dead')
     if (!pc) return
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
-    // 1 XP: immediate roll (FADEE p.153)
-    const roll = rng.d(6)
-    const success = roll > pc.level || roll === 6
-    const entries = [`Quest XP roll for ${pc.name}: d6=${roll} vs L${pc.level} → ${success ? 'LEVEL UP!' : 'no level'} (FADEE p.153)`]
-    if (success) {
-      pc.level += 1
-      pc.maxLife += 1
-      pc.currentLife += 1
+    const questRoll = dungeon.quest?.roll
+    const system: XpSystem = useSettingsStore.getState().settings.xpSystem
+    // Deliver the quest goods: type 3 consumes a rope, type 4 the item.
+    if (questRoll === 3) {
+      const holder = party.find((p) => p.equipment.includes('rope'))
+      if (holder) holder.equipment.splice(holder.equipment.indexOf('rope'), 1)
+    } else if (questRoll === 4) {
+      const holder = party.find((p) => p.equipment.includes(`quest item: ${dungeon.quest?.itemName}`))
+      if (holder) holder.equipment.splice(holder.equipment.indexOf(`quest item: ${dungeon.quest?.itemName}`), 1)
+    }
+    // 1 XP (FADEE p.153) — under the other XP systems it converts instead
+    // of rolling: Slow → a Level to assign; Old School → Tier×100 XP;
+    // Slower → 1 stored XP.
+    const entries: string[] = []
+    if (system === 'slow') {
+      dungeon.pendingLevelUps = (dungeon.pendingLevelUps ?? 0) + 1
+      entries.push(`Quest complete! Slow and Sure: 1 Level to assign — choose a PC below.`)
+    } else if (system === 'oldSchool') {
+      const xp = tierOf(pc.level) * 100
+      dungeon.oldSchoolXp = (dungeon.oldSchoolXp ?? 0) + xp
+      entries.push(`Quest complete! Old School: +${xp} XP (Tier×100) to the tally (now ${dungeon.oldSchoolXp}).`)
+    } else if (system === 'slower') {
+      dungeon.storedXp = (dungeon.storedXp ?? 0) + 1
+      entries.push(`Quest complete! Slower Advancement: +1 stored XP (total ${dungeon.storedXp}).`)
+    } else {
+      const roll = rng.d(6)
+      const success = roll > pc.level || roll === 6
+      entries.push(`Quest XP roll for ${pc.name}: d6=${roll} vs L${pc.level} → ${success ? 'LEVEL UP!' : 'no level'} (FADEE p.153)`)
+      if (success) {
+        pc.level += 1
+        pc.maxLife += 1
+        pc.currentLife += 1
+      }
     }
     // Epic Rewards roll (FADEE pp.162-163)
     const epicRoll = rng.d(6)

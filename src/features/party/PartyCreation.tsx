@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CORE_CLASSES } from '../../rulesets/expanded/coreClasses'
 import { useCampaignStore } from '../../state/campaignStore'
+import { stripCitations } from '../common/stripCitations'
 
 /**
  * Party creation (Phase 2): pick 4 different classes (FADEE p.7), name them,
@@ -38,7 +39,7 @@ export default function PartyCreation() {
     <div className="flex flex-1 flex-col overflow-y-auto p-4 pb-6">
       <h1 className="text-xl text-torch">Form your party</h1>
       <p className="mb-3 text-xs text-parchment/60">
-        Four adventurers, one of each class (FADEE p.7). Tap to choose {picked.length}/4.
+        Four adventurers, one of each class. Tap to choose {picked.length}/4.
       </p>
       <div className="grid grid-cols-2 gap-2">
         {CORE_CLASSES.map((c) => {
@@ -52,7 +53,6 @@ export default function PartyCreation() {
               }`}
             >
               <div className="text-base text-parchment">{c.name}</div>
-              <div className="text-[11px] text-parchment/50">{c.source}</div>
             </button>
           )
         })}
@@ -80,7 +80,7 @@ export default function PartyCreation() {
 
       {error && (
         <p className="mt-3 text-sm text-ember" onClick={clearError}>
-          {error}
+          {stripCitations(error)}
         </p>
       )}
 

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useDungeonStore } from '../../state/dungeonStore'
 import { useCampaignStore } from '../../state/campaignStore'
 import { canLeaveCombat, describeEnemies, clericPrayersLeft } from '../../engine/combat/combat'
+import { canUseWand, canUseStaff, hasRing, hasFoolsGold } from '../../engine/items/magicItems'
+import { stripCitations } from '../common/stripCitations'
 import { LogDie } from '../common/Die'
 import FragIcon from '../common/FragIcon'
 import { familyFrag } from './foeIcons'
@@ -20,7 +22,7 @@ import { hapticBuzz } from '../common/motion'
  * Victory / Fallen. All motion is gated by prefers-reduced-motion (CSS).
  */
 export default function CombatPanel() {
-  const { dungeon, combatAttack, combatCast, combatCastScroll, combatHeal, combatPotion, combatWait, combatPayBribe, combatFlee, leaveCombat, spendXpRoll, pendingXp } =
+  const { dungeon, combatAttack, combatAttackSubdue, combatCast, combatCastScroll, combatHeal, combatPotion, combatWait, combatPayBribe, combatFlee, leaveCombat, spendXpRoll, spendLevelUp, pendingXp, combatUseWand, combatUseStaff, combatUseRing, combatUseFoolsGold, combatUseSmokebomb, combatUseXicthul, combatUseRedDeath, combatUseMorel, combatPickupLantern } =
     useDungeonStore()
   const { party } = useCampaignStore()
   const [targetId, setTargetId] = useState<string | null>(null)
@@ -67,6 +69,19 @@ export default function CombatPanel() {
         )}
         <span className="num-tabular font-mono text-xs text-parchment/50">round {combat.round}</span>
       </div>
+
+      {/* Darkness (R093): −2 Attack/Defense while the party has no light. */}
+      {(combat.darknessPenalty ?? 0) < 0 && (
+        <p className="mb-2 text-xs text-ember">Darkness — −2 Attack/Defense, no ranged weapons. Light a torch or pick up the lantern.</p>
+      )}
+      {combat.lanternDropped && combat.phase === 'pcTurn' && (
+        <button
+          onClick={() => void combatPickupLantern(living[0].id)}
+          className="mb-2 w-full rounded border border-torch/40 bg-torch/10 px-3 py-2 text-sm text-torch"
+        >
+          Pick up the dropped lantern (1 turn)
+        </button>
+      )}
 
       {/* enemies: family icon + count + level, tabular numerals */}
       <div className="mb-2 space-y-1">
@@ -122,6 +137,11 @@ export default function CombatPanel() {
             <button onClick={() => void combatPayBribe()} className="rounded bg-torch/20 px-3 py-1 text-torch">
               Pay
             </button>
+            {hasFoolsGold(party) && (
+              <button onClick={() => void combatUseFoolsGold()} className="rounded bg-torch/20 px-3 py-1 text-torch">
+                Fools' Gold (auto-satisfies the bribe)
+              </button>
+            )}
             <button
               onClick={() => void combatWait()}
               className="rounded border border-stone-700 bg-stone-800 px-3 py-1 text-parchment/80"
@@ -173,6 +193,22 @@ export default function CombatPanel() {
           >
             Attack {targetId ?? active?.profile.name ?? '— pick a target'}
           </button>
+          {/* Subdual (R089/R155): quest type 3 — attack at −1; at 0 Life the
+              Boss is subdued alive instead of slain. Only the quest target. */}
+          {dungeon.quest?.roll === 3 &&
+            dungeon.quest.target &&
+            (targetId ?? active?.id) &&
+            combat.enemies.find((e) => e.id === (targetId ?? active!.id))?.profile.name === dungeon.quest.target && (
+              <button
+                onClick={() => {
+                  const pc = living[0]
+                  if (pc) void combatAttackSubdue(pc.id, targetId ?? active!.id)
+                }}
+                className="w-full rounded border border-ember/50 bg-ember/10 px-3 py-2 text-ember"
+              >
+                Subdue {dungeon.quest.target} alive (−1 Attack, quest)
+              </button>
+            )}
           {/* spellcaster actions (FADEE pp.67-69) */}
           {(() => {
             const casters = living.filter(
@@ -250,11 +286,96 @@ export default function CombatPanel() {
               </div>
             )
           })()}
+          {/* Magic items & special items (R151-R154): wand, staff, ring,
+              smokebomb, caps and crusher — only the PCs who can use them. */}
+          <div className="flex flex-wrap gap-1">
+            {living
+              .filter((p) => canUseWand(p))
+              .map((p) => (
+                <button
+                  key={`wand-${p.id}`}
+                  disabled={!targetId && !active}
+                  onClick={() => void combatUseWand(p.id, targetId ?? active!.id)}
+                  className="rounded bg-ember/20 px-2 py-1 text-xs text-parchment"
+                >
+                  {p.name}: Wand of Sleep
+                </button>
+              ))}
+            {living
+              .filter((p) => canUseStaff(p))
+              .map((p) => (
+                <button
+                  key={`staff-${p.id}`}
+                  disabled={!targetId && !active}
+                  onClick={() => void combatUseStaff(p.id, targetId ?? active!.id)}
+                  className="rounded bg-ember/20 px-2 py-1 text-xs text-parchment"
+                >
+                  {p.name}: Fireball Staff
+                </button>
+              ))}
+            {living
+              .filter((p) => hasRing(p))
+              .map((p) => (
+                <button
+                  key={`ring-${p.id}`}
+                  onClick={() => void combatUseRing(p.id)}
+                  className="rounded bg-ember/20 px-2 py-1 text-xs text-parchment"
+                >
+                  {p.name}: Ring of Teleportation (leave combat)
+                </button>
+              ))}
+            {living
+              .filter((p) => p.equipment.includes('Puffball Smokebomb'))
+              .map((p) => (
+                <button
+                  key={`smoke-${p.id}`}
+                  onClick={() => void combatUseSmokebomb(p.id)}
+                  className="rounded bg-stone-800 px-2 py-1 text-xs text-parchment"
+                >
+                  {p.name}: Puffball Smokebomb (flee unattacked)
+                </button>
+              ))}
+            {living
+              .filter((p) => p.equipment.includes("Xicthul's Cap"))
+              .map((p) => (
+                <button
+                  key={`xic-${p.id}`}
+                  disabled={!targetId && !active}
+                  onClick={() => void combatUseXicthul(p.id, targetId ?? active!.id)}
+                  className="rounded bg-stone-800 px-2 py-1 text-xs text-parchment"
+                >
+                  {p.name}: throw Xicthul's Cap (d3)
+                </button>
+              ))}
+            {living
+              .filter((p) => p.equipment.includes('Red Death'))
+              .map((p) => (
+                <button
+                  key={`red-${p.id}`}
+                  disabled={!targetId && !active}
+                  onClick={() => void combatUseRedDeath(p.id, targetId ?? active!.id, 'damage')}
+                  className="rounded bg-stone-800 px-2 py-1 text-xs text-parchment"
+                >
+                  {p.name}: throw Red Death (1 damage)
+                </button>
+              ))}
+            {living
+              .filter((p) => p.equipment.includes('Morel Crusher'))
+              .map((p) => (
+                <button
+                  key={`morel-${p.id}`}
+                  onClick={() => void combatUseMorel(p.id)}
+                  className="rounded bg-stone-800 px-2 py-1 text-xs text-parchment"
+                >
+                  {p.name}: Morel Crusher (Morale −1)
+                </button>
+              ))}
+          </div>
           <button
             onClick={() => void combatFlee()}
             className="w-full rounded border border-stone-700 bg-stone-800 px-3 py-2 text-sm text-parchment/80"
           >
-            Flee! (each Foe strikes once — FADEE p.97)
+            Flee! (each Foe strikes once)
           </button>
         </div>
       )}
@@ -272,7 +393,7 @@ export default function CombatPanel() {
             {pendingXp.minor && '1 Minor encounter '}
             {pendingXp.boss && '+ FINAL BOSS bonus'}
           </p>
-          <p className="text-xs text-parchment/60">Assign each XP roll to one adventurer (FADEE p.117):</p>
+          <p className="text-xs text-parchment/60">Assign each XP roll to one adventurer:</p>
           <div className="mt-1 flex flex-wrap gap-1">
             {living.map((p) => (
               <button
@@ -286,11 +407,34 @@ export default function CombatPanel() {
           </div>
         </div>
       )}
+      {/* Slow and Sure (R172): the Level is assigned HERE, on the victory
+          screen — the tile panel (which also shows this card) is hidden
+          while combat is open, and "Back to the room" stays disabled until
+          the Level is assigned, so the card must be reachable here. */}
+      {combat.phase === 'won' && (dungeon.pendingLevelUps ?? 0) > 0 && (
+        <div className="card-folio mb-2 p-3">
+          <p className="font-display text-sm text-torch">Slow and Sure: {dungeon.pendingLevelUps} Level{dungeon.pendingLevelUps === 1 ? '' : 's'} to assign</p>
+          <p className="text-xs text-parchment/60">Pick a surviving adventurer — the Level applies at once.</p>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {living.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => void spendLevelUp(p.id)}
+                className="btn-cartouche px-2 py-1 text-xs"
+              >
+                {p.name} (L{p.level})
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {(combat.phase === 'won' || combat.phase === 'lost') && (
         <p className="mb-2 text-xs text-parchment/50">
           {pendingXp
-            ? 'Assign your XP rolls above before leaving — each roll goes to one adventurer (FADEE p.117).'
-            : 'Leave via a map exit — loot was rolled on victory and the Journal has the record.'}
+            ? 'Assign your XP rolls above before leaving — each roll goes to one adventurer.'
+            : (dungeon.pendingLevelUps ?? 0) > 0
+              ? 'A Level is waiting to be assigned (see the room panel) before leaving.'
+              : 'Leave via a map exit — loot was rolled on victory and the Journal has the record.'}
         </p>
       )}
 
@@ -298,13 +442,13 @@ export default function CombatPanel() {
           the tile actions (Rest, Search) stay replaced by this panel and
           the only way out is leaving the room via a map exit. A roll
           earned here holds the party in the room until it is assigned
-          (FADEE p.117) — the button stays visible but disabled so the
+          — the button stays visible but disabled so the
           reason is in plain sight, and the store guards both exits. */}
       {canLeaveCombat(combat.phase) && (
         <button
           onClick={() => void leaveCombat()}
-          disabled={!!pendingXp}
-          aria-disabled={!!pendingXp}
+          disabled={!!pendingXp || (dungeon.pendingLevelUps ?? 0) > 0}
+          aria-disabled={!!pendingXp || (dungeon.pendingLevelUps ?? 0) > 0}
           className="btn-wax mb-2 w-full px-4 py-2 text-sm disabled:opacity-50"
         >
           Back to the room
@@ -323,7 +467,7 @@ export default function CombatPanel() {
           {combat.log.slice(-14).map((l, i) => (
             <li key={i}>
               <LogDie text={l.text} />
-              · {l.text}
+              · {stripCitations(l.text)}
             </li>
           ))}
         </ul>

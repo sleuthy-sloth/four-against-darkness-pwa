@@ -8,6 +8,17 @@ import {
   DUNGEON_FEATURES,
   DUNGEON_TRAPS,
 } from '../../rulesets/expanded/features'
+import {
+  CAVERN_TRAPS,
+  FUNGAL_TRAPS,
+  CAVERN_EVENTS,
+  FUNGAL_EVENTS,
+  type CavernTrap,
+  type FungalTrap,
+  type CavernEvent,
+  type FungalEvent,
+  type EnvironmentId,
+} from '../../rulesets/expanded/environments'
 import { profileFor } from '../../rulesets/expanded/monsters'
 import { rollLoot } from '../treasure/loot'
 
@@ -425,4 +436,286 @@ export function resolveTrap(
 
 function victimMax(pc: Character): number {
   return pc.maxLife
+}
+
+// ---------- Environment events & traps (Release 0.5, R160, Part 10) ----------
+
+export function rollEnvEvent(rng: Rng, env: EnvironmentId): string {
+  if (env === 'caverns') return CAVERN_EVENTS[rng.d(6) - 1]
+  if (env === 'fungal') return FUNGAL_EVENTS[rng.d(6) - 1]
+  return DUNGEON_EVENTS[rng.d(6) - 1]
+}
+
+export interface EnvEventResult {
+  messages: string[]
+  trap?: CavernTrap | FungalTrap
+  gold?: number
+}
+
+/** Cavern/fungal special events (R160, pp.155-156). Merchant/scout trades
+ * are offered as log text with the price; the actual purchase is a
+ * player decision made at the outfitter — no silent substitution. */
+export function resolveEnvEvent(
+  rng: Rng,
+  party: Character[],
+  event: string,
+  env: EnvironmentId,
+  hcl: number,
+): EnvEventResult {
+  const messages: string[] = []
+  const living = party.filter((p) => p.status !== 'dead')
+  const hurt = (pc: Character, dmg: number) => {
+    pc.currentLife = Math.max(0, pc.currentLife - dmg)
+    if (pc.currentLife === 0) pc.status = 'dead'
+  }
+  if (env === 'caverns') {
+    switch (event as CavernEvent) {
+      case 'goblinScout':
+        return { messages: ['A cave goblin scout offers its services for 10gp: no surprise and +1 Saves until the party leaves the caverns. (Paying is a player choice — the scout waits.)'] }
+      case 'cavemenExplorers': {
+        const n = rng.d(6)
+        return { messages: [`${n} cavemen explorers block the way, demanding 2 rations — pay them, or fight them as Minions.`] }
+      }
+      case 'morlockSpy':
+        return { messages: ['A morlock spy offers to keep its kin off the party for 5gp: no morlock surprise.'] }
+      case 'trap': {
+        const trap = CAVERN_TRAPS[rng.d(6) - 1]
+        return { messages: [`A cavern trap!`], trap }
+      }
+      case 'dwarfGem': {
+        const hasDwarf = living.some((p) => p.classId === 'dwarf')
+        if (!hasDwarf) return { messages: ['A gem glints in the rock — but only a dwarf would know it is there.'] }
+        const gold = rng.d(6) * 10
+        const wm = rng.d(6) === 1
+        return {
+          messages: [`A dwarf spots a gem worth ${gold}gp!${wm ? ' The digging attracts Wandering Monsters!' : ''}`],
+          gold,
+        }
+      }
+      case 'dwarfMiner':
+        return { messages: ['A dwarf miner offers to buy and sell gems for 25gp; a trade reveals the next tile\u2019s content.'] }
+      default:
+        return { messages: ['(unknown cavern event)'] }
+    }
+  }
+  if (env === 'fungal') {
+    switch (event as FungalEvent) {
+      case 'halflingScout':
+        return { messages: ['A halfling scout offers its services for 10gp: no surprise and +1 Saves in the grottoes.'] }
+      case 'mushroomHunters': {
+        const n = rng.roll(1, 6, 2, 'mushroom hunters d6+2')
+        return { messages: [`${n} mushroom-hunting cavemen: 4 rations, or 1 rare mushroom, or fight. Fed, they reveal a passage.`] }
+      }
+      case 'sporeCloudEvent': {
+        const hit: string[] = []
+        for (const pc of living) {
+          if (pc.classId === 'mushroomMonk' || pc.classId === 'mushroom-monk') continue
+          const bonus = pc.classId === 'halfling' || pc.classId === 'barbarian' ? pc.level : 0
+          const roll = rng.roll(1, 6, bonus, `${pc.name} Save vs HCL poison (spore cloud)`)
+          if (roll < hcl) {
+            hurt(pc, 2)
+            hit.push(pc.name)
+          }
+        }
+        return { messages: [hit.length ? `A spore cloud rolls through! ${hit.join(', ')} lose 2 Life each.` : 'A spore cloud rolls through — everyone holds their breath.'] }
+      }
+      case 'trapAndItem': {
+        const trap = FUNGAL_TRAPS[rng.d(6) - 1]
+        return { messages: ['A fungal trap — and a rare item roll follows.'], trap }
+      }
+      case 'monkSense':
+        return { messages: ['A mushroom monk\u2019s danger sense tingles: the next trap or Wandering Monsters in the grottoes will be skipped. (Only a mushroom monk in the party can use it.)'] }
+      case 'merchant':
+        return { messages: ['A merchant sells equipment at +20% and buys gems and rare mushrooms at resale. Once per adventure.'] }
+      default:
+        return { messages: ['(unknown fungal event)'] }
+    }
+  }
+  return { messages: ['(unknown event)'] }
+}
+
+export interface EnvTrapResult {
+  messages: string[]
+  /** Wandering Monsters triggered by the trap (1-in-6 etc.). */
+  wanderingMonsters?: boolean
+}
+
+/** Cavern (p.165) and fungal (p.166) traps, resolved with the same Save /
+ * Defense shape as the dungeon traps. A few book effects have no engine
+ * yet (cordyceps mind-control, mycelium item-snatch choice) — those are
+ * logged as the trap's text with the mechanical part applied. */
+export function resolveEnvTrap(
+  rng: Rng,
+  party: Character[],
+  trap: CavernTrap | FungalTrap,
+  env: EnvironmentId,
+  hcl: number,
+  leaderIndex: number,
+): EnvTrapResult {
+  const messages: string[] = []
+  const living = party.filter((p) => p.status !== 'dead')
+  const leader = living[leaderIndex % Math.max(1, living.length)]
+  const hurt = (pc: Character, dmg: number) => {
+    pc.currentLife = Math.max(0, pc.currentLife - dmg)
+    if (pc.currentLife === 0) pc.status = 'dead'
+  }
+  const randomPc = (): Character | undefined =>
+    living[Math.floor((rng.d(1000) - 1) / 1000 * living.length)]
+  const halfL = (pc: Character) => Math.floor(pc.level / 2)
+
+  switch (trap) {
+    case 'stalactite': {
+      const v = randomPc()
+      if (!v) break
+      const bonus = halfL(v) + (v.classId === 'rogue' ? v.level : 0)
+      const roll = rng.roll(1, 6, bonus, `${v.name} Save vs stalactite HCL+${hcl + 2}`)
+      if (roll >= hcl + 2) messages.push(`A stalactite crashes down — ${v.name} leaps clear.`)
+      else {
+        hurt(v, 1)
+        messages.push(`A stalactite hits ${v.name} for 1 Life (${v.currentLife}/${v.maxLife}).`)
+      }
+      break
+    }
+    case 'rockslide': {
+      const hit: string[] = []
+      for (const pc of living) {
+        const bonus = halfL(pc) + (pc.classId === 'gnome' || pc.classId === 'dwarf' ? pc.level : 0)
+        if (rng.roll(1, 6, bonus, `${pc.name} Save vs rockslide HCL+${hcl + 2}`) < hcl + 2) {
+          hurt(pc, 1)
+          hit.push(pc.name)
+        }
+      }
+      messages.push(hit.length ? `Rockslide! ${hit.join(', ')} lose 1 Life each.` : 'Rockslide! Everyone shelters in time.')
+      break
+    }
+    case 'hiddenPit': {
+      if (!leader) break
+      if (rng.roll(1, 6, 0, `${leader.name} Save vs hidden pit HCL+${hcl + 1}`) >= hcl + 1) {
+        messages.push(`${leader.name} spots the hidden pit in time. (1 Clue finds a secret passage at the bottom.)`)
+      } else {
+        hurt(leader, 1)
+        messages.push(`${leader.name} falls into a hidden pit: 1 Life lost, and an ally must help them out.`)
+      }
+      break
+    }
+    case 'swingingLog': {
+      let stopped = false
+      for (const pc of living) {
+        if (stopped) break
+        const bonus = halfL(pc) + (pc.classId === 'rogue' ? pc.level : 0)
+        if (rng.roll(1, 6, bonus, `${pc.name} Save vs swinging log HCL+${hcl}`) < hcl) {
+          hurt(pc, 2)
+          messages.push(`The swinging log catches ${pc.name} for 2 Life (${pc.currentLife}/${pc.maxLife}).`)
+          stopped = true
+        }
+      }
+      if (!stopped) messages.push('The swinging log sweeps past — everyone ducks in time.')
+      break
+    }
+    case 'toxicSpores': {
+      const v = randomPc()
+      if (!v) break
+      if (v.classId === 'mushroomMonk' || v.classId === 'mushroom-monk') {
+        messages.push(`Toxic spores drift past ${v.name} — a mushroom monk breathes them in harmlessly.`)
+        break
+      }
+      const bonus = (v.classId === 'rogue' ? v.level : 0) + (['ranger', 'druid'].includes(v.classId) ? v.level : 0)
+      if (rng.roll(1, 6, bonus, `${v.name} Save vs toxic spores HCL+${hcl + 1}`) >= hcl + 1) {
+        messages.push(`Toxic spores — ${v.name} holds their breath.`)
+      } else {
+        v.conditions.push('spore-cough:6')
+        messages.push(`${v.name} breathes toxic spores: -1 to Saves for 6 rooms.`)
+      }
+      break
+    }
+    case 'rollingBoulder': {
+      const n = rng.d3()
+      const pool = [...living]
+      const hit: string[] = []
+      for (let i = 0; i < n && pool.length; i++) {
+        const v = pool.splice(Math.floor((rng.d(1000) - 1) / 1000 * pool.length), 1)[0]
+        if (rng.roll(1, 6, 0, `${v.name} Save vs rolling boulder HCL+${hcl + 1}`) < hcl + 1) {
+          hurt(v, 2)
+          hit.push(v.name)
+        }
+      }
+      messages.push(hit.length ? `A rolling boulder crushes ${hit.join(', ')} for 2 Life each, then blocks one opening.` : 'A rolling boulder thunders past and blocks one opening.')
+      break
+    }
+    case 'sleepSpores': {
+      const v = randomPc()
+      if (!v) break
+      const immune = ['mushroomMonk', 'mushroom-monk', 'kukla'].includes(v.classId) || v.classId === 'cleric'
+      const bonus = v.classId === 'halfling' ? v.level : halfL(v)
+      if (immune || rng.roll(1, 6, bonus, `${v.name} Save vs sleep spores`) >= hcl) {
+        messages.push(`Sleep spores drift past — ${v.name} stays awake.`)
+      } else {
+        v.conditions.push('asleep-spores')
+        messages.push(`${v.name} falls asleep in a cloud of spores! (Wake them before the whole party sleeps.)`)
+      }
+      break
+    }
+    case 'sporeCloud': {
+      const v = randomPc()
+      if (!v) break
+      const bonus = v.classId === 'halfling' || v.classId === 'barbarian' ? v.level : 0
+      if (rng.roll(1, 6, bonus, `${v.name} Save vs spore cloud HCL+${hcl + 1}`) < hcl + 1) {
+        hurt(v, 1)
+        v.conditions.push('coughing')
+        messages.push(`${v.name} chokes on a spore cloud: 1 Life, and coughing (1-in-6 Wandering Monsters).`)
+      } else {
+        messages.push(`A spore cloud bursts — ${v.name} holds their breath.`)
+      }
+      break
+    }
+    case 'slimePatch': {
+      if (!leader) break
+      if (rng.roll(1, 6, 0, `${leader.name} Save vs slime patch HCL+${hcl}`) >= hcl) {
+        messages.push(`${leader.name} steps around the slime patch.`)
+      } else {
+        leader.conditions.push('slimed')
+        messages.push(`${leader.name} slips in slime and falls! (1-in-6 Wandering Monsters; if they come, the fallen PC skips a turn.)`)
+      }
+      break
+    }
+    case 'myceliumSnare': {
+      const v = randomPc()
+      if (!v) break
+      if (rng.roll(1, 6, 0, `${v.name} Save vs mycelium snare HCL+${hcl + 3}`) >= hcl + 3) {
+        messages.push(`${v.name} tears free of the mycelium snare.`)
+      } else {
+        const item = v.equipment.find((e) => !/armor|shield|weapon/.test(e)) ?? v.equipment[0]
+        if (item) v.equipment.splice(v.equipment.indexOf(item), 1)
+        messages.push(`A mycelium snare snatches ${item ?? 'an item'} from ${v.name} — gone forever.`)
+      }
+      break
+    }
+    case 'shriekingMushroom': {
+      if (!leader) break
+      const mod = leader.classId === 'halfling' || ['ranger', 'druid'].includes(leader.classId) ? -2 : leader.classId === 'rogue' ? -1 : 0
+      const roll = rng.d(6) + mod
+      if (roll <= 4) {
+        messages.push('A shrieking mushroom screams — Wandering Monsters are coming!')
+        return { messages, wanderingMonsters: true }
+      }
+      messages.push('A shrieking mushroom screams — but nothing answers.')
+      break
+    }
+    case 'cordyceps': {
+      const v = randomPc()
+      if (!v) break
+      const bonus = v.classId === 'halfling' || v.classId === 'barbarian' ? v.level : 0
+      if (rng.roll(1, 6, bonus, `${v.name} Save vs cordyceps HCL+${hcl + 3}`) >= hcl + 3) {
+        messages.push(`${v.name} shakes off the cordyceps spores.`)
+      } else {
+        v.conditions.push('cordyceps:6')
+        messages.push(`${v.name} is mind-controlled by cordyceps: they attack the lowest-Life ally for 6 turns, or until Blessing or Healing. (Control is tracked as a condition; the next combat resolves it.)`)
+      }
+      break
+    }
+    default:
+      messages.push('(unknown environment trap)')
+  }
+  void env
+  return { messages }
 }

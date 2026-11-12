@@ -27,6 +27,12 @@ export interface EnemyInstance {
   isFinalBossFlag?: boolean
   /** Sleeping Minor Foes (Sleep spell, FADEE p.68). */
   asleepCount?: number
+  /** Subdued, not slain (R089): bound, follows the party, does nothing. */
+  subdued?: boolean
+  /** Put to Sleep while a type-3 Quest target (R089: Sleep subdues). */
+  subduedBySleep?: boolean
+  /** Red Death weaken: level penalty until this round (inclusive). */
+  levelPenaltyUntilRound?: number
 }
 
 export interface CombatLogEntry {
@@ -35,7 +41,7 @@ export interface CombatLogEntry {
 }
 
 export type CombatPhase =
-  | 'opening' // party chooses: attack now or wait for Reactions (FADEE p.90)
+  | 'opening' // party chooses: attack now or wait for Reactions
   | 'foesTurn' // foes attack; engine resolves PC defense rolls
   | 'pcTurn' // player picks PC actions
   | 'won'
@@ -78,6 +84,22 @@ export interface CombatState {
   secrets?: string[]
   /** Weakness of a Foe applied this combat (FADEE p.122). */
   weaknessActive?: boolean
+  /** Darkness penalty (R093): -2 when the party has no working light. */
+  darknessPenalty?: number
+  /** Stalagmite tile (R142): attack dice do not explode here. */
+  noExplosions?: boolean
+  /** Secret-door entry (R125): Foes' L -1 on combat turn 1 (min 1). */
+  foeLevelPenaltyTurn1?: number
+  /** Fungal grottoes (R144): -1 Defense while fleeing (exempt classes skip it). */
+  fungalSlippery?: boolean
+  /** Morel Crusher (R154): next Morale test at -1 (consumed on use). */
+  moraleMod?: number
+  /** The lantern-bearer fell: the lantern dropped (R094). */
+  lanternDropped?: boolean
+  /** A torch attack rolled a natural 1: the torch went out (R094). */
+  torchExtinguished?: boolean
+  /** Type-3 Quest target name (R155): Sleep/subdual on this Foe captures it. */
+  questTargetName?: string | null
 }
 
 export class CombatError extends Error {}
@@ -115,6 +137,9 @@ export function defenseBonusFor(pc: Character): { bonus: number; note: string } 
   if (/heavy armor/.test(eq)) {
     bonus += 2
     notes.push('+2 heavy armor')
+  } else if (/leafsteel armor/.test(eq)) {
+    bonus += 2
+    notes.push('+2 leafsteel armor')
   } else if (/light armor/.test(eq)) {
     bonus += 1
     notes.push('+1 light armor')
@@ -153,10 +178,35 @@ export function rollExplodingD6(rng: Rng, reason: string): { rolls: number[]; to
   return { rolls, total }
 }
 
+/** Combat die: exploding unless a stalagmite tile forbids it (R142). */
+export function rollCombatDie(state: CombatState, rng: Rng, reason: string): { rolls: number[]; total: number } {
+  if (state.noExplosions) {
+    const roll = rng.d(6)
+    rng.roll(1, 6, 0, reason)
+    return { rolls: [roll], total: roll }
+  }
+  return rollExplodingD6(rng, reason)
+}
+
+/** A Foe's effective L right now: Red Death weaken + secret-door turn-1 surprise. */
+export function effectiveLevel(state: CombatState, enemy: EnemyInstance): number {
+  let level = enemy.level
+  if (enemy.levelPenaltyUntilRound !== undefined && state.round <= enemy.levelPenaltyUntilRound) level -= 1
+  if ((state.foeLevelPenaltyTurn1 ?? 0) > 0 && state.round === 0) level -= state.foeLevelPenaltyTurn1!
+  return Math.max(1, level)
+}
+
+/** Spend a turn with no attack (e.g. picking up a dropped lantern, R094). */
+export function spendTurn(state: CombatState, rng: Rng): void {
+  if (state.phase !== 'pcTurn') throw new CombatError('not the party\u2019s turn')
+  log(state, 'A turn is spent.')
+  endPcTurn(state, rng)
+}
+
 /** Life from a FADEE formula: 'T+y' (tier number), 'HCL+y', 'L+y', 'N+L', flat. */
 export function lifeFromFormula(level: number, formula: string | undefined, flat: number | undefined): number {
   if (flat !== undefined) return flat
-  if (!formula) return 1 // Minor Foes: 1 Life (FADEE p.94)
+  if (!formula) return 1 // Minor Foes: 1 Life
   const tier = level >= 20 ? 5 : level >= 15 ? 4 : level >= 10 ? 3 : level >= 5 ? 2 : 1
   const t = /^T([+-]\d+)$/.exec(formula)
   if (t) return Math.max(1, tier + parseInt(t[1], 10))
@@ -195,7 +245,7 @@ export function startCombat(
   participants: Character[],
   enemies: EnemyInstance[],
   rng: Rng,
-  opts: { partyWaits?: boolean; forceSurprise?: boolean; marchingOrder?: string[]; secrets?: string[] } = {},
+  opts: { partyWaits?: boolean; forceSurprise?: boolean; marchingOrder?: string[]; secrets?: string[]; darknessPenalty?: number; noExplosions?: boolean; foeLevelPenaltyTurn1?: number; fungalSlippery?: boolean; questTargetName?: string | null } = {},
 ): CombatState {
   // FADEE p.90: surprise check (per-Foe X-in-6). Core dungeon set: goblins 1-in-6.
   let surprised = opts.forceSurprise === true
@@ -214,24 +264,33 @@ export function startCombat(
     pendingBribe: null,
     marchingOrder: opts.marchingOrder ?? participants.map((p) => p.id),
     secrets: opts.secrets ? [...opts.secrets] : [],
+    darknessPenalty: opts.darknessPenalty ?? 0,
+    noExplosions: opts.noExplosions ?? false,
+    foeLevelPenaltyTurn1: opts.foeLevelPenaltyTurn1 ?? 0,
+    fungalSlippery: opts.fungalSlippery ?? false,
+    questTargetName: opts.questTargetName ?? null,
   }
   // Weakness of a Foe secret (FADEE p.122): +2 attack for everyone.
   for (const s of state.secrets ?? []) {
     const [id, arg] = s.split(':')
     if (id === 'weakness' && arg === enemies[0]?.profile.name) {
-      log(state, `Secret — Weakness of a Foe: all PCs attack ${enemies[0].profile.name} at +2 (FADEE p.122).`)
+      log(state, `Secret — Weakness of a Foe: all PCs attack ${enemies[0].profile.name} at +2.`)
       state.weaknessActive = true
     }
   }
-  log(state, `Combat begins: ${describeEnemies(enemies)} (FADEE p.90)`)
-  if (surprised) log(state, 'The Foes surprise the party! They act first. (FADEE p.90)')
+  log(state, `Combat begins: ${describeEnemies(enemies)}`)
+  if (surprised) log(state, 'The Foes surprise the party! They act first.')
   if (!surprised && !opts.partyWaits) {
-    log(state, 'The party may attack immediately, or wait to check the Foes\u2019 Reactions (FADEE p.90).')
+    log(state, 'The party may attack immediately, or wait to check the Foes\u2019 Reactions.')
   }
   if (surprised || opts.partyWaits) {
     return rollReactions(state, rng)
   }
-  state.phase = 'pcTurn'
+  // Opening phase is the choice point (Release 0.5, A6): the party attacks
+  // immediately (combatAttack moves to pcTurn) or waits for Reactions
+  // (combatWait). Before 0.5 this fell straight through to pcTurn, so the
+  // panel's "Wait for Reactions" choice was unreachable in normal play —
+  // reactions only ever rolled on a Goblin surprise.
   return state
 }
 
@@ -311,7 +370,7 @@ export function rollReactions(state: CombatState, rng: Rng): CombatState {
       case 'bribe': {
         const total = outcome.bribeEach ? outcome.bribeAmount! * enemy.count : outcome.bribeAmount!
         state.pendingBribe = { enemyGroupId: enemy.id, amount: total, each: !!outcome.bribeEach }
-        log(state, `The ${enemy.profile.name} demand a bribe of ${total} gp (FADEE p.101).`)
+        log(state, `The ${enemy.profile.name} demand a bribe of ${total} gp.`)
         state.phase = 'opening'
         return state
       }
@@ -360,6 +419,7 @@ export function pcAttack(
   rng: Rng,
   pc: Character,
   enemyId: string,
+  opts: { subdual?: boolean } = {},
 ): AttackResult {
   if (state.phase !== 'pcTurn') throw new CombatError('not the party\u2019s turn')
   const enemy = enemyId ? state.enemies.find((e) => e.id === enemyId && !e.fled && e.count > 0) : null
@@ -368,11 +428,20 @@ export function pcAttack(
   const weapon = meleeWeaponFor(pc)
   // Epic reward — Enchanted weapon (FADEE p.162): roll 2, keep the best.
   const enchanted = pc.conditions.includes('enchanted-weapon')
-  const rollA = rollExplodingD6(rng, `attack roll (${pc.name})`)
-  const rollB = enchanted ? rollExplodingD6(rng, `enchanted attack roll (${pc.name}, best of 2)`) : null
+  const rollA = rollCombatDie(state, rng, `attack roll (${pc.name})`)
+  const rollB = enchanted ? rollCombatDie(state, rng, `enchanted attack roll (${pc.name}, best of 2)`) : null
   const { rolls, total } =
     rollB && rollB.total > rollA.total ? rollB : rollA
-  let bonus = cls.bonus + weapon.mod
+  // Torch (R094): a natural 1 on a melee attack extinguishes it.
+  if (pc.equipment.includes('torch') && rolls[0] === 1) {
+    state.torchExtinguished = true
+    log(state, `${pc.name}'s torch sputters out on a roll of 1!`)
+  }
+  let bonus = cls.bonus + weapon.mod + (state.darknessPenalty ?? 0)
+  // Magic Weapon (R151): +1 Attack while carried.
+  if (pc.equipment.some((e) => e.startsWith('Magic Weapon'))) bonus += 1
+  // Subdual (R089): attack at -1; at 0 Life the Foe is subdued, not slain.
+  if (opts.subdual) bonus -= 1
   // FADEE p.60/p.147: rogue +L vs OUTNUMBERED Minor Foes.
   if (pc.classId === 'rogue' && enemy.table !== 'weird' && enemy.table !== 'boss' && enemy.count < livingPartySize(state)) {
     bonus += pc.level
@@ -380,20 +449,30 @@ export function pcAttack(
   // Secret — Weakness of a Foe (FADEE p.122): +2 for the whole combat.
   if (state.weaknessActive) bonus += 2
   const finalTotal = total + bonus
+  const effLevel = effectiveLevel(state, enemy)
   log(
     state,
-    `${pc.name} attacks ${enemy.profile.name}: d6[${rolls.join('+')}] ${bonus >= 0 ? '+' : ''}${bonus} (${cls.note}; ${weapon.name}) = ${finalTotal} vs L${enemy.level}${enchanted ? ' (enchanted weapon: best of 2 dice, FADEE p.162)' : ''}`,
+    `${pc.name} attacks ${enemy.profile.name}${opts.subdual ? ' (subdual, -1)' : ''}: d6[${rolls.join('+')}] ${bonus >= 0 ? '+' : ''}${bonus} (${cls.note}; ${weapon.name}${(state.darknessPenalty ?? 0) < 0 ? '; darkness -2' : ''}) = ${finalTotal} vs L${effLevel}${enchanted ? ' (enchanted weapon: best of 2 dice)' : ''}`,
   )
   let slain = 0
   let damage = 0
   if (enemy.asleep) {
     // Asleep Major Foe: attacks strike without a defense roll (FADEE p.68).
+    // A subdual strike that brings it to 0 Life binds it, same as awake.
     damage = 1
     applyMajorDamage(state, enemy, damage)
-  } else if (finalTotal >= enemy.level) {
+    if (opts.subdual && enemy.life === 0) {
+      enemy.subdued = true
+      log(state, `${enemy.profile.name} is subdued at 0 Life — tie it up and take its treasure. It follows the party but does nothing.`)
+    }
+  } else if (finalTotal >= effLevel) {
     if (enemy.profile.major) {
-      damage = Math.max(1, Math.floor(finalTotal / enemy.level))
+      damage = Math.max(1, Math.floor(finalTotal / effLevel))
       applyMajorDamage(state, enemy, damage)
+      if (opts.subdual && enemy.life === 0) {
+        enemy.subdued = true
+        log(state, `${enemy.profile.name} is subdued at 0 Life — tie it up and take its treasure. It follows the party but does nothing.`)
+      }
     } else {
       // Sleeping Minors are slain at will (FADEE p.68): 1 per attack, free.
       let freeKills = 0
@@ -403,14 +482,14 @@ export function pcAttack(
         slain += freeKills
         log(state, `${freeKills} sleeping ${enemy.profile.name} dispatched where they lie.`)
       }
-      slain += Math.max(1, Math.floor(finalTotal / enemy.level))
+      slain += Math.max(1, Math.floor(finalTotal / effLevel))
       slain = Math.min(slain, enemy.count)
       enemy.count -= slain
-      log(state, `Hit! ${slain} ${enemy.profile.name} slain (${finalTotal} ÷ L${enemy.level}).`)
+      log(state, `Hit! ${slain} ${enemy.profile.name} slain (${finalTotal} ÷ L${effLevel}).`)
       checkMorale(state, enemy, rng)
     }
   } else {
-    log(state, `Miss (${finalTotal} < L${enemy.level}).`)
+    log(state, `Miss (${finalTotal} < L${effLevel}).`)
   }
   endPcTurn(state, rng)
   return { state, slain, damage }
@@ -426,7 +505,7 @@ function applyMajorDamage(state: CombatState, enemy: EnemyInstance, damage: numb
   if (!enemy.weakened && enemy.life > 0 && enemy.life <= enemy.maxLife / 2) {
     enemy.level = Math.max(1, enemy.level - 1)
     enemy.weakened = true
-    log(state, `${enemy.profile.name} is below half Life: its L drops to ${enemy.level}! (FADEE p.94)`)
+    log(state, `${enemy.profile.name} is below half Life: its L drops to ${enemy.level}!`)
   }
 }
 
@@ -441,7 +520,7 @@ function checkMorale(state: CombatState, enemy: EnemyInstance, rng: Rng): void {
   if (terrIdx >= 0) {
     state.secrets!.splice(terrIdx, 1)
     enemy.fled = true
-    log(state, `${enemy.profile.name} hear an unspeakable secret and automatically fail their Morale! (FADEE p.123)`)
+    log(state, `${enemy.profile.name} hear an unspeakable secret and automatically fail their Morale!`)
     return
   }
   let roll = rng.d(6)
@@ -449,6 +528,12 @@ function checkMorale(state: CombatState, enemy: EnemyInstance, rng: Rng): void {
   if (enemy.profile.name === 'Goblin Swarmlings') {
     roll -= 1
     modNote = ' (Morale -1)'
+  }
+  // Morel Crusher (R154): the next Morale roll is at -1; consumed on use.
+  if (state.moraleMod) {
+    roll += state.moraleMod
+    modNote += ' (Morel Crusher -1)'
+    state.moraleMod = 0
   }
   log(state, `${enemy.profile.name} test Morale (below half): d6=${roll}${modNote}.`)
   if (roll <= 3) {
@@ -507,27 +592,36 @@ function runFoesTurn(state: CombatState, rng: Rng): void {
       const def = defenseBonusFor(pc)
       const protection = state.protections?.[pc.id] ?? 0
       if (protection > 0) def.bonus += protection
-      const { rolls, total } = rollExplodingD6(rng, `defense roll (${pc.name})`)
+      def.bonus += state.darknessPenalty ?? 0
+      const effLevel = effectiveLevel(state, enemy)
+      const { rolls, total } = rollCombatDie(state, rng, `defense roll (${pc.name})`)
       const finalTotal = total + def.bonus
-      const needed = enemy.level + 1 // roll HIGHER than L (FADEE p.96)
       log(
         state,
-        `${attackerLabel} attacks ${pc.name}: defense d6[${rolls.join('+')}] ${def.bonus >= 0 ? '+' : ''}${def.bonus} (${def.note}${protection ? `, +${protection} Protection` : ''}) = ${finalTotal}; needs > L${enemy.level}`,
+        `${attackerLabel} attacks ${pc.name}: defense d6[${rolls.join('+')}] ${def.bonus >= 0 ? '+' : ''}${def.bonus} (${def.note}${protection ? `, +${protection} Protection` : ''}${(state.darknessPenalty ?? 0) < 0 ? ', darkness -2' : ''}) = ${finalTotal}; needs > L${effLevel}`,
       )
-      if (finalTotal <= enemy.level && finalTotal !== 1) {
+      if (finalTotal <= effLevel && finalTotal !== 1) {
         // hit — failed defense
         pc.currentLife = Math.max(0, pc.currentLife - 1)
         log(state, `${pc.name} fails the defense: 1 damage → ${pc.currentLife}/${pc.maxLife} Life.`)
         if (pc.currentLife === 0) {
           pc.status = 'dead'
-          log(state, `${pc.name} has fallen! (FADEE p.105)`)
+          log(state, `${pc.name} has fallen!`)
+          if (pc.equipment.includes('lantern')) {
+            state.lanternDropped = true
+            log(state, `${pc.name}'s lantern drops to the floor.`)
+          }
         }
       } else if (finalTotal === 1) {
         log(state, 'A natural 1 always fails: 1 damage.')
         pc.currentLife = Math.max(0, pc.currentLife - 1)
         if (pc.currentLife === 0) {
           pc.status = 'dead'
-          log(state, `${pc.name} has fallen! (FADEE p.105)`)
+          log(state, `${pc.name} has fallen!`)
+          if (pc.equipment.includes('lantern')) {
+            state.lanternDropped = true
+            log(state, `${pc.name}'s lantern drops to the floor.`)
+          }
         }
       } else {
         log(state, `${pc.name} avoids the attack.`)
@@ -602,14 +696,14 @@ function finishCombat(state: CombatState, _rng: Rng): void {
   const partyAlive = state.participants.some((p) => p.status !== 'dead')
   if (!partyAlive) {
     state.phase = 'lost'
-    log(state, 'The party has been wiped out. Adventure over. (FADEE p.105)')
+    log(state, 'The party has been wiped out. Adventure over.')
   } else if (!foesLeft) {
     state.phase = 'won'
     const slainAll = state.enemies.every((e) => e.fled || e.count === 0 || e.life === 0)
     log(
       state,
       slainAll
-        ? 'Victory! All Foes defeated or fled. Loot roll comes with the treasure engine (FADEE p.99).'
+        ? 'Victory! All Foes defeated or fled. Loot roll comes with the treasure engine.'
         : 'The way is clear.',
     )
   }
@@ -618,10 +712,19 @@ function finishCombat(state: CombatState, _rng: Rng): void {
 /**
  * Flee the melee (FADEE pp.97-98): each Foe attacks once (no shield bonus
  * while fleeing). Returns with phase 'fled'; caller moves the party.
+ * Fungal grottoes (R144): -1 Defense while fleeing except ranger, rogue,
+ * acrobat, halfling and mushroom monk. A Puffball Smokebomb (R152) lets
+ * the party flee unattacked.
  */
-export function fleeCombat(state: CombatState, rng: Rng): CombatState {
-  log(state, 'The party flees! (FADEE p.97)')
+export function fleeCombat(state: CombatState, rng: Rng, opts: { unattacked?: boolean } = {}): CombatState {
+  log(state, 'The party flees!')
   const living = state.participants.filter((p) => p.status !== 'dead')
+  if (opts.unattacked) {
+    log(state, 'A Puffball Smokebomb bursts — the party slips away unattacked.')
+    state.phase = 'fled'
+    log(state, 'The party escapes to a visited tile.')
+    return state
+  }
   for (const enemy of state.enemies) {
     if (enemy.fled || enemy.count === 0 || enemy.life === 0) continue
     const attacks = enemy.profile.major ? 1 : Math.min(enemy.count, living.length)
@@ -629,24 +732,31 @@ export function fleeCombat(state: CombatState, rng: Rng): CombatState {
       const pc = living[i % living.length]
       const def = defenseBonusFor(pc)
       const shieldless = def.bonus - (/shield/.test(pc.equipment.join(' ')) ? 1 : 0)
-      const { rolls, total } = rollExplodingD6(rng, `defense while fleeing (${pc.name})`)
-      const finalTotal = total + shieldless
+      let fleeMod = shieldless + (state.darknessPenalty ?? 0)
+      const slipperyExempt = ['ranger', 'rogue', 'acrobat', 'halfling', 'mushroomMonk', 'mushroom-monk']
+      if (state.fungalSlippery && !slipperyExempt.includes(pc.classId)) fleeMod -= 1
+      const { rolls, total } = rollCombatDie(state, rng, `defense while fleeing (${pc.name})`)
+      const finalTotal = total + fleeMod
       log(
         state,
-        `${enemy.profile.name} strikes at fleeing ${pc.name}: defense ${finalTotal} vs L${enemy.level} (no shield bonus)`,
+        `${enemy.profile.name} strikes at fleeing ${pc.name}: defense ${finalTotal} vs L${enemy.level} (no shield bonus${(state.darknessPenalty ?? 0) < 0 ? ', darkness -2' : ''}${state.fungalSlippery && !slipperyExempt.includes(pc.classId) ? ', slippery -1' : ''})`,
       )
       if (finalTotal <= enemy.level) {
         pc.currentLife = Math.max(0, pc.currentLife - 1)
         log(state, `${pc.name} takes 1 damage → ${pc.currentLife}/${pc.maxLife}.`)
         if (pc.currentLife === 0) {
           pc.status = 'dead'
-          log(state, `${pc.name} has fallen! (FADEE p.105)`)
+          log(state, `${pc.name} has fallen!`)
+          if (pc.equipment.includes('lantern')) {
+            state.lanternDropped = true
+            log(state, `${pc.name}'s lantern drops to the floor.`)
+          }
         }
       }
     }
   }
   state.phase = 'fled'
-  log(state, 'The party escapes to a visited tile. (FADEE p.98)')
+  log(state, 'The party escapes to a visited tile.')
   return state
 }
 
@@ -770,11 +880,11 @@ function castSpellEffect(
   if (!enemy || enemy.fled || (enemy.count === 0 && !enemy.profile.major)) {
     throw new CombatError('spell needs a target')
   }
-  const { rolls, total } = rollExplodingD6(rng, `spellcasting roll (${pc.name}, ${spell})`)
-  const castTotal = total + bonus
-  log(state, `${pc.name} casts ${spell}: d6[${rolls.join('+')}] +${bonus} = ${castTotal} vs L${enemy.level}`)
-  if (castTotal < enemy.level) {
-    log(state, 'The spell fails and is wasted. (FADEE p.67)')
+  const { rolls, total } = rollCombatDie(state, rng, `spellcasting roll (${pc.name}, ${spell})`)
+  const castTotal = total + bonus + (state.darknessPenalty ?? 0)
+  log(state, `${pc.name} casts ${spell}: d6[${rolls.join('+')}] +${bonus}${(state.darknessPenalty ?? 0) < 0 ? ' -2 darkness' : ''} = ${castTotal} vs L${effectiveLevel(state, enemy)}`)
+  if (castTotal < effectiveLevel(state, enemy)) {
+    log(state, 'The spell fails and is wasted.')
     endPcTurn(state, rng)
     return
   }
@@ -784,7 +894,13 @@ function castSpellEffect(
       log(state, `${enemy.profile.name} is immune to Sleep.`)
     } else if (enemy.profile.major) {
       enemy.asleep = true
-      log(state, `The ${enemy.profile.name} falls asleep! Attacks against it need no Defense roll.`)
+      // Sleep subdues a type-3 Quest target (R089/R155).
+      if (state.questTargetName && enemy.profile.name === state.questTargetName) {
+        enemy.subduedBySleep = true
+        log(state, `The ${enemy.profile.name} falls asleep — subdued, not slain. Tie it up!`)
+      } else {
+        log(state, `The ${enemy.profile.name} falls asleep! Attacks against it need no Defense roll.`)
+      }
     } else {
       const affected = Math.min(enemy.count, rng.formula(`d6+${bonus}`, 'Sleep Minor count'))
       enemy.asleepCount = (enemy.asleepCount ?? 0) + affected
@@ -794,10 +910,10 @@ function castSpellEffect(
     if (enemy.profile.major) {
       applyMajorDamage(state, enemy, 1)
     } else {
-      const slain = Math.max(1, castTotal - enemy.level)
+      const slain = Math.max(1, castTotal - effectiveLevel(state, enemy))
       const killed = Math.min(slain, enemy.count - (enemy.asleepCount ?? 0))
       enemy.count -= killed
-      log(state, `Fireball slays ${killed} ${enemy.profile.name} (${castTotal} − L${enemy.level}).`)
+      log(state, `Fireball slays ${killed} ${enemy.profile.name} (${castTotal} − L${effectiveLevel(state, enemy)}).`)
       checkMorale(state, enemy, rng)
     }
   } else if (spell === 'lightning') {
@@ -845,7 +961,7 @@ export function castScroll(
 ): void {
   if (state.phase !== 'pcTurn') throw new CombatError('not the party\u2019s turn')
   if (pc.classId === 'barbarian') {
-    throw new CombatError('barbarians may not use scrolls (FADEE p.54)')
+    throw new CombatError('barbarians may not use scrolls')
   }
   const idx = pc.equipment.indexOf(`scroll of ${spell}`)
   if (idx < 0) throw new CombatError(`no scroll of ${spell}`)
@@ -878,9 +994,106 @@ export function castBlessing(state: CombatState, pc: Character, target?: Charact
   log(
     state,
     removed
-      ? `${pc.name} casts Blessing on ${t.name}: the curse is lifted. (FADEE p.67)`
-      : `${pc.name} casts Blessing on ${t.name}: nothing to remove, it still counts against their prayers. (FADEE p.67)`,
+      ? `${pc.name} casts Blessing on ${t.name}: the curse is lifted.`
+      : `${pc.name} casts Blessing on ${t.name}: nothing to remove, it still counts against their prayers.`,
   )
+}
+
+/**
+ * Magic-item casts (R151): a Wand of Sleep or Fireball Staff spends one
+ * charge to cast as the wielder's own spell (+L), without spending a
+ * memorized slot. The charge bookkeeping lives in magicItems.ts; the
+ * caller spends the charge after this returns without throwing.
+ */
+export function castItemSpell(
+  state: CombatState,
+  rng: Rng,
+  pc: Character,
+  spell: 'sleep' | 'fireball',
+  enemyId: string | null,
+  bonus: number,
+): void {
+  if (state.phase !== 'pcTurn') throw new CombatError('not the party\u2019s turn')
+  castSpellEffect(state, rng, pc, spell, enemyId, bonus)
+}
+
+/** Ring of Teleportation (R151): auto-pass a Defense roll by leaving combat. */
+export function useTeleportRing(state: CombatState, pc: Character): void {
+  const idx = pc.equipment.indexOf('Ring of Teleportation')
+  if (idx < 0) throw new CombatError('no Ring of Teleportation')
+  pc.equipment.splice(idx, 1)
+  state.participants = state.participants.filter((p) => p.id !== pc.id)
+  log(state, `${pc.name} twists the Ring of Teleportation and vanishes from the fight — the ring loses its powers.`)
+  if (!state.participants.some((p) => p.status !== 'dead')) {
+    state.phase = 'fled'
+    log(state, 'The whole party has left the fight.')
+  }
+}
+
+/** Fools' Gold (R151): automatically satisfies the next Bribe demand. */
+export function payBribeWithFoolsGold(state: CombatState, party: Character[]): boolean {
+  const bribe = state.pendingBribe
+  if (!bribe) return false
+  const holder = party.find((p) => p.equipment.includes("Fools' Gold"))
+  if (!holder) return false
+  holder.equipment.splice(holder.equipment.indexOf("Fools' Gold"), 1)
+  const enemy = state.enemies.find((e) => e.id === bribe.enemyGroupId)
+  if (enemy) {
+    enemy.fled = true
+    log(state, `Fools' Gold! The ${enemy.profile.name} accept the pouch and let the party pass.`)
+  }
+  state.pendingBribe = null
+  if (combatOver(state)) finishCombat(state, { d: () => 1 } as unknown as Rng)
+  else state.phase = 'pcTurn'
+  return true
+}
+
+/** Xicthul's Cap (R154): thrown, d3 damage automatically; thrower takes 1. */
+export function throwXicthulCap(state: CombatState, rng: Rng, pc: Character, enemyId: string): void {
+  if (state.phase !== 'pcTurn') throw new CombatError('not the party\u2019s turn')
+  const enemy = state.enemies.find((e) => e.id === enemyId && !e.fled && e.count > 0)
+  if (!enemy) throw new CombatError('target not available')
+  const dmg = rng.d3()
+  if (enemy.profile.major) {
+    applyMajorDamage(state, enemy, dmg)
+  } else {
+    const slain = Math.min(dmg, enemy.count)
+    enemy.count -= slain
+    log(state, `Xicthul's Cap bursts: ${slain} ${enemy.profile.name} slain.`)
+    checkMorale(state, enemy, rng)
+  }
+  pc.currentLife = Math.max(0, pc.currentLife - 1)
+  log(state, `${pc.name} takes 1 damage from the cap's bite → ${pc.currentLife}/${pc.maxLife}.`)
+  if (pc.currentLife === 0) {
+    pc.status = 'dead'
+    log(state, `${pc.name} has fallen!`)
+  }
+  endPcTurn(state, rng)
+}
+
+/** Red Death (R154): thrown, 1 damage or -1 L to living Foes for 1 turn. */
+export function throwRedDeath(
+  state: CombatState,
+  rng: Rng,
+  pc: Character,
+  enemyId: string,
+  mode: 'damage' | 'weaken',
+): void {
+  if (state.phase !== 'pcTurn') throw new CombatError('not the party\u2019s turn')
+  const enemy = state.enemies.find((e) => e.id === enemyId && !e.fled && e.count > 0)
+  if (!enemy) throw new CombatError('target not available')
+  if (mode === 'damage') {
+    if (enemy.profile.major) applyMajorDamage(state, enemy, 1)
+    else {
+      enemy.count -= 1
+      log(state, `Red Death slays 1 ${enemy.profile.name}.`)
+      checkMorale(state, enemy, rng)
+    }
+  } else {
+    enemy.levelPenaltyUntilRound = state.round + 1
+    log(state, `Red Death weakens the ${enemy.profile.name}: -1 L until the end of next round.`)
+  }
+  endPcTurn(state, rng)
 }
 
 /**
@@ -889,15 +1102,17 @@ export function castBlessing(state: CombatState, pc: Character, target?: Charact
  */
 export function drinkHealingPotion(state: CombatState | null, pc: Character): string {
   if (pc.conditions.includes('potion-drunk')) {
-    throw new CombatError('a PC may drink only 1 healing potion per adventure (FADEE p.83)')
+    throw new CombatError('a PC may drink only 1 healing potion per adventure')
   }
+  const idx = pc.equipment.indexOf('healing potion')
+  if (idx >= 0) pc.equipment.splice(idx, 1)
   const healed = pc.maxLife - pc.currentLife
   pc.currentLife = pc.maxLife
   pc.conditions.push('potion-drunk')
   const msg =
     healed > 0
-      ? `${pc.name} drinks a healing potion and recovers ALL ${healed} lost Life → ${pc.currentLife}/${pc.maxLife}. (FADEE p.83)`
-      : `${pc.name} drinks a healing potion at full Life — it is wasted. (FADEE p.83)`
+      ? `${pc.name} drinks a healing potion and recovers ALL ${healed} lost Life → ${pc.currentLife}/${pc.maxLife}.`
+      : `${pc.name} drinks a healing potion at full Life — it is wasted.`
   if (state) log(state, msg)
   return msg
 }
@@ -908,7 +1123,7 @@ export function drinkHealingPotion(state: CombatState | null, pc: Character): st
  */
 export function applyBandage(pc: Character): string {
   if (pc.conditions.includes('bandage-used')) {
-    throw new CombatError('each PC may use only 1 bandage per adventure (FADEE p.83)')
+    throw new CombatError('each PC may use only 1 bandage per adventure')
   }
   const idx = pc.equipment.indexOf('bandage')
   if (idx < 0) throw new CombatError('no bandage')
@@ -916,8 +1131,8 @@ export function applyBandage(pc: Character): string {
   if (pc.currentLife < pc.maxLife) {
     pc.currentLife += 1
     pc.conditions.push('bandage-used')
-    return `${pc.name} applies a bandage: +1 Life → ${pc.currentLife}/${pc.maxLife}. (FADEE p.83)`
+    return `${pc.name} applies a bandage: +1 Life → ${pc.currentLife}/${pc.maxLife}.`
   }
   pc.conditions.push('bandage-used')
-  return `${pc.name} applies a bandage at full Life — it is wasted. (FADEE p.83)`
+  return `${pc.name} applies a bandage at full Life — it is wasted.`
 }

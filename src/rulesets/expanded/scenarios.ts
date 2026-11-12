@@ -7,12 +7,13 @@ import { SHOP_STOCK } from './features'
  * with an original backstory (no book text) and an honest goal.
  *
  * HOOKS — READ BEFORE ADDING ONE: quests are offered at random by the Lady
- * in White (FADEE p.153) and cannot be chosen, and quest types 3 (subdue
- * alive) and 4 (retrieve an item) are NOT implemented yet — they always
- * report ineligible. So no scenario promises a quest. The mechanical goal
- * of every tale is the dungeon's own Final Boss: slay it and leave the
- * dungeon alive (FADEE pp.104-105). The backstory is the reason to go down;
- * the Boss is what stands between the party and it.
+ * in White (FADEE p.153) and cannot be chosen. Quest types 3 (subdue
+ * alive) and 4 (retrieve an item) are implemented in Release 0.5 — subdual
+ * capture with a rope, and a 1-in-6 retrieval roll per Major Foe slain.
+ * So no scenario promises a quest. The mechanical goal of every tale is
+ * the dungeon's own Final Boss: slay it and leave the dungeon alive
+ * (FADEE pp.104-105). The backstory is the reason to go down; the Boss is
+ * what stands between the party and it.
  *
  * SEEDS — verified with a deterministic breadth-first exploration scan
  * (tests/unit, temporary; the scan replicates the real store flow:
@@ -68,7 +69,7 @@ export const SCENARIOS: ScenarioDef[] = [
     name: 'Learn to play — The First Delve',
     backstory:
       'Every delver remembers their first descent: four adventurers, one torch, and a dungeon that does not care that you are new. This is a guided first delve — the dungeon is real, the dice are real, and a patient voice will walk you through it, one step at a time.',
-    goal: 'Learn the delve — explore, fight, search, and rest — then slay the Final Boss and leave alive (FADEE p.105). When the last lesson lands, the training wheels come off and the campaign is yours.',
+    goal: 'Learn the delve — explore, fight, search, and rest — then slay the Final Boss and leave alive. When the last lesson lands, the training wheels come off and the campaign is yours.',
     seed: 1481,
     tutorial: true,
     party: [
@@ -83,7 +84,7 @@ export const SCENARIOS: ScenarioDef[] = [
     name: 'The Sunken Chapel',
     backstory:
       'Beneath the town of Millbrook, the old chapel of Saint Anselm sank into the floodwaters a generation ago, and the townsfolk sealed the stair rather than mourn it. The saint\u2019s relic — a small silver lantern said to burn without oil — still glows down in the dark, and the chapel\u2019s drowned dead do not rest. Bring the lantern back up, and the town will remember its saint.',
-    goal: 'Slay the Final Boss of this delve — the guardian of the chapel\u2019s depths — and leave the dungeon alive (FADEE p.105). The lantern is why you went down; the Boss is what stands between you and it.',
+    goal: 'Slay the Final Boss of this delve — the guardian of the chapel\u2019s depths — and leave the dungeon alive. The lantern is why you went down; the Boss is what stands between you and it.',
     seed: 1004,
     party: [
       { classId: 'cleric', name: 'Odessa' },
@@ -97,7 +98,7 @@ export const SCENARIOS: ScenarioDef[] = [
     name: 'The Missing Scout',
     backstory:
       'Elara Voss was the best scout the guild ever sent below — she mapped three delves and came home from all of them. Four days ago she went down after a raider band and never returned; her last signal, a white ribbon tied to a doorframe, was found at the mouth of the deep halls. Find what happened to her, and bring her home if she still lives.',
-    goal: 'Slay the Final Boss of this delve — whatever took Elara — and leave the dungeon alive (FADEE p.105). The deep halls keep their own ledger; the Boss is its last page.',
+    goal: 'Slay the Final Boss of this delve — whatever took Elara — and leave the dungeon alive. The deep halls keep their own ledger; the Boss is its last page.',
     seed: 1003,
     party: [
       { classId: 'halfling', name: 'Pip' },
@@ -111,7 +112,7 @@ export const SCENARIOS: ScenarioDef[] = [
     name: 'The Cursed Vault',
     backstory:
       'The tomb-vault of King Morvain has stood sealed for two hundred years, its doors shut by a curse that turns every would-be thief\u2019s luck black. The guild\u2019s sages say the curse can only be broken the old way: go in, face what guards the king\u2019s rest, and come out alive. The vault has never been opened. The curse has never been broken.',
-    goal: 'Slay the Final Boss of this delve — what guards the king\u2019s rest — and leave the dungeon alive (FADEE p.105). Break the curse the old way: face it, and come out alive.',
+    goal: 'Slay the Final Boss of this delve — what guards the king\u2019s rest — and leave the dungeon alive. Break the curse the old way: face it, and come out alive.',
     seed: 1002,
     party: [
       { classId: 'barbarian', name: 'Korg' },

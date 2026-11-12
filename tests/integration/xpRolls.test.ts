@@ -17,8 +17,10 @@ import type { DungeonState } from '../../src/engine/dungeon/generate'
  *
  * Reproduces the lingering-roll quirk: before the fix, both exits
  * (explore() and leaveCombat()) cleared the combat while pendingXp stayed
- * set, so the roll either resurfaced on a later victory (scroll/reaction
- * wins never reset pendingXp) or was silently overwritten by the next win.
+ * set, so the roll either resurfaced on a later fight's card or was
+ * silently overwritten by the next win. Release 0.5 (A6) also fixed the
+ * other half: scroll/reaction wins never awarded XP or loot at all — now
+ * every victory path awards through the same helper.
  */
 async function setupWorld(seed: number) {
   const meta = await createCampaign(`XP Test ${seed}`, seed)
@@ -119,7 +121,7 @@ describe('XP rolls are assigned before leaving a victory (FADEE p.117)', () => {
     expect(useDungeonStore.getState().dungeon?.currentTileId).not.toBe(tileBefore)
   })
 
-  it('a scroll-won fight shows no stale roll from the previous victory', async () => {
+  it('a scroll-won fight awards its own XP roll (Release 0.5, A6)', async () => {
     const { dungeon } = await setupWorld(103)
     const enemy1 = armCombat(dungeon, true)
     await winByAttack(enemy1.id)
@@ -130,14 +132,84 @@ describe('XP rolls are assigned before leaving a victory (FADEE p.117)', () => {
     await useDungeonStore.getState().leaveCombat()
     expect(useDungeonStore.getState().pendingXp).toBeNull()
 
-    // Second fight, won by fireball scroll — a path that never awards XP
-    // itself, so any roll shown here could only be a stale one.
+    // Second fight, won by fireball scroll — before 0.5 this path never
+    // awarded XP at all, so a roll here could only have been a stale one.
+    // Now the scroll-kill earns its own roll, exactly one.
     const wizard = useCampaignStore.getState().party.find((p) => p.classId === 'wizard')!
     wizard.equipment.push('scroll of fireball')
     const enemy2 = armCombat(dungeon, true)
     await useDungeonStore.getState().combatCastScroll(wizard.id, 'fireball', enemy2.id)
     expect(useDungeonStore.getState().dungeon?.combat?.phase).toBe('won')
-    expect(useDungeonStore.getState().pendingXp).toBeNull()
+    expect(useDungeonStore.getState().pendingXp).toEqual({ major: 1, minor: false, boss: false })
+  })
+
+  it('a reaction win (foes flee) awards loot + the minor tally (Release 0.5, A6)', async () => {
+    // Vermin roll 1 flees on 1-3: brute-force seeds until the reaction roll
+    // flees. A single minor win earns no immediate roll in the Classical
+    // system (1 roll per 10 minor encounters) — its award is the tally
+    // increment plus the loot roll, both of which only awardVictory does.
+    let won = false
+    for (let seed = 200; seed < 240 && !won; seed++) {
+      const { dungeon } = await setupWorld(seed)
+      const party = useCampaignStore.getState().party
+      const profile = profileFor('vermin', 1)
+      const enemy = makeEnemy(profile, 'vermin', 1, 3, 1)
+      const combat: CombatState = {
+        tileId: dungeon.currentTileId,
+        enemies: [enemy],
+        phase: 'opening',
+        round: 1,
+        participants: party.filter((p) => p.status !== 'dead'),
+        log: [],
+        surprised: false,
+        marchingOrder: party.map((p) => p.id),
+      }
+      dungeon.combat = combat
+      useDungeonStore.setState({ dungeon: { ...dungeon }, pendingXp: null })
+      await useDungeonStore.getState().combatWait()
+      const st = useDungeonStore.getState()
+      if (st.dungeon?.combat?.phase === 'won') {
+        won = true
+        expect(st.dungeon.minorEncountersTally).toBe(1)
+        expect(st.log.some((l) => l.text.includes('Treasure:') || l.text.includes('No treasure'))).toBe(true)
+        // No roll is due yet, so leaving is allowed.
+        await useDungeonStore.getState().leaveCombat()
+        expect(useDungeonStore.getState().dungeon?.combat).toBeNull()
+      }
+    }
+    expect(won).toBe(true)
+  })
+
+  it('a reaction win on the 10th minor encounter earns the roll and gates the exit', async () => {
+    let won = false
+    for (let seed = 200; seed < 240 && !won; seed++) {
+      const { dungeon } = await setupWorld(seed)
+      const party = useCampaignStore.getState().party
+      const profile = profileFor('vermin', 1)
+      const enemy = makeEnemy(profile, 'vermin', 1, 3, 1)
+      const combat: CombatState = {
+        tileId: dungeon.currentTileId,
+        enemies: [enemy],
+        phase: 'opening',
+        round: 1,
+        participants: party.filter((p) => p.status !== 'dead'),
+        log: [],
+        surprised: false,
+        marchingOrder: party.map((p) => p.id),
+      }
+      dungeon.combat = combat
+      dungeon.minorEncountersTally = 9
+      useDungeonStore.setState({ dungeon: { ...dungeon }, pendingXp: null })
+      await useDungeonStore.getState().combatWait()
+      const st = useDungeonStore.getState()
+      if (st.dungeon?.combat?.phase === 'won') {
+        won = true
+        expect(st.pendingXp).toEqual({ major: 1, minor: true, boss: false })
+        await useDungeonStore.getState().leaveCombat()
+        expect(useDungeonStore.getState().dungeon?.combat).not.toBeNull()
+      }
+    }
+    expect(won).toBe(true)
   })
 
   it('a second major win earns exactly one roll, never stacking on the first', async () => {

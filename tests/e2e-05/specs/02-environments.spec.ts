@@ -1,0 +1,61 @@
+import { test, expect } from '@playwright/test'
+import { trackErrors, assertNoErrors, bootstrap, importFixture, exploreExit, SHOTS } from './helpers'
+
+test('secret door: peek, then enter through it (R125)', async ({ page }) => {
+  const errors = trackErrors(page)
+  await bootstrap(page, 'Probe Door')
+  await importFixture(page, 'search', 'Search Find Fixture')
+  await expect(page.getByRole('button', { name: 'Search this tile' })).toBeVisible()
+  await page.getByRole('button', { name: 'Search this tile' }).click()
+  await expect(page.getByRole('button', { name: 'Secret door' })).toBeVisible()
+  await page.getByRole('button', { name: 'Secret door' }).click()
+  // The secret-door card offers Peek, then Enter.
+  await expect(page.getByRole('button', { name: 'Peek' })).toBeVisible()
+  await page.getByRole('button', { name: 'Peek' }).click()
+  await expect(page.getByText(/peeked: the tile beyond is mapped/)).toBeVisible()
+  await page.getByRole('button', { name: /Enter \(Foes surprised\)/ }).click()
+  await expect(page.getByText(/slips through the secret door/i)).toBeVisible()
+  await page.screenshot({ path: `${SHOTS}/4ad-05-secret-door.png` })
+  assertNoErrors(errors)
+})
+
+test('secret passage switches environments (R126/R140)', async ({ page }) => {
+  const errors = trackErrors(page)
+  await bootstrap(page, 'Probe Passage')
+  // Caverns first.
+  await importFixture(page, 'search', 'Search Find Fixture')
+  await page.getByRole('button', { name: 'Search this tile' }).click()
+  await expect(page.getByRole('button', { name: 'Secret passage' })).toBeVisible()
+  await page.getByRole('button', { name: 'Secret passage' }).click()
+  await expect(page.getByRole('button', { name: 'Caverns' })).toBeVisible()
+  await page.getByRole('button', { name: 'Caverns' }).click()
+  await expect(page.getByRole('button', { name: /Caverns/ })).toBeVisible()
+  await expect(page.getByText(/The secret passage leads into the caverns/i)).toBeVisible()
+  await page.screenshot({ path: `${SHOTS}/4ad-05-environments.png` })
+  // Fungal grottoes via a second import of the same fixture.
+  await importFixture(page, 'search', 'Search Find Fixture')
+  await page.getByRole('button', { name: 'Search this tile' }).click()
+  await page.getByRole('button', { name: 'Secret passage' }).click()
+  await page.getByRole('button', { name: 'Fungal grottoes' }).click()
+  await expect(page.getByRole('button', { name: /Fungal grottoes/ })).toBeVisible()
+  await expect(page.getByText(/The secret passage leads into the fungal grottoes/i)).toBeVisible()
+  assertNoErrors(errors)
+})
+
+test('cavern Search offers Listen; fungal Search offers Rare Mushroom (R143/R144)', async ({ page }) => {
+  const errors = trackErrors(page)
+  await bootstrap(page, 'Probe Listen')
+  await importFixture(page, 'search-caverns', 'Cavern Search Fixture')
+  await expect(page.getByText('Caverns')).toBeVisible()
+  await page.getByRole('button', { name: 'Search this tile' }).click()
+  await expect(page.getByRole('button', { name: /Listen \(pre-roll next tile\)/ })).toBeVisible()
+  await page.getByRole('button', { name: /Listen \(pre-roll next tile\)/ }).click()
+  await expect(page.getByText(/Listen: beyond the opening, the next tile will be shape/)).toBeVisible()
+  await importFixture(page, 'search-fungal', 'Fungal Search Fixture')
+  await expect(page.getByText('Fungal grottoes')).toBeVisible()
+  await page.getByRole('button', { name: 'Search this tile' }).click()
+  await expect(page.getByRole('button', { name: 'Rare Mushroom' })).toBeVisible()
+  await page.getByRole('button', { name: 'Rare Mushroom' }).click()
+  await expect(page.getByText(/Search: (Rare mushroom:|A (real )?Purple Truffle)/)).toBeVisible()
+  assertNoErrors(errors)
+})

@@ -3,9 +3,17 @@ import { STARTING_TILES, D66_TILES, shapeById } from '../../rulesets/expanded/ti
 import {
   oppositeEdge,
   profileFor,
+  profileForEnv,
+  tableKindFor,
   type MonsterProfile,
   type TableKind,
 } from '../../rulesets/expanded/monsters'
+import {
+  RARE_MUSHROOMS,
+  cavernFeatureForRoll,
+  type CavernFeature,
+  type EnvironmentId,
+} from '../../rulesets/expanded/environments'
 import type { Rng } from '../core/rng'
 import type { CombatState } from '../combat/combat'
 
@@ -87,6 +95,10 @@ export interface PlacedTile {
   secretDoorFound?: boolean
   /** True when the tile was reached through a secret door (peek rules apply). */
   viaSecretDoor?: boolean
+  /** Environment this tile was generated in (R140; default dungeon). */
+  environment?: EnvironmentId
+  /** Cavern terrain feature rolled on entry (R141/R142). */
+  cavernFeature?: CavernFeature
 }
 
 export interface DungeonState {
@@ -124,6 +136,33 @@ export interface DungeonState {
   nonViolentTally?: number
   /** The Lady was refused — ignore further appearances (FADEE p.153). */
   ladyRefused?: boolean
+  /** Current environment (R140): adventures start in a dungeon; secret
+      passages switch it. Defaults to 'dungeon' for older saves. */
+  environment?: EnvironmentId
+  /** Light state (R093/R094): is a torch lit, rooms burned, lantern dropped. */
+  torchLit?: boolean
+  torchRooms?: number
+  lanternDropped?: boolean
+  /** A found secret door (R125): the real tile beyond it, peeked or not. */
+  secretDoor?: { fromTileId: string; toTileId: string; peeked?: boolean; safeExit?: boolean } | null
+  /** Listen (cavern Search, R143): pre-rolled next tile shape (d66). */
+  listenShape?: number | null
+  /** Map Fragment (R153): pre-rolled next tile shape (d66). */
+  nextTileShape?: number | null
+  /** Old School XP tally (R173). */
+  oldSchoolXp?: number
+  /** Slower Advancement stored XP points (R174). */
+  storedXp?: number
+  /** Last PC levelled under Old School (no same PC twice in a row, R173). */
+  lastLevelUpPcId?: string | null
+  /** Slow and Sure level-ups awaiting assignment (R172). */
+  pendingLevelUps?: number
+  /** Miners' Ointment armed: ignore the next Wandering Monsters arrival (R153). */
+  ointmentArmed?: boolean
+  /** Water pools dipped in this adventure, per PC id (R142, once each). */
+  poolDippedPcIds?: string[]
+  /** Phoenix Mushroom: tiles remaining per PC id (R152, 3 tiles). */
+  phoenixTiles?: Record<string, number>
 }
 
 /** Serialized quest state (Quest Table roll + completion tracking). */
@@ -136,6 +175,12 @@ export interface QuestState {
   /** Bosses slain (type 1), peaceful encounters (type 5). */
   progress: number
   complete: boolean
+  /** Type 4: the rolled rare item to fetch (R155). */
+  itemName?: string
+  /** Type 4: the item was found on a slain Major Foe (1-in-6, R155). */
+  itemFound?: boolean
+  /** Type 3: the target was subdued (R089/R155). */
+  subdued?: boolean
 }
 
 /** Serialized player choice from the features engine. */
@@ -143,7 +188,7 @@ export interface PendingChoicePayload {
   kind:
     | 'temple' | 'statue' | 'puzzle' | 'ghost' | 'healer' | 'alchemist'
     | 'secret' | 'secretPc' | 'secretWeakness' | 'secretItem' | 'rest'
-    | 'quest' | 'questPc'
+    | 'quest' | 'questPc' | 'passage'
   source: string
   /** Statue: difficulty info. */
   hcl?: number
@@ -235,6 +280,7 @@ export function newDungeon(campaignId: string, rng: Rng): DungeonState {
     content: null,
     searchRoll: null,
     searchResult: null,
+    environment: 'dungeon',
   }
   return {
     campaignId,
@@ -244,6 +290,10 @@ export function newDungeon(campaignId: string, rng: Rng): DungeonState {
     currentTileId: tile.id,
     majorFoesMet: 0,
     pendingWanderingMonsters: null,
+    environment: 'dungeon',
+    torchLit: false,
+    torchRooms: 0,
+    lanternDropped: false,
   }
 }
 
@@ -301,8 +351,16 @@ export function exploreThrough(
     return { state, events }
   }
 
-  // FADEE p.104: roll d66 for a new tile shape.
-  const roll = rng.d66()
+  // FADEE p.104: roll d66 for a new tile shape — unless a Map Fragment
+  // (R153) or a cavern Listen (R143) already pre-rolled it.
+  const roll = state.nextTileShape ?? state.listenShape ?? rng.d66()
+  if (state.nextTileShape) {
+    events.push(`The Map Fragment showed this tile coming: shape ${roll}.`)
+    state.nextTileShape = null
+  } else if (state.listenShape) {
+    events.push(`Listen paid off: beyond the opening lies tile shape ${roll}, as heard.`)
+    state.listenShape = null
+  }
   const shape = shapeById(roll)
   if (!shape) throw new DungeonError(`d66 roll ${roll} has no shape`)
 
@@ -337,6 +395,7 @@ export function exploreThrough(
     searchRoll: null,
     searchResult: null,
     viaSecretDoor: false,
+    environment: state.environment ?? 'dungeon',
   }
   // Link both sides.
   exit.toTileId = newTileId
@@ -349,11 +408,27 @@ export function exploreThrough(
   const contentRoll = rng.roll(2, 6, 0, `tile content 2d6 (FADEE p.152)`)
   newTile.contentRoll = contentRoll
   newTile.content = rollContent(state, rng, newTile, contentRoll, hcl, events)
+  // Cavern entry (R141/R142): on entering a cavern tile, roll its feature.
+  if (newTile.environment === 'caverns') {
+    const feature = cavernFeatureForRoll(rng.d(6))
+    newTile.cavernFeature = feature
+    events.push(`Cavern feature: ${feature} — ${cavernFeatureText(feature)}`)
+  }
 
   state.tiles.push(newTile)
   state.currentTileId = newTileId
   events.push(`Rolled d66 = ${roll}: ${shape.corridor ? 'corridor' : 'room'} tile.`)
   return { state, events }
+}
+
+function cavernFeatureText(feature: CavernFeature): string {
+  switch (feature) {
+    case 'stalactites': return 'explosive two-handed attacks may bring one down (3-in-6).'
+    case 'stalagmites': return 'no attack dice explode here.'
+    case 'boulders': return '+1 Defense vs ranged, -1 ranged attacks, +1 Stealth.'
+    case 'echo': return '-1 Stealth; Wandering Monsters on 2-in-6.'
+    case 'waterPools': return 'still pools — dip in to test the water.'
+  }
 }
 
 function moveThroughExplored(
@@ -363,25 +438,46 @@ function moveThroughExplored(
   events: string[],
   hcl: number,
 ): DungeonState {
+  // A safe shortcut exit (R125, d6 = 6 after finding a secret door) has no
+  // Wandering Monsters rolls through it.
+  const sd = state.secretDoor
+  const isShortcut =
+    sd?.safeExit &&
+    ((sd.fromTileId === state.currentTileId && sd.toTileId === tileId) ||
+      (sd.toTileId === state.currentTileId && sd.fromTileId === tileId))
+  // Echo tiles (R142): Wandering Monsters on 2-in-6 instead of 1-in-6.
+  const target = state.tiles.find((t) => t.id === tileId)
+  const wmChance = target?.cavernFeature === 'echo' ? 2 : 1
   // FADEE p.104: retrace — 1-in-6 Wandering Monsters.
   const roll = rng.d(6)
-  if (roll === 1) {
-    // FADEE p.107: d6 → Vermin/Minions/Weird/Boss (reroll event-Foes & dragons).
-    const tableRoll = rng.d(6)
-    const table: TableKind =
-      tableRoll <= 2 ? 'vermin' : tableRoll <= 4 ? 'minions' : tableRoll === 5 ? 'weird' : 'boss'
-    let tableToUse = table
-    let profile = profileFor(tableToUse, rng.d(6))
-    while (profile.category === 'Event' || profile.category === 'Dragon') {
-      profile = profileFor(tableToUse, rng.d(6))
+  if (roll <= wmChance && !isShortcut) {
+    if (state.ointmentArmed) {
+      // Miners' Ointment (R153): ignore one Wandering Monsters arrival.
+      state.ointmentArmed = false
+      events.push("Miners' Ointment: the Wandering Monsters pass by without noticing the party.")
+    } else {
+      // FADEE p.107: d6 → Vermin/Minions/Weird/Boss (reroll event-Foes & dragons).
+      const tableRoll = rng.d(6)
+      const table: TableKind =
+        tableRoll <= 2 ? 'vermin' : tableRoll <= 4 ? 'minions' : tableRoll === 5 ? 'weird' : 'boss'
+      const env = state.environment ?? 'dungeon'
+      let profile = profileForTable(env, table, tableRoll)
+      while (profile.category === 'Event' || profile.category === 'Dragon') {
+        profile = profileForTable(env, table, rng.d(6))
+      }
+      const enc = rollEncounter(state, rng, profile, hcl, events)
+      if (profile.major) enc.isFinalBoss = false // WM Majors can never be the Final Boss
+      state.pendingAmbush = enc
+      events.push('Retracing: 1-in-6 → Wandering Monsters attack! They strike first. (FADEE pp.104, 107)')
     }
-    const enc = rollEncounter(state, rng, profile, hcl, events)
-    if (profile.major) enc.isFinalBoss = false // WM Majors can never be the Final Boss
-    state.pendingAmbush = enc
-    events.push('Retracing: 1-in-6 → Wandering Monsters attack! They strike first. (FADEE pp.104, 107)')
   }
   state.currentTileId = tileId
   return state
+}
+
+/** Environment-aware profile lookup (dungeon tables are the default). */
+export function profileForTable(env: EnvironmentId, table: TableKind, roll: number): MonsterProfile {
+  return env === 'dungeon' ? profileFor(table, roll) : profileForEnv(env, table, roll)
 }
 
 interface Placement {
@@ -471,6 +567,7 @@ export function rollContent(
 ): TileContent {
   const isCorridor = D66_TILES.find((t) => t.id === tile.shapeId)?.corridor ?? false
   const base: TileContent = { roll, kind: 'empty' }
+  const env = tile.environment ?? state.environment ?? 'dungeon'
 
   switch (roll) {
     case 2:
@@ -483,9 +580,17 @@ export function rollContent(
       base.kind = isCorridor ? 'empty' : 'specialEvents'
       break
     case 5:
-      // Dungeon: Special Feature Table (p.153); fungal gives a passage (0.5).
-      base.kind = 'specialFeature'
-      base.specialFeatureRoll = rng.d(6)
+      // Dungeon: Special Feature Table (p.153); caverns: a Cavern Special
+      // Feature; fungal: a secret passage (R114/R126).
+      if (env === 'fungal') {
+        base.kind = 'secretPassage'
+      } else if (env === 'caverns') {
+        base.kind = 'specialFeature'
+        base.specialFeatureRoll = rng.d(6)
+      } else {
+        base.kind = 'specialFeature'
+        base.specialFeatureRoll = rng.d(6)
+      }
       break
     case 6:
       base.kind = 'vermin'
@@ -497,7 +602,7 @@ export function rollContent(
       base.kind = isCorridor ? 'empty' : 'minions'
       break
     case 9:
-      base.kind = 'empty' // searchable; 2 Clues could buy a passage (Phase 5)
+      base.kind = 'empty' // searchable; 2 Clues could buy a passage (R126)
       break
     case 10:
       base.kind = isCorridor ? 'empty' : 'weird'
@@ -520,18 +625,21 @@ export function rollContent(
       : 'boss' // dragon lair rolls the Boss table for the dragon (p.152/170)
     const tableRoll = rng.d(6)
     base.tableRoll = tableRoll
-    let profile = profileFor(table, tableRoll)
+    let profile = profileForTable(env, table, tableRoll)
     if (base.kind === 'dragonLair') {
       // FADEE p.152: the lair holds the environment's dragon.
-      profile = dragonForEnvironment('dungeon')
+      profile = dragonForEnvironment(env)
     }
     base.encounter = rollEncounter(state, rng, profile, hcl, events)
   }
   return base
 }
 
-export function dragonForEnvironment(env: 'dungeon'): MonsterProfile {
-  // FADEE p.170 Young Dragon for dungeon lairs (cave/fungal dragons in 0.5).
+export function dragonForEnvironment(env: EnvironmentId): MonsterProfile {
+  // Young Dragon (dungeon, p.170), Cave Dragon (caverns, p.174),
+  // Fungal Dragon (fungal, p.178).
+  if (env === 'caverns') return profileForEnv('caverns', 'weird', 6)
+  if (env === 'fungal') return profileForEnv('fungal', 'boss', 6)
   return profileFor('boss', 6)
 }
 
@@ -557,11 +665,7 @@ export function rollEncounter(
   if (profile.levelFloor !== undefined) level = Math.max(level, profile.levelFloor)
 
   const enc: EncounterRoll = { table: 'vermin', monster: profile, count, level }
-  enc.table = 'vermin'
-  // Fix table kind by looking the profile up (gremlin/dragon handled by caller).
-  enc.table = (['vermin', 'minions', 'weird', 'boss'] as TableKind[]).find(
-    (k) => profileFor(k, profile.roll) === profile,
-  ) ?? 'vermin'
+  enc.table = tableKindFor(profile)
 
   if (profile.major && !isEventProfile(profile)) {
     // FADEE p.105: Final Boss check — d6 + Major Foes met so far.
@@ -582,31 +686,107 @@ function isEventProfile(p: MonsterProfile): boolean {
 
 // ---------- searching (FADEE p.107) ----------
 
+/**
+ * Search a tile (R123 dungeon, R143 caverns, R144 fungal).
+ * Rogue-type classes, halflings and shadows count a 4 as a 5 in caverns
+ * and fungal grottoes; in the dungeon the Search table is unchanged.
+ * `partyClassIds` drives the 4-counts-as-5 rule.
+ */
 export function searchTile(
   state: DungeonState,
   rng: Rng,
   tileId: string,
+  partyClassIds: string[] = [],
 ): { state: DungeonState; result: string; detail?: string } {
   const tile = state.tiles.find((t) => t.id === tileId)
   if (!tile) throw new DungeonError('unknown tile')
   if (tile.searchRoll !== null) throw new DungeonError('tile already searched')
   const shape = D66_TILES.find((t) => t.id === tile.shapeId)
   const isCorridor = shape?.corridor ?? false
-  const roll = rng.roll(1, 6, isCorridor ? -1 : 0, `search roll (FADEE p.107)`)
+  const env = tile.environment ?? state.environment ?? 'dungeon'
+  const roll = rng.roll(1, 6, env === 'dungeon' && isCorridor ? -1 : 0, `search roll (FADEE p.107)`)
   tile.searchRoll = roll
+  const countsFourAsFive =
+    partyClassIds.some((c) => ['rogue', 'assassin', 'halfling'].includes(c))
   if (roll <= 1) {
     tile.searchResult = 'wandering-monsters'
     state.pendingWanderingMonsters = Date.now()
     return { state, result: 'Wandering Monsters attack! (resolution with the combat engine)' }
   }
-  if (roll <= 4) {
+  const effective = countsFourAsFive && roll === 4 ? 5 : roll
+  if (effective <= 4) {
     tile.searchResult = 'empty'
     return { state, result: 'The tile is truly empty.' }
   }
   // 5-6: found something — the PLAYER chooses (FADEE p.107). Phase 3 exposes
   // the options; choosing hidden treasure rolls its complication table.
   tile.searchResult = 'find'
-  return { state, result: 'find', detail: 'hidden-treasure|secret-door|secret-passage|clue' }
+  const detail =
+    env === 'caverns'
+      ? 'clue|listen'
+      : env === 'fungal'
+        ? 'clue|rare-mushroom'
+        : 'hidden-treasure|secret-door|secret-passage|clue'
+  return { state, result: 'find', detail }
+}
+
+/** Roll a Rare Mushroom (R152) — used by fungal Search and treasure. */
+export function rollRareMushroomName(rng: Rng): string {
+  return RARE_MUSHROOMS[rng.d(6) - 1].name
+}
+
+/**
+ * Generate the real tile beyond a found secret door (R125): draw a door,
+ * roll a connected tile through the current tile's first open exit. The
+ * party may PEEK at its content before entering, and refuse.
+ */
+export function generateSecretDoorTile(
+  state: DungeonState,
+  rng: Rng,
+  hcl: number,
+): { state: DungeonState; toTileId: string | null; events: string[] } {
+  const events: string[] = []
+  const tile = currentTile(state)
+  const exit = tile.exits.find((e) => !e.toTileId)
+  if (!exit) {
+    events.push('No wall is left for a secret door here — the door is drawn on the map, but it leads nowhere.')
+    return { state, toTileId: null, events }
+  }
+  const before = state.tiles.length
+  const fromTileId = tile.id
+  const result = exploreThrough(state, rng, exit.id, hcl)
+  // Peeking is not entering: the party stays where it is until it chooses
+  // to step through (store.enterSecretDoor moves them, WM-free).
+  result.state.currentTileId = fromTileId
+  const newTile = result.state.tiles[before]
+  if (newTile) {
+    newTile.viaSecretDoor = true
+    const bonus = rollSecretDoorBonus(rng)
+    result.state.secretDoor = {
+      fromTileId: tile.id,
+      toTileId: newTile.id,
+      peeked: false,
+      safeExit: bonus.safeExit,
+    }
+    events.push(
+      `A secret door! Beyond it: ${describeTileContent(newTile)}.`,
+      bonus.safeExit
+        ? 'The door also hides a SAFE SHORTCUT OUT of the dungeon — no Wandering Monsters through it.'
+        : 'Peek first, then decide whether to step through.',
+    )
+  }
+  return { state: result.state, toTileId: newTile?.id ?? null, events: [...result.events, ...events] }
+}
+
+function describeTileContent(tile: PlacedTile): string {
+  const c = tile.content
+  if (!c) return 'the entrance'
+  if (c.encounter) return `${c.encounter.count}× ${c.encounter.monster.name} (L${c.encounter.level})`
+  if (c.kind === 'treasure' || c.kind === 'treasureTrapped') return 'treasure'
+  if (c.kind === 'specialFeature') return 'a special feature'
+  if (c.kind === 'specialEvents') return 'a special event'
+  if (c.kind === 'secretPassage') return 'a secret passage'
+  return 'an empty tile'
 }
 
 /** Hidden treasure (FADEE p.108): (2d6+HCL)² gp + complication d6. */

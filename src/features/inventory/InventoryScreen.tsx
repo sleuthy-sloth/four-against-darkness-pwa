@@ -9,6 +9,7 @@ import type { Character } from '../../rulesets/schema/character'
 import ItemIcon from './ItemIcon'
 import EmptyState from '../common/EmptyState'
 import { CoinDevice } from '../common/Ornament'
+import { stripCitations } from '../common/stripCitations'
 
 /**
  * Inventory screen (PROJECT_SPEC §25): party equipment, gold, consumables.
@@ -21,7 +22,7 @@ import { CoinDevice } from '../common/Ornament'
 export default function InventoryScreen() {
   const navigate = useNavigate()
   const { party, campaign, loadLastCampaign } = useCampaignStore()
-  const { dungeon, error, clearError, buyItem } = useDungeonStore()
+  const { dungeon, error, clearError, buyItem, useInventoryItem, useMapFragment, useOintment } = useDungeonStore()
   const [msg, setMsg] = useState<string | null>(null)
   const [moveItem, setMoveItem] = useState<{ pcId: string; item: string } | null>(null)
   const [buying, setBuying] = useState<string | null>(null)
@@ -60,17 +61,17 @@ export default function InventoryScreen() {
     if (idx < 0) return
     // Armor exchange: same build only (FADEE p.111).
     if (item.includes('armor') && !sameBuild(from.classId, to.classId)) {
-      setMsg(`${from.name} and ${to.name} are not the same build — armor does not fit. (FADEE p.111)`)
+      setMsg(`${from.name} and ${to.name} are not the same build — armor does not fit.`)
       return
     }
     if (item.includes('heavy armor') || item.includes('light armor')) {
       //Armor: exchange only OUTSIDE combat (FADEE p.111: hand-held only in combat)
       if (inCombat) {
-        setMsg('During combat only hand-held equipment may be exchanged. (FADEE p.111)')
+        setMsg('During combat only hand-held equipment may be exchanged.')
         return
       }
     } else if (inCombat) {
-      setMsg('Exchanging hand-held items in combat costs both PCs 1 turn each. (FADEE p.111 — timing not yet simulated)')
+      setMsg('Exchanging hand-held items in combat costs both PCs 1 turn each.')
       return
     }
     from.equipment.splice(idx, 1)
@@ -87,10 +88,25 @@ export default function InventoryScreen() {
         setMsg(drinkHealingPotion(null, pc))
       } else if (item === 'bandage') {
         if (inCombat) {
-          setMsg('Bandages may not be applied in combat. (FADEE p.83)')
+          setMsg('Bandages may not be applied in combat.')
           return
         }
         setMsg(applyBandage(pc))
+      } else if (
+        item === 'Chanterelle' ||
+        item.startsWith('Phoenix Mushroom') ||
+        item.startsWith('white angel') ||
+        item === 'Brown Cap Delight'
+      ) {
+        // Rare-mushroom effects (R152) via the store.
+        await useInventoryItem(pc.id, item)
+        setMsg(`${item} used — see the Journal for the effect.`)
+      } else if (item === 'Map Fragment') {
+        await useMapFragment(pc.id)
+        setMsg('The map fragment is studied — the next tile is pre-rolled.')
+      } else if (item === "Miners' Ointment") {
+        await useOintment(pc.id)
+        setMsg("Miners' Ointment applied — the next Wandering Monster arrival is ignored.")
       } else {
         setMsg(`${item}: ${ITEM_INFO[item]?.text ?? 'usable when the rules apply.'}`)
         return
@@ -117,13 +133,13 @@ export default function InventoryScreen() {
       <h1 className="text-xl text-torch">Inventory</h1>
       {(msg || error) && (
         <p className="mt-2 rounded bg-stone-800 px-3 py-2 text-xs text-parchment/80" onClick={() => { setMsg(null); clearError() }}>
-          {msg ?? error}
+          {stripCitations(msg ?? error ?? '')}
         </p>
       )}
       {inCombat && <p className="mt-2 text-xs text-ember">Combat is active — armor may not be exchanged; use the combat panel for potions.</p>}
       {!inCombat && (
         <div className="mt-3 rounded-lg border border-stone-700 bg-stone-900/70 p-3">
-          <p className="text-sm text-torch">Outfitter (between adventures — FADEE pp.82-85)</p>
+          <p className="text-sm text-torch">Outfitter (between adventures)</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {SHOP_STOCK.map((item) => (
               <button
@@ -153,7 +169,7 @@ export default function InventoryScreen() {
                 <span className="text-xs text-parchment/60">gp</span>
               </span>
             </div>
-            {pc.status === 'dead' && <p className="text-xs text-ember">Dead — allies may loot the body (FADEE p.104).</p>}
+            {pc.status === 'dead' && <p className="text-xs text-ember">Dead — allies may loot the body.</p>}
             <ul className="mt-2 space-y-1">
               {grouped(pc.equipment).map(({ item, count }) => {
                 const noMagic = NO_MAGIC_CLASSES.has(pc.classId) && (item.startsWith('scroll') || item === 'healing potion')
@@ -178,7 +194,6 @@ export default function InventoryScreen() {
                           ×{count}
                         </span>
                       )}
-                      {ITEM_INFO[item] && <span className="ml-1 text-[10px] text-parchment/40">{ITEM_INFO[item].source}</span>}
                     </span>
                     {disabledReason && <span className="text-[10px] text-ember">{disabledReason}</span>}
                     {usable && !inCombat && (
@@ -201,7 +216,7 @@ export default function InventoryScreen() {
                     {usable && inCombat && isBandage && (
                       <button
                         disabled
-                        title="Bandages may not be applied in combat. (FADEE p.83)"
+                        title="Bandages may not be applied in combat."
                         className="rounded bg-stone-700 px-2 py-0.5 text-[10px] text-parchment/40"
                       >
                         use

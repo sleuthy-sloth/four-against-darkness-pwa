@@ -18,20 +18,20 @@ describe('feedbackForLogLine (D3/E)', () => {
       feedbackForLogLine('The remaining Giant Centipedes flee! (Their treasure: Phase 5.)'),
     ).toBe('morale')
     expect(feedbackForLogLine('The Orcs are outnumbered and flee!')).toBe('morale')
-    expect(feedbackForLogLine('The party flees! (FADEE p.97)')).toBeNull()
-    expect(feedbackForLogLine('The party escapes to a visited tile. (FADEE p.98)')).toBeNull()
+    expect(feedbackForLogLine('The party flees!')).toBeNull()
+    expect(feedbackForLogLine('The party escapes to a visited tile.')).toBeNull()
   })
   it('classifies victory and fallen', () => {
     expect(
-      feedbackForLogLine('Victory! All Foes defeated or fled. Loot roll comes with the treasure engine (FADEE p.99).'),
+      feedbackForLogLine('Victory! All Foes defeated or fled. Loot roll comes with the treasure engine.'),
     ).toBe('victory')
-    expect(feedbackForLogLine('Torsten has fallen! (FADEE p.105)')).toBe('fallen')
+    expect(feedbackForLogLine('Torsten has fallen!')).toBe('fallen')
     expect(feedbackForLogLine('The whole party has fallen.')).toBe('fallen')
-    expect(feedbackForLogLine('The party has been wiped out. Adventure over. (FADEE p.105)')).toBe('fallen')
+    expect(feedbackForLogLine('The party has been wiped out. Adventure over.')).toBe('fallen')
   })
   it('returns null for ordinary lines', () => {
     expect(feedbackForLogLine('— Foes\' turn (round 2) —')).toBeNull()
-    expect(feedbackForLogLine('The party enters the dungeon. (FADEE p.104)')).toBeNull()
+    expect(feedbackForLogLine('The party enters the dungeon.')).toBeNull()
     expect(feedbackForLogLine('Rolled d66 = 14: corridor tile.')).toBeNull()
   })
 })

@@ -28,6 +28,7 @@ export function ChoiceDialog() {
     questAccept,
     questDecline,
     questPcPick,
+    claimPassage,
   } = useDungeonStore()
   const { party } = useCampaignStore()
   const choice = dungeon?.pendingChoice
@@ -45,8 +46,17 @@ export function ChoiceDialog() {
     <div className="fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
       <div className="panel-in w-full rounded-lg border border-torch/40 bg-stone-900 p-4">
         <p className="text-sm text-torch">{choice.prompt}</p>
-        <p className="mt-1 text-[10px] text-parchment/50">{choice.source}</p>
         <div className="mt-3 space-y-2">
+          {choice.kind === 'passage' && (
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => void claimPassage('caverns')} className="btn-wax px-4 py-2">
+                Caverns
+              </button>
+              <button onClick={() => void claimPassage('fungal')} className="btn-wax px-4 py-2">
+                Fungal grottoes
+              </button>
+            </div>
+          )}
           {choice.kind === 'temple' && (
             <div className="flex flex-wrap gap-2">
               {living.map((p) => (
@@ -296,5 +306,6 @@ export function ChoiceDialog() {
 export function eventText(roll: number): string {
   const key = ['ghost', 'wanderingMonsters', 'ladyInWhite', 'trap', 'healer', 'alchemist'][roll - 1]
   const info = EVENT_INFO[key as keyof typeof EVENT_INFO]
-  return info ? `${info.text} (${info.source})` : ''
+  // Text only — the source citation stays in the data, not the UI.
+  return info ? info.text : ''
 }

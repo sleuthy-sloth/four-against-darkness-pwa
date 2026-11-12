@@ -142,6 +142,11 @@ export const ITEM_INFO: Record<string, { text: string; price: number; source: st
     price: 4,
     source: 'FADEE p.82',
   },
+  torch: {
+    text: 'Light source: burns for 6 rooms (1 hour). Melee-usable as a light crushing weapon; extinguishes on a roll of 1; +2 vs flammable.',
+    price: 1,
+    source: 'FADEE p.110',
+  },
   rations: {
     text: 'Food for 1 person for 1 day. Max 10 per PC. Bribes ravenous creatures.',
     price: 1,
@@ -159,7 +164,7 @@ export const ITEM_INFO: Record<string, { text: string; price: number; source: st
  * weapons and magic services are excluded (armor/weapons come from class
  * kits; magic-item purchases land with the supplements milestone).
  */
-export const SHOP_STOCK = ['rations', 'rope', 'lantern', 'bandage', 'bag of nails', 'healing potion', 'scroll of blessing'] as const
+export const SHOP_STOCK = ['rations', 'rope', 'lantern', 'torch', 'bandage', 'bag of nails', 'healing potion', 'scroll of blessing'] as const
 
 /** Barbarians may not use magic items, scrolls, or potions (FADEE p.54). */
 export const NO_MAGIC_CLASSES = new Set(['barbarian'])

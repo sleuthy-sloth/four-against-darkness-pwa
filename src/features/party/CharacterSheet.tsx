@@ -2,6 +2,7 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { CORE_CLASSES } from '../../rulesets/expanded/coreClasses'
 import { useCampaignStore } from '../../state/campaignStore'
 import { ClassIcon } from '../common/ClassIcon'
+import { stripCitations } from '../common/stripCitations'
 import { BASIC_SPELLS } from '../../rulesets/expanded/coreClasses'
 
 /** Detailed character sheet (PROJECT_SPEC §24): tap a party card to open. */
@@ -25,7 +26,7 @@ export default function CharacterSheet() {
         <div>
           <h1 className="text-2xl text-torch">{character.name}</h1>
           <p className="text-sm text-parchment/70">
-            {def.name} · Level {character.level} · {def.source}
+            {def.name} · Level {character.level}
           </p>
         </div>
       </div>
@@ -91,7 +92,7 @@ export default function CharacterSheet() {
         <ul className="mt-1 space-y-1">
           {def.abilities.map((a, i) => (
             <li key={i} className="text-xs text-parchment/60">
-              · {a}
+              · {stripCitations(a)}
             </li>
           ))}
         </ul>

@@ -15,6 +15,8 @@ import type { CheckpointRecord } from '../../database/db'
 import attribution from '../../assets/icons/attribution.json'
 import { ChapterOrnament } from '../common/Ornament'
 import { hapticsEnabled, setHapticsEnabled } from '../common/motion'
+import { useSettingsStore } from '../../state/settingsStore'
+import { XP_SYSTEMS, type XpSystem } from '../../engine/xp'
 import { INSTALL_PROMPT_EVENT, isInstalled, isStandaloneMode } from '../common/installPrompt'
 
 /**
@@ -43,6 +45,7 @@ function creditsByAuthor(): Array<{ author: string; icons: string[] }> {
 export default function SettingsScreen() {
   const navigate = useNavigate()
   const { campaign, party, loadLastCampaign } = useCampaignStore()
+  const xpSystem = useSettingsStore((st) => st.settings.xpSystem)
   const { startTutorial, busy: tutorialBusy } = useTutorialStore()
   const [checkpoints, setCheckpoints] = useState<CheckpointRecord[]>([])
   const [msg, setMsg] = useState<string | null>(null)
@@ -192,6 +195,31 @@ export default function SettingsScreen() {
           docs/RULES_VERIFICATION.md; nothing is invented. Other environments and
           supplements land in Release 0.5+.
         </p>
+        {/* XP system picker (R171-R174, Release 0.5 A5): Classical is the
+            default; the choice is a global setting, like the other settings
+            in settingsStore, and applies to XP earned from now on. */}
+        <div className="mt-3">
+          <p className="text-sm text-torch">XP system</p>
+          <div className="mt-1 flex flex-wrap gap-1" role="group" aria-label="XP system">
+            {XP_SYSTEMS.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => useSettingsStore.getState().update({ xpSystem: s.id as XpSystem })}
+                aria-pressed={xpSystem === s.id}
+                className={`rounded border px-2 py-1 text-xs ${
+                  xpSystem === s.id
+                    ? 'border-torch bg-torch/15 text-torch'
+                    : 'border-stone-700 bg-stone-800 text-parchment'
+                }`}
+              >
+                {s.name}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-xs text-parchment/60">
+            {XP_SYSTEMS.find((s) => s.id === xpSystem)?.blurb}
+          </p>
+        </div>
       </section>
 
       {/* Milestone 4: restart the guided first delve (or resume it). */}

@@ -1,0 +1,344 @@
+{
+  "kind": "4ad-campaign",
+  "version": 1,
+  "campaign": {
+    "id": "fixture-slow",
+    "name": "Slow Fixture",
+    "ruleset": "fadee-expanded",
+    "seed": 1,
+    "rngState": "{\"state\":1,\"nextId\":1}",
+    "clues": 0,
+    "createdAt": 1794513747865,
+    "lastModified": 1794513747865,
+    "saveVersion": 2
+  },
+  "characters": [
+    {
+      "id": "fixture-slow-warrior-195556",
+      "name": "Torsten",
+      "classId": "warrior",
+      "level": 1,
+      "currentLife": 7,
+      "maxLife": 7,
+      "experience": 0,
+      "gold": 7,
+      "traits": [
+        {
+          "roll": 4,
+          "name": "Intuitive Team Tactics",
+          "effect": "Once per combat, give an ally +1 to a single attack or defense roll. Unusable if the party was surprised.",
+          "source": "FADEE p.63"
+        }
+      ],
+      "spells": [],
+      "equipment": [
+        "light armor",
+        "shield",
+        "hand weapon",
+        "bag of nails",
+        "bag of nails",
+        "bag of nails",
+        "bag of nails",
+        "lantern"
+      ],
+      "conditions": [],
+      "status": "active",
+      "createdAt": 1794513747862
+    },
+    {
+      "id": "fixture-slow-cleric-818295",
+      "name": "Anya",
+      "classId": "cleric",
+      "level": 3,
+      "currentLife": 7,
+      "maxLife": 7,
+      "experience": 0,
+      "gold": 3,
+      "traits": [
+        {
+          "roll": 2,
+          "name": "Sacred Defense",
+          "effect": "+1 to defense rolls against Demon and Undead Foes.",
+          "source": "FADEE p.29"
+        }
+      ],
+      "spells": [],
+      "equipment": [
+        "light armor",
+        "shield",
+        "hand weapon"
+      ],
+      "conditions": [],
+      "status": "active",
+      "createdAt": 1794513747862
+    },
+    {
+      "id": "fixture-slow-wizard-133651",
+      "name": "Fen",
+      "classId": "wizard",
+      "level": 1,
+      "currentLife": 3,
+      "maxLife": 3,
+      "experience": 0,
+      "gold": 16,
+      "traits": [
+        {
+          "roll": 3,
+          "name": "Spell Efficiency",
+          "effect": "Once per adventure, cast a spell without expending it from the slot.",
+          "source": "FADEE p.65"
+        }
+      ],
+      "spells": [
+        "sleep",
+        "fireball",
+        "lightning"
+      ],
+      "equipment": [
+        "light weapon",
+        "spellbook",
+        "writing implements"
+      ],
+      "conditions": [],
+      "status": "active",
+      "createdAt": 1794513747862
+    },
+    {
+      "id": "fixture-slow-rogue-927440",
+      "name": "Joss",
+      "classId": "rogue",
+      "level": 1,
+      "currentLife": 4,
+      "maxLife": 4,
+      "experience": 0,
+      "gold": 8,
+      "traits": [
+        {
+          "roll": 4,
+          "name": "Delicate Touch",
+          "effect": "+Tier to lock-picking and trap-disarming saves.",
+          "source": "FADEE p.60"
+        }
+      ],
+      "spells": [],
+      "equipment": [
+        "light armor",
+        "light weapon",
+        "rope",
+        "lock-picks"
+      ],
+      "conditions": [],
+      "status": "active",
+      "createdAt": 1794513747862
+    }
+  ],
+  "dungeon": {
+    "campaignId": "fixture-slow",
+    "gridW": 20,
+    "gridH": 28,
+    "tiles": [
+      {
+        "id": "fixture-slow-t1",
+        "shapeId": 5,
+        "transform": 0,
+        "origin": {
+          "row": 22,
+          "col": 1
+        },
+        "cells": [
+          {
+            "row": 22,
+            "col": 1
+          },
+          {
+            "row": 23,
+            "col": 2
+          },
+          {
+            "row": 24,
+            "col": 3
+          },
+          {
+            "row": 25,
+            "col": 3
+          },
+          {
+            "row": 26,
+            "col": 2
+          },
+          {
+            "row": 26,
+            "col": 3
+          },
+          {
+            "row": 26,
+            "col": 4
+          },
+          {
+            "row": 27,
+            "col": 3
+          }
+        ],
+        "exits": [
+          {
+            "id": "x0",
+            "cell": {
+              "row": 22,
+              "col": 1
+            },
+            "edge": "N",
+            "door": false,
+            "toTileId": "fixture-slow-t2"
+          },
+          {
+            "id": "x1",
+            "cell": {
+              "row": 26,
+              "col": 2
+            },
+            "edge": "W",
+            "door": false,
+            "toTileId": null
+          },
+          {
+            "id": "x2",
+            "cell": {
+              "row": 26,
+              "col": 4
+            },
+            "edge": "E",
+            "door": false,
+            "toTileId": null
+          },
+          {
+            "id": "x3",
+            "cell": {
+              "row": 27,
+              "col": 3
+            },
+            "edge": "S",
+            "door": false,
+            "toTileId": null
+          }
+        ],
+        "explored": true,
+        "contentRoll": null,
+        "content": null,
+        "searchRoll": null,
+        "searchResult": null,
+        "environment": "dungeon"
+      },
+      {
+        "id": "fixture-slow-t2",
+        "shapeId": 22,
+        "transform": 0,
+        "origin": {
+          "row": 19,
+          "col": 0
+        },
+        "cells": [
+          {
+            "row": 19,
+            "col": 1
+          },
+          {
+            "row": 19,
+            "col": 2
+          },
+          {
+            "row": 20,
+            "col": 1
+          },
+          {
+            "row": 20,
+            "col": 2
+          },
+          {
+            "row": 21,
+            "col": 1
+          },
+          {
+            "row": 21,
+            "col": 2
+          },
+          {
+            "row": 20,
+            "col": 3
+          },
+          {
+            "row": 20,
+            "col": 4
+          }
+        ],
+        "exits": [
+          {
+            "id": "x1",
+            "cell": {
+              "row": 21,
+              "col": 1
+            },
+            "edge": "S",
+            "door": true,
+            "toTileId": "fixture-slow-t1"
+          },
+          {
+            "id": "x2",
+            "cell": {
+              "row": 20,
+              "col": 4
+            },
+            "edge": "E",
+            "door": false,
+            "toTileId": null
+          }
+        ],
+        "explored": true,
+        "contentRoll": 11,
+        "content": {
+          "roll": 11,
+          "kind": "boss",
+          "encounter": {
+            "table": "boss",
+            "monster": {
+              "roll": 3,
+              "name": "Ogre",
+              "family": "goblinoid",
+              "category": "",
+              "levelOffset": 4,
+              "countFormula": "1",
+              "lifeFormula": "T+4",
+              "attacks": 1,
+              "treasure": "0",
+              "major": true,
+              "special": [
+                "Its attacks inflict Tier+1 damage."
+              ],
+              "reactions": [
+                "1 Bribe (30gp)",
+                "2-3 Fight",
+                "4-6 Fight to the death"
+              ],
+              "source": "FADEE p.170"
+            },
+            "count": 1,
+            "level": 3,
+            "isFinalBoss": true
+          },
+          "tableRoll": 3
+        },
+        "searchRoll": null,
+        "searchResult": null,
+        "viaSecretDoor": false,
+        "environment": "dungeon"
+      }
+    ],
+    "currentTileId": "fixture-slow-t2",
+    "majorFoesMet": 0,
+    "pendingWanderingMonsters": null,
+    "environment": "dungeon",
+    "torchLit": false,
+    "torchRooms": 0,
+    "lanternDropped": false
+  },
+  "journal": []
+}

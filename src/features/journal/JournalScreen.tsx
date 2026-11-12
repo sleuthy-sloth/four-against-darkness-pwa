@@ -5,6 +5,7 @@ import { loadJournal, type JournalCategory } from '../../database/repositories/j
 import type { EventRecord } from '../../database/db'
 import EmptyState from '../common/EmptyState'
 import { ChapterOrnament } from '../common/Ornament'
+import { stripCitations } from '../common/stripCitations'
 
 /**
  * Journal screen (PROJECT_SPEC §26): chronological adventure history with
@@ -35,7 +36,9 @@ const CLAMP_AT = 160
 
 function JournalEntry({ entry, dropCap }: { entry: EventRecord; dropCap: boolean }) {
   const [expanded, setExpanded] = useState(false)
-  const text = String(entry.payload)
+  // Journal payloads are the internal record (they keep citations); the
+  // player-facing rendering strips them (Release 0.5, Part B).
+  const text = stripCitations(String(entry.payload))
   const long = text.length > CLAMP_AT
   return (
     <li className="rounded bg-stone-800/60 px-3 py-2 text-sm">

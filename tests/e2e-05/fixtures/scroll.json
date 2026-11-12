@@ -1,0 +1,345 @@
+{
+  "kind": "4ad-campaign",
+  "version": 1,
+  "campaign": {
+    "id": "fixture-scroll",
+    "name": "Scroll Fixture",
+    "ruleset": "fadee-expanded",
+    "seed": 1,
+    "rngState": "{\"state\":1,\"nextId\":1}",
+    "clues": 0,
+    "createdAt": 1794513747860,
+    "lastModified": 1794513747860,
+    "saveVersion": 2
+  },
+  "characters": [
+    {
+      "id": "fixture-scroll-warrior-195556",
+      "name": "Torsten",
+      "classId": "warrior",
+      "level": 1,
+      "currentLife": 7,
+      "maxLife": 7,
+      "experience": 0,
+      "gold": 7,
+      "traits": [
+        {
+          "roll": 4,
+          "name": "Intuitive Team Tactics",
+          "effect": "Once per combat, give an ally +1 to a single attack or defense roll. Unusable if the party was surprised.",
+          "source": "FADEE p.63"
+        }
+      ],
+      "spells": [],
+      "equipment": [
+        "light armor",
+        "shield",
+        "hand weapon",
+        "bag of nails",
+        "bag of nails",
+        "bag of nails",
+        "bag of nails",
+        "lantern"
+      ],
+      "conditions": [],
+      "status": "active",
+      "createdAt": 1794513747855
+    },
+    {
+      "id": "fixture-scroll-cleric-818295",
+      "name": "Anya",
+      "classId": "cleric",
+      "level": 3,
+      "currentLife": 7,
+      "maxLife": 7,
+      "experience": 0,
+      "gold": 3,
+      "traits": [
+        {
+          "roll": 2,
+          "name": "Sacred Defense",
+          "effect": "+1 to defense rolls against Demon and Undead Foes.",
+          "source": "FADEE p.29"
+        }
+      ],
+      "spells": [],
+      "equipment": [
+        "light armor",
+        "shield",
+        "hand weapon"
+      ],
+      "conditions": [],
+      "status": "active",
+      "createdAt": 1794513747855
+    },
+    {
+      "id": "fixture-scroll-wizard-133651",
+      "name": "Fen",
+      "classId": "wizard",
+      "level": 1,
+      "currentLife": 3,
+      "maxLife": 3,
+      "experience": 0,
+      "gold": 16,
+      "traits": [
+        {
+          "roll": 3,
+          "name": "Spell Efficiency",
+          "effect": "Once per adventure, cast a spell without expending it from the slot.",
+          "source": "FADEE p.65"
+        }
+      ],
+      "spells": [
+        "sleep",
+        "fireball",
+        "lightning"
+      ],
+      "equipment": [
+        "light weapon",
+        "spellbook",
+        "writing implements",
+        "scroll of fireball"
+      ],
+      "conditions": [],
+      "status": "active",
+      "createdAt": 1794513747855
+    },
+    {
+      "id": "fixture-scroll-rogue-927440",
+      "name": "Joss",
+      "classId": "rogue",
+      "level": 1,
+      "currentLife": 4,
+      "maxLife": 4,
+      "experience": 0,
+      "gold": 8,
+      "traits": [
+        {
+          "roll": 4,
+          "name": "Delicate Touch",
+          "effect": "+Tier to lock-picking and trap-disarming saves.",
+          "source": "FADEE p.60"
+        }
+      ],
+      "spells": [],
+      "equipment": [
+        "light armor",
+        "light weapon",
+        "rope",
+        "lock-picks"
+      ],
+      "conditions": [],
+      "status": "active",
+      "createdAt": 1794513747855
+    }
+  ],
+  "dungeon": {
+    "campaignId": "fixture-scroll",
+    "gridW": 20,
+    "gridH": 28,
+    "tiles": [
+      {
+        "id": "fixture-scroll-t1",
+        "shapeId": 5,
+        "transform": 0,
+        "origin": {
+          "row": 22,
+          "col": 1
+        },
+        "cells": [
+          {
+            "row": 22,
+            "col": 1
+          },
+          {
+            "row": 23,
+            "col": 2
+          },
+          {
+            "row": 24,
+            "col": 3
+          },
+          {
+            "row": 25,
+            "col": 3
+          },
+          {
+            "row": 26,
+            "col": 2
+          },
+          {
+            "row": 26,
+            "col": 3
+          },
+          {
+            "row": 26,
+            "col": 4
+          },
+          {
+            "row": 27,
+            "col": 3
+          }
+        ],
+        "exits": [
+          {
+            "id": "x0",
+            "cell": {
+              "row": 22,
+              "col": 1
+            },
+            "edge": "N",
+            "door": false,
+            "toTileId": "fixture-scroll-t2"
+          },
+          {
+            "id": "x1",
+            "cell": {
+              "row": 26,
+              "col": 2
+            },
+            "edge": "W",
+            "door": false,
+            "toTileId": null
+          },
+          {
+            "id": "x2",
+            "cell": {
+              "row": 26,
+              "col": 4
+            },
+            "edge": "E",
+            "door": false,
+            "toTileId": null
+          },
+          {
+            "id": "x3",
+            "cell": {
+              "row": 27,
+              "col": 3
+            },
+            "edge": "S",
+            "door": false,
+            "toTileId": null
+          }
+        ],
+        "explored": true,
+        "contentRoll": null,
+        "content": null,
+        "searchRoll": null,
+        "searchResult": null,
+        "environment": "dungeon"
+      },
+      {
+        "id": "fixture-scroll-t2",
+        "shapeId": 22,
+        "transform": 0,
+        "origin": {
+          "row": 19,
+          "col": 0
+        },
+        "cells": [
+          {
+            "row": 19,
+            "col": 1
+          },
+          {
+            "row": 19,
+            "col": 2
+          },
+          {
+            "row": 20,
+            "col": 1
+          },
+          {
+            "row": 20,
+            "col": 2
+          },
+          {
+            "row": 21,
+            "col": 1
+          },
+          {
+            "row": 21,
+            "col": 2
+          },
+          {
+            "row": 20,
+            "col": 3
+          },
+          {
+            "row": 20,
+            "col": 4
+          }
+        ],
+        "exits": [
+          {
+            "id": "x1",
+            "cell": {
+              "row": 21,
+              "col": 1
+            },
+            "edge": "S",
+            "door": true,
+            "toTileId": "fixture-scroll-t1"
+          },
+          {
+            "id": "x2",
+            "cell": {
+              "row": 20,
+              "col": 4
+            },
+            "edge": "E",
+            "door": false,
+            "toTileId": null
+          }
+        ],
+        "explored": true,
+        "contentRoll": 7,
+        "content": {
+          "roll": 7,
+          "kind": "minions",
+          "encounter": {
+            "table": "minions",
+            "monster": {
+              "roll": 1,
+              "name": "Skeletons or Zombies",
+              "family": "undead",
+              "category": "Undead",
+              "levelOffset": 2,
+              "levelCap": 6,
+              "countFormula": "alt:d6+2|d6",
+              "attacks": 1,
+              "treasure": "none",
+              "neverMorale": true,
+              "special": [
+                "1-3 on the table roll: d6+2 Skeletons; 4-6: d6 Zombies. Zombies capped L6.",
+                "Holy water automatically destroys 1. Crushing weapons attack skeletons at +1; arrows/bolts at -1 vs both."
+              ],
+              "reactions": [
+                "Always Fight to the death"
+              ],
+              "source": "FADEE p.168"
+            },
+            "count": 2,
+            "level": 3,
+            "isFinalBoss": false
+          },
+          "tableRoll": 1
+        },
+        "searchRoll": null,
+        "searchResult": null,
+        "viaSecretDoor": false,
+        "environment": "dungeon"
+      }
+    ],
+    "currentTileId": "fixture-scroll-t2",
+    "majorFoesMet": 0,
+    "pendingWanderingMonsters": null,
+    "environment": "dungeon",
+    "torchLit": false,
+    "torchRooms": 0,
+    "lanternDropped": false,
+    "minorEncountersTally": 9
+  },
+  "journal": []
+}

@@ -12,6 +12,9 @@ import CombatPanel from './CombatPanel'
 import { ChoiceDialog } from './ChoiceDialog'
 import { DUNGEON_FEATURES, FEATURE_INFO } from '../../rulesets/expanded/features'
 import { QUEST_TABLE } from '../../rulesets/expanded/quests'
+import { ENVIRONMENT_LABELS, CAVERN_FEATURE_INFO, cavernFeatureForRoll, type EnvironmentId } from '../../rulesets/expanded/environments'
+import { computeLight } from '../../engine/light'
+import { stripCitations } from '../common/stripCitations'
 
 /** Map iconography — game-icons.net fragments rendered inside the SVG. */
 import chestIcon from '../../assets/icons/chest.svg.frag?raw'
@@ -107,7 +110,7 @@ function MapIcon({ frag, x, y, size = 0.62, className = 'map-icon' }: { frag: st
  */
 export default function DungeonScreen() {
   const navigate = useNavigate()
-  const { dungeon, log, busy, error, ensureDungeon, explore, search, pendingFind, claimFind, clearError, beginCombat, beginSecretReveal, beginSecretItem, useTreasureLocation, rest, claimQuest, requestUndo, cancelUndo, performUndo, confirmUndo, pendingXp } =
+  const { dungeon, log, busy, error, ensureDungeon, explore, search, pendingFind, claimFind, clearError, beginCombat, beginSecretReveal, beginSecretItem, useTreasureLocation, rest, claimQuest, requestUndo, cancelUndo, performUndo, confirmUndo, pendingXp, lightTorch, extinguishTorch, pickupLantern, peekSecretDoor, enterSecretDoor, dipPool, buyPassage, spendLevelUp, spendStoredXp, spendOldSchoolXp } =
     useDungeonStore()
   const { campaign, party, loadLastCampaign } = useCampaignStore()
   const [panelOpen, setPanelOpen] = useState(true)
@@ -131,6 +134,22 @@ export default function DungeonScreen() {
 
   const tile = dungeon ? currentTile(dungeon) : null
   const bounds = useMemo(() => (dungeon ? dungeonBounds(dungeon) : null), [dungeon])
+
+  // Light & darkness (R093/R094, Release 0.5 A4): what the party can see
+  // by right now, and whether a torch is burning down.
+  const light = useMemo(() => {
+    if (!dungeon) return null
+    return computeLight(party, {
+      torchLit: dungeon.torchLit ?? false,
+      torchRooms: dungeon.torchRooms ?? 0,
+      lanternDropped: dungeon.lanternDropped ?? false,
+      glowmaggots: tile?.content?.encounter?.monster.name === 'Glowmaggots',
+    })
+  }, [dungeon, party, tile])
+  const env: EnvironmentId = (tile?.environment ?? dungeon?.environment ?? 'dungeon') as EnvironmentId
+  const hasTorch = party.some((p) => p.equipment.includes('torch'))
+  const hasRope = party.some((p) => p.equipment.includes('rope'))
+  const living = party.filter((p) => p.status !== 'dead')
 
   // ----- pointer handlers: pan / pinch / tap -----
   const onPointerDown = (e: React.PointerEvent) => {
@@ -598,7 +617,7 @@ export default function DungeonScreen() {
               />
               {/* exit tap targets: glowing = unexplored (generate), dim = move through.
                   While an XP roll is unspent the exits are closed: the roll is
-                  assigned from the victory card before leaving (FADEE p.117),
+                  assigned from the victory card before leaving,
                   so the discs dim and ignore taps (the store guards explore
                   too, and the panel explains why). */}
               {tile.exits.map((e) => {
@@ -719,9 +738,28 @@ export default function DungeonScreen() {
               <span className="font-label">
                 {isCorridor ? 'Corridor' : 'Room'} · tile {tile.shapeId}
                 {content ? ` · ${content.kind}` : ' · entrance'}
+                {' · '}
+                {ENVIRONMENT_LABELS[env]}
               </span>
               <span>{panelOpen ? '▾' : '▴'}</span>
             </button>
+            {/* Light & darkness (R093/R094): what the party sees by. */}
+            {light && (
+              <p className="px-3 text-xs text-parchment/60">
+                {light.hasLight
+                  ? light.source === 'lantern'
+                    ? 'Lit by lantern'
+                    : light.source === 'torch'
+                      ? `Lit by torch — ${6 - light.torchRooms} room${6 - light.torchRooms === 1 ? '' : 's'} left`
+                      : light.source === 'crystal'
+                        ? 'Lit by Glittering Crystal (hands-free)'
+                        : light.source === 'glowmaggots'
+                          ? 'Lit by Glowmaggots'
+                          : 'Lit (darkvision)'
+                  : 'Darkness — −2 Attack/Defense/Saves, no ranged weapons, no Search'}
+                {dungeon.lanternDropped && ' · lantern dropped!'}
+              </p>
+            )}
             {panelOpen && (
               <div className="max-h-[36vh] overflow-y-auto px-3 pb-3 text-sm lg:max-h-none lg:min-h-0 lg:flex-1">
                 {/* encounter folio card (D1): family icon, count, level, wax
@@ -745,7 +783,7 @@ export default function DungeonScreen() {
                         </p>
                         <p className="mt-1 text-xs text-parchment/60">
                           Foes may fight, flee, or demand a bribe — engage to see their reaction
-                          (FADEE pp.90, 101–102).
+                         .
                         </p>
                       </div>
                     </div>
@@ -765,7 +803,9 @@ export default function DungeonScreen() {
                 )}
                 {content?.kind === 'specialFeature' && (
                   <p className="mb-2 text-parchment/80">
-                    {FEATURE_INFO[DUNGEON_FEATURES[content.specialFeatureRoll! - 1]].text}
+                    {env === 'caverns' && content.specialFeatureRoll
+                      ? CAVERN_FEATURE_INFO[cavernFeatureForRoll(content.specialFeatureRoll)].text
+                      : FEATURE_INFO[DUNGEON_FEATURES[content.specialFeatureRoll! - 1]].text}
                   </p>
                 )}
                 {content?.kind === 'dragonLair' && (
@@ -819,6 +859,10 @@ export default function DungeonScreen() {
                       {dungeon.quest.target && ` — target: ${dungeon.quest.target}`}
                       {dungeon.quest.amount > 0 && ` — bring ${dungeon.quest.amount}gp`}
                       {dungeon.quest.roll === 5 && ` — ${dungeon.quest.progress}/3`}
+                      {dungeon.quest.roll === 3 &&
+                        ` — ${dungeon.quest.subdued ? 'captive subdued (bind with a rope to deliver)' : 'subdue it alive (−1 Attack, or Sleep)'}${hasRope ? '' : ' — no rope in the party!'}`}
+                      {dungeon.quest.roll === 4 &&
+                        ` — fetch ${dungeon.quest.itemName}${dungeon.quest.itemFound ? ' (found — deliver it unused)' : ' (1-in-6 per Major Foe slain)'}`}
                     </p>
                     <button
                       onClick={() => void claimQuest()}
@@ -826,6 +870,165 @@ export default function DungeonScreen() {
                     >
                       Claim Quest reward
                     </button>
+                  </div>
+                )}
+                {/* XP systems (R172-R174): Slow level-ups, Slower stored XP,
+                    Old School tally — assigned here, not on the combat card. */}
+                {(dungeon.pendingLevelUps ?? 0) > 0 && (
+                  <div className="mb-2 rounded border border-torch/40 bg-torch/10 p-2">
+                    <p className="text-xs text-torch">
+                      Slow and Sure: {dungeon.pendingLevelUps} Level{dungeon.pendingLevelUps === 1 ? '' : 's'} to
+                      assign — pick a surviving adventurer.
+                    </p>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {living.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => void spendLevelUp(p.id)}
+                          className="btn-cartouche px-2 py-1 text-xs"
+                        >
+                          {p.name} (L{p.level})
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {(dungeon.storedXp ?? 0) > 0 && (
+                  <div className="mb-2 rounded border border-stone-700 bg-stone-800 p-2">
+                    <p className="text-xs text-parchment/80">
+                      Slower Advancement: {dungeon.storedXp} stored XP — levelling a PC to L
+                      {living[0]?.level ?? 1 + 1} costs that level in XP (d6 + extra &gt; L to succeed).
+                    </p>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {living.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => void spendStoredXp(p.id)}
+                          disabled={(dungeon.storedXp ?? 0) < p.level + 1}
+                          className="btn-cartouche px-2 py-1 text-xs disabled:opacity-40"
+                        >
+                          {p.name} → L{p.level + 1} ({p.level + 1} XP)
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {(dungeon.oldSchoolXp ?? 0) > 0 && (
+                  <div className="mb-2 rounded border border-stone-700 bg-stone-800 p-2">
+                    <p className="text-xs text-parchment/80">
+                      Old School tally: {dungeon.oldSchoolXp} XP — level up costs (Tier+2)×100 XP, never
+                      the same PC twice in a row.
+                    </p>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {living.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => void spendOldSchoolXp(p.id)}
+                          className="btn-cartouche px-2 py-1 text-xs"
+                        >
+                          {p.name} → L{p.level + 1}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* Light controls (R094): torch and dropped lantern. */}
+                {light && !dungeon.combat && (
+                  <div className="mb-2 flex flex-wrap gap-1">
+                    {hasTorch && !light.torchLit && (
+                      <button
+                        onClick={() => void lightTorch()}
+                        className="rounded border border-stone-600 bg-stone-800 px-2 py-1 text-xs text-parchment"
+                      >
+                        Light torch (6 rooms)
+                      </button>
+                    )}
+                    {light.torchLit && (
+                      <button
+                        onClick={() => void extinguishTorch()}
+                        className="rounded border border-stone-600 bg-stone-800 px-2 py-1 text-xs text-parchment"
+                      >
+                        Extinguish torch
+                      </button>
+                    )}
+                    {dungeon.lanternDropped && (
+                      <button
+                        onClick={() => void pickupLantern()}
+                        className="rounded border border-torch/40 bg-torch/10 px-2 py-1 text-xs text-torch"
+                      >
+                        Pick up the dropped lantern (1 turn)
+                      </button>
+                    )}
+                  </div>
+                )}
+                {/* Secret door (R125): peek at the tile beyond, then enter. */}
+                {dungeon.secretDoor && dungeon.currentTileId === dungeon.secretDoor.fromTileId && (
+                  <div className="mb-2 rounded border border-torch/40 bg-torch/10 p-2">
+                    <p className="text-xs text-torch">
+                      A secret door leads onward
+                      {dungeon.secretDoor.peeked ? ' — peeked: the tile beyond is mapped' : ' — peek before you enter.'}
+                      {dungeon.secretDoor.safeExit && ' A shortcut exit lies beyond — no Wandering Monsters through it.'}
+                    </p>
+                    <div className="mt-1 flex gap-1">
+                      {!dungeon.secretDoor.peeked && (
+                        <button
+                          onClick={() => void peekSecretDoor()}
+                          className="rounded border border-stone-600 bg-stone-800 px-2 py-1 text-xs text-parchment"
+                        >
+                          Peek
+                        </button>
+                      )}
+                      <button
+                        onClick={() => void enterSecretDoor()}
+                        className="rounded border border-torch/40 bg-torch/10 px-2 py-1 text-xs text-torch"
+                      >
+                        Enter (Foes surprised)
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {/* Cavern water pools (R142): dip for 1 Life on 5-6, once per PC. */}
+                {tile.cavernFeature === 'waterPools' && !dungeon.combat && (
+                  <div className="mb-2">
+                    <p className="text-xs text-parchment/70">Water pools here — dip in (d6: 1 contaminated, 2-4 nothing, 5-6 +1 Life).</p>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {living
+                        .filter((p) => !(dungeon.poolDippedPcIds ?? []).includes(p.id))
+                        .map((p) => (
+                          <button
+                            key={p.id}
+                            onClick={() => void dipPool(p.id)}
+                            className="rounded border border-stone-600 bg-stone-800 px-2 py-1 text-xs text-parchment"
+                          >
+                            {p.name} dips in
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                )}
+                {/* Secret passage for 2 Clues (R126, Tile Content 9): buy the
+                    way to another environment from an empty tile. */}
+                {(campaign.clues ?? 0) >= 2 && !dungeon.combat && !dungeon.pendingChoice && (
+                  <div className="mb-2">
+                    <p className="text-xs text-parchment/70">
+                      Spend 2 Clues ({campaign.clues} in pool) to open a secret passage:
+                    </p>
+                    <div className="mt-1 flex gap-1">
+                      <button
+                        onClick={() => void buyPassage('caverns')}
+                        disabled={env === 'caverns'}
+                        className="rounded border border-stone-600 bg-stone-800 px-2 py-1 text-xs text-parchment disabled:opacity-40"
+                      >
+                        → Caverns
+                      </button>
+                      <button
+                        onClick={() => void buyPassage('fungal')}
+                        disabled={env === 'fungal'}
+                        className="rounded border border-stone-600 bg-stone-800 px-2 py-1 text-xs text-parchment disabled:opacity-40"
+                      >
+                        → Fungal grottoes
+                      </button>
+                    </div>
                   </div>
                 )}
                 {/* Milestone 4: the button gate matches the engine's tileCleared
@@ -841,7 +1044,7 @@ export default function DungeonScreen() {
                     onClick={() => void rest()}
                     className="mb-2 rounded border border-stone-600 bg-stone-800 px-3 py-1.5 text-xs text-parchment"
                   >
-                    Rest here (1 Life or 1 ability each — FADEE p.114)
+                    Rest here (1 Life or 1 ability each)
                   </button>
                 )}
                 {tile.searchResult === 'find' && !pendingFind && (
@@ -849,27 +1052,29 @@ export default function DungeonScreen() {
                 )}
                 {pendingFind && (
                   <div className="mb-2 flex flex-wrap gap-1">
-                    {(['hidden-treasure', 'secret-door', 'secret-passage', 'clue'] as const).map(
-                      (choice) => (
-                        <button
-                          key={choice}
-                          disabled={choice === 'secret-passage'} // environments arrive in Release 0.5
-                          onClick={() => {
-                            if (choice !== 'secret-passage') void claimFind(choice)
-                          }}
-                          className="rounded border border-stone-700 bg-stone-800 px-2 py-1 text-xs text-parchment disabled:opacity-40"
-                        >
-                          {choice === 'hidden-treasure' && 'Hidden treasure'}
-                          {choice === 'secret-door' && (
-                            <>
-                              <FragIcon frag={secretDoorIcon} size={14} label="Secret door" /> Secret door
-                            </>
-                          )}
-                          {choice === 'secret-passage' && 'Secret passage (0.5)'}
-                          {choice === 'clue' && '1 Clue'}
-                        </button>
-                      ),
-                    )}
+                    {(env === 'caverns'
+                      ? (['clue', 'listen'] as const)
+                      : env === 'fungal'
+                        ? (['clue', 'rare-mushroom'] as const)
+                        : (['hidden-treasure', 'secret-door', 'secret-passage', 'clue'] as const)
+                    ).map((choice) => (
+                      <button
+                        key={choice}
+                        onClick={() => void claimFind(choice)}
+                        className="rounded border border-stone-700 bg-stone-800 px-2 py-1 text-xs text-parchment disabled:opacity-40"
+                      >
+                        {choice === 'hidden-treasure' && 'Hidden treasure'}
+                        {choice === 'secret-door' && (
+                          <>
+                            <FragIcon frag={secretDoorIcon} size={14} label="Secret door" /> Secret door
+                          </>
+                        )}
+                        {choice === 'secret-passage' && 'Secret passage'}
+                        {choice === 'clue' && '1 Clue'}
+                        {choice === 'listen' && 'Listen (pre-roll next tile)'}
+                        {choice === 'rare-mushroom' && 'Rare Mushroom'}
+                      </button>
+                    ))}
                   </div>
                 )}
                 {exits.length === 0 && (
@@ -878,7 +1083,9 @@ export default function DungeonScreen() {
                     Monsters).
                   </p>
                 )}
-                {/* Log (D1): timestamps, drawn dice, capped with a fade */}
+                {/* Log (D1): timestamps, drawn dice, capped with a fade.
+                    Rendered strings are citation-stripped (Release 0.5, Part B);
+                    the store/journal keeps the internal record. */}
                 <ul className="log-fade num-tabular space-y-0.5 text-xs text-parchment/60">
                   {log.slice(-6).map((l, i) => (
                     <li key={i}>
@@ -886,13 +1093,13 @@ export default function DungeonScreen() {
                         {new Date(l.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                       <LogDie text={l.text} />
-                      · {l.text}
+                      · {stripCitations(l.text)}
                     </li>
                   ))}
                 </ul>
                 {error && (
                   <p className="mt-1 text-xs text-ember" onClick={clearError}>
-                    {error}
+                    {stripCitations(error)}
                   </p>
                 )}
               </div>

@@ -64,7 +64,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'welcome',
     title: 'Welcome to the delve',
-    body: 'Four Against Darkness is a solo dungeon crawl: four adventurers, one torch, and a dungeon that does not care that you are new. Go in, find the Final Boss, slay it, and come out alive — that is the whole game (FADEE p.105).',
+    body: 'Four Against Darkness is a solo dungeon crawl: four adventurers, one torch, and a dungeon that does not care that you are new. Go in, find the Final Boss, slay it, and come out alive — that is the whole game.',
     advance: 'tap',
     route: '/campaign',
     cta: 'Begin the delve',
@@ -73,7 +73,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'party',
     title: 'Your party',
-    body: 'Four delvers, each with a class, a Life total, and a place in the marching order — the leader fights first in corridors (FADEE p.95). Torsten carries four bags of nails; you will want them later. Tap a portrait to see what each one can do.',
+    body: 'Four delvers, each with a class, a Life total, and a place in the marching order — the leader fights first in corridors. Torsten carries four bags of nails; you will want them later. Tap a portrait to see what each one can do.',
     advance: 'tap',
     route: '/party',
     cta: 'Enter the dungeon',
@@ -82,7 +82,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'explore',
     title: 'The map',
-    body: 'Each tile is a room or a corridor. Tap a glowing exit — the torch disc — to step through; the dungeon draws the next tile and rolls what is inside (FADEE pp.104, 152). A way that leads nowhere is a dead end: try another exit.',
+    body: 'Each tile is a room or a corridor. Tap a glowing exit — the torch disc — to step through; the dungeon draws the next tile and rolls what is inside. A way that leads nowhere is a dead end: try another exit.',
     hint: 'Tap a glowing exit disc on the map.',
     advance: 'event',
     route: '/dungeon',
@@ -99,7 +99,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'encounter',
     title: 'Something lives here',
-    body: 'Sooner or later, Foes. The encounter card shows what they are and their level — the number your attacks must beat (FADEE p.91). You can fight, or flee and live to delve another day (FADEE pp.97–98).',
+    body: 'Sooner or later, Foes. The encounter card shows what they are and their level — the number your attacks must beat. You can fight, or flee and live to delve another day.',
     hint: 'Keep exploring — when Foes appear, tap Engage.',
     advance: 'event',
     route: '/dungeon',
@@ -109,7 +109,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'combat',
     title: 'Fighting',
-    body: 'Attack: roll your Tier die plus class bonuses — hit if you meet the Foe\u2019s level, and the die explodes on its highest face (FADEE pp.91–92). Defence: roll HIGHER than the Foe\u2019s level, or take 1 damage; a natural 1 always fails (FADEE p.96). Minor Foes have 1 Life each; a hero at 0 Life is dead (FADEE pp.94, 105).',
+    body: 'Attack: roll your Tier die plus class bonuses — hit if you meet the Foe\u2019s level, and the die explodes on its highest face. Defence: roll HIGHER than the Foe\u2019s level, or take 1 damage; a natural 1 always fails. Minor Foes have 1 Life each; a hero at 0 Life is dead.',
     hint: 'Fight the combat — choose attackers and roll.',
     advance: 'event',
     route: '/dungeon',
@@ -118,7 +118,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'treasure',
     title: 'Treasure and searching',
-    body: 'An empty room can be searched once — you may find hidden gold (FADEE p.107). A chest icon means treasure is here, though the full loot tables arrive in a later release. Search the room you are standing in.',
+    body: 'An empty room can be searched once — you may find hidden gold. A chest icon means treasure is here, though the full loot tables arrive in a later release. Search the room you are standing in.',
     hint: 'In an empty room, tap \u201cSearch this tile\u201d.',
     advance: 'event',
     route: '/dungeon',
@@ -127,7 +127,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'rest',
     title: 'Resting',
-    body: 'Once per adventure, in a room cleared of Foes whose neighbours are explored and cleared, the party can rest — nailing the doors shut, one bag of nails per door (FADEE p.114). Each delver recovers 1 Life or 1 spent ability; then a wandering-monster roll follows. An empty room counts as cleared — rest where you stand.',
+    body: 'Once per adventure, in a room cleared of Foes whose neighbours are explored and cleared, the party can rest — nailing the doors shut, one bag of nails per door. Each delver recovers 1 Life or 1 spent ability; then a wandering-monster roll follows. An empty room counts as cleared — rest where you stand.',
     hint: 'In a cleared or empty room, tap \u201cRest here\u201d.',
     advance: 'event',
     route: '/dungeon',
@@ -145,7 +145,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'inventory',
     title: 'Your packs',
-    body: 'Everything the party carries — weapons, armour, rope, rations, and Torsten\u2019s nails — lives here, with the party\u2019s gold counted in brass. Between delves, spend it at the Outfitter (FADEE pp.82–85).',
+    body: 'Everything the party carries — weapons, armour, rope, rations, and Torsten\u2019s nails — lives here, with the party\u2019s gold counted in brass. Between delves, spend it at the Outfitter.',
     advance: 'tap',
     route: '/inventory',
     goThereHint: 'Tap the Inventory tab below to open the packs.',
@@ -154,7 +154,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'goal',
     title: 'The goal',
-    body: 'Somewhere below is the Final Boss — the dungeon\u2019s heart. Each Major Foe you meet brings it closer: roll a d6, add 1 for every Major Foe met so far, and on a 6 or more the next Major Foe IS the Final Boss (FADEE p.105). Slay it, then leave the dungeon alive. The Lady in White (FADEE p.153) may offer a quest along the way — a second goal, if you want it.',
+    body: 'Somewhere below is the Final Boss — the dungeon\u2019s heart. Each Major Foe you meet brings it closer: roll a d6, add 1 for every Major Foe met so far, and on a 6 or more the next Major Foe IS the Final Boss. Slay it, then leave the dungeon alive. The Lady in White may offer a quest along the way — a second goal, if you want it.',
     advance: 'tap',
     route: '/dungeon',
     cta: 'Delve on',

@@ -4,6 +4,7 @@
  * Release 0.5. Descriptions are original paraphrases; numbers are data.
  */
 import type { Edge } from './tiles'
+import { CAVERN_TABLES, FUNGAL_TABLES } from './environments'
 
 /** Display family for the map icon (plan item C2). Display only — never a rule. */
 export type MonsterFamily = 'vermin' | 'goblinoid' | 'undead' | 'demon' | 'beast' | 'construct' | 'boss'
@@ -238,6 +239,31 @@ export function profileFor(kind: TableKind, roll: number): MonsterProfile {
   const profile = table.find((m) => m.roll === roll)
   if (!profile) throw new Error(`no ${kind} profile for roll ${roll}`)
   return profile
+}
+
+/** Cavern/fungal profiles live in environments.ts (Release 0.5). */
+export function profileForEnv(
+  env: 'caverns' | 'fungal',
+  kind: TableKind,
+  roll: number,
+): MonsterProfile {
+  // environments.ts only imports MonsterProfile/TableKind as types from
+  // this module, so this static import is not a runtime cycle.
+  const table = (env === 'caverns' ? CAVERN_TABLES : FUNGAL_TABLES)[kind]
+  const profile = table.find((m) => m.roll === roll)
+  if (!profile) throw new Error(`no ${env} ${kind} profile for roll ${roll}`)
+  return profile
+}
+
+/** Which table kind a profile belongs to, across all environments. */
+export function tableKindFor(profile: MonsterProfile): TableKind {
+  for (const k of ['vermin', 'minions', 'weird', 'boss'] as TableKind[]) {
+    if (DUNGEON_TABLES[k].includes(profile)) return k
+  }
+  for (const k of ['vermin', 'minions', 'weird', 'boss'] as TableKind[]) {
+    if (CAVERN_TABLES[k].includes(profile) || FUNGAL_TABLES[k].includes(profile)) return k
+  }
+  return 'vermin'
 }
 
 /** Edge of a placed exit, after a tile transform is applied. */

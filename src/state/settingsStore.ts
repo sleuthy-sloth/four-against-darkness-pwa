@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { XpSystem } from '../engine/xp'
 
 export interface Settings {
   soundEffects: boolean
@@ -6,6 +7,10 @@ export interface Settings {
   textSize: 'small' | 'medium' | 'large'
   diceAnimation: boolean
   mapZoomPreset: number
+  /** XP system (R171-R174, pp.117-118): Classical is the default. Stored
+   * globally like the other settings (in-memory, same as the rest of this
+   * store); the dungeon engine reads it at award time. */
+  xpSystem: XpSystem
 }
 
 interface SettingsState {
@@ -19,6 +24,7 @@ export const DEFAULT_SETTINGS: Settings = {
   textSize: 'medium',
   diceAnimation: true,
   mapZoomPreset: 1,
+  xpSystem: 'classical',
 }
 
 /**

@@ -4,7 +4,7 @@
  */
 import type { SpellId } from '../schema/character'
 
-export type LootKind = 'nothing' | 'gold' | 'scroll' | 'jewel' | 'chest' | 'magic'
+export type LootKind = 'nothing' | 'gold' | 'scroll' | 'jewel' | 'chest' | 'magic' | 'rations' | 'cavernItem' | 'fungalItem' | 'mushroom'
 
 export interface LootEntry {
   kind: LootKind
@@ -12,25 +12,42 @@ export interface LootEntry {
   gpFormula?: string
   /** Random spell scroll (basic list) — wizard table, FADEE p.69. */
   randomSpell?: boolean
+  /** Which spell list a random scroll comes from (env rows, R150). */
+  scrollList?: 'wizard' | 'druid' | 'illusionist'
   /** Named magic item id from MAGIC_TREASURE. */
   magicRoll?: number
   /** Fungal alternatives noted but unused until Release 0.5. */
   note?: string
 }
 
+/** Magic weapon types (R151): d6 — 1 crushing light, 2 slashing light, 3 crushing hand, 4 slashing hand, 5 slashing two-handed, 6 bow. */
+export const MAGIC_WEAPON_TYPES = [
+  'crushing light weapon',
+  'slashing light weapon',
+  'crushing hand weapon',
+  'slashing hand weapon',
+  'slashing two-handed weapon',
+  'bow',
+] as const
+
 export interface TreasureRow {
   roll: number // 0 = "0 or less" row
   dungeon: LootEntry
+  /** Cavern row (R150, p.157); absent = same as dungeon. */
+  caverns?: LootEntry
+  /** Fungal row (R150, p.157). */
+  fungal?: LootEntry
 }
 
+/** Treasure Table rows (R150, p.157) — all three environments. */
 export const TREASURE_TABLE: TreasureRow[] = [
   { roll: 0, dungeon: { kind: 'nothing' } },
   { roll: 1, dungeon: { kind: 'gold', gpFormula: 'd6' } },
-  { roll: 2, dungeon: { kind: 'gold', gpFormula: '2d6' } },
-  { roll: 3, dungeon: { kind: 'scroll', randomSpell: true } },
-  { roll: 4, dungeon: { kind: 'jewel', gpFormula: '2d6x5' } },
-  { roll: 5, dungeon: { kind: 'chest', gpFormula: '3d6x10' } },
-  { roll: 6, dungeon: { kind: 'magic', magicRoll: 0 } }, // 0 = roll d6 on MAGIC_TREASURE
+  { roll: 2, dungeon: { kind: 'gold', gpFormula: '2d6' }, fungal: { kind: 'rations', note: '2d6 rations, or 1 Rare Mushroom roll' } },
+  { roll: 3, dungeon: { kind: 'scroll', randomSpell: true }, caverns: { kind: 'scroll', scrollList: 'illusionist' }, fungal: { kind: 'scroll', scrollList: 'druid', note: 'bark (random druid spell) or Rare Mushroom roll' } },
+  { roll: 4, dungeon: { kind: 'jewel', gpFormula: '2d6x5' }, caverns: { kind: 'jewel', gpFormula: '3d6x5' }, fungal: { kind: 'jewel', gpFormula: '2d6x5', note: 'or 2 Rare Mushroom rolls' } },
+  { roll: 5, dungeon: { kind: 'chest', gpFormula: '3d6x10' }, caverns: { kind: 'jewel', gpFormula: '3d6x10', note: 'or a prism (random illusionist spell)' }, fungal: { kind: 'jewel', gpFormula: '2d6x10', note: 'or 3 Rare Mushroom rolls' } },
+  { roll: 6, dungeon: { kind: 'magic', magicRoll: 0 }, caverns: { kind: 'cavernItem', magicRoll: 0 }, fungal: { kind: 'magic', magicRoll: 0, note: 'or a Fungal Rare Item roll' } }, // 0 = roll d6 on the table
 ]
 
 export interface MagicItem {

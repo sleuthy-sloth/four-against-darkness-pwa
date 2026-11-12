@@ -26,7 +26,7 @@
 
 ## Current Work
 
-- [ ] Release 0.5 scope: environments (caverns/grottoes tables + secret passages), quest types 3/4 (subdual capture, item retrieval), trinket magic-item effects, light/darkness, more XP systems
+- [x] Release 0.5 scope (2026-11-12, working tree, uncommitted): environments (caverns/fungal tables + secret passages + secret-door peek/enter), quest types 3/4 (subdual capture, item retrieval), trinket magic-item effects, light/darkness, more XP systems (Classical/Slow and Sure/Old School/Slower Advancement), missing-award fix (scroll/reaction wins), rulebook citations stripped from player-facing UI. 303 unit tests green, build clean, 11 Playwright checks green. See the session report for the ambiguity list (darkvision, cavern/fungal counts + reactions, quest retrieval item list).
 
 ## Completed Work (Visual polish milestone 2 — art direction, 2026-11-11)
 
