@@ -3,8 +3,11 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 
+// Temporary home is GitHub Pages (project page), so the app lives under the
+// repo subpath. When it moves to the root domain (4ad.stevenkoehl.com on
+// Cloudflare), base/scope/start_url go back to '/'.
 export default defineConfig({
-  base: '/',
+  base: '/four-against-darkness-pwa/',
   plugins: [
     react(),
     VitePWA({
@@ -19,8 +22,8 @@ export default defineConfig({
         background_color: '#e8dfca',
         display: 'standalone',
         orientation: 'portrait-primary',
-        scope: '/',
-        start_url: '/',
+        scope: '/four-against-darkness-pwa/',
+        start_url: '/four-against-darkness-pwa/',
         icons: [
           {
             src: 'icons/icon-72.png',

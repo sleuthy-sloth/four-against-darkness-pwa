@@ -1,10 +1,35 @@
 # Deployment
 
-## Target
+## Current: GitHub Pages (temporary home)
+
+Live at **https://sleuthy-sloth.github.io/four-against-darkness-pwa/**
+
+- `.github/workflows/deploy.yml` builds (`npm ci` + `npm run build`) and
+  deploys `dist/` to GitHub Pages on every push to `main` (and on manual
+  dispatch). One-time setup: repo Settings → Pages → Build and deployment →
+  Source: **GitHub Actions**.
+- Because Pages serves a *project page* under the repo subpath, the Vite
+  `base`, the PWA manifest `scope`/`start_url`, and the router `basename`
+  are all `/four-against-darkness-pwa/` (see `vite.config.ts`,
+  `src/main.tsx`). The workflow copies `dist/index.html` to `dist/404.html`
+  so deep links (e.g. `/party`) serve the SPA instead of a 404.
+- Verified locally before the first deploy: production build served at the
+  subpath, root load + in-app navigation + a direct deep link all render
+  under `/four-against-darkness-pwa/`, zero page errors, 228 tests green.
+
+## Planned: Cloudflare Pages at 4ad.stevenkoehl.com
 
 **Platform**: Cloudflare Pages
 **Domain**: 4ad.stevenkoehl.com
 **Repository**: github.com/sleuthy-sloth/four-against-darkness-pwa
+
+Still needs a Cloudflare API token + account ID (as repo secrets
+`CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`).
+
+When it moves to the root domain, revert the subpath: `base`, manifest
+`scope`/`start_url`, and router `basename` all go back to `/`, and the
+`404.html` copy becomes unnecessary (Cloudflare Pages handles SPA
+fallbacks natively).
 
 ## Build Configuration
 
@@ -12,8 +37,8 @@
 ```typescript
 // vite.config.ts
 export default defineConfig({
-  base: '/', // Subdomain deployment
-  // ...
+  base: '/four-against-darkness-pwa/', // Project-page deployment (temporary)
+  // ... (back to '/' for the root domain)
 })
 ```
 
