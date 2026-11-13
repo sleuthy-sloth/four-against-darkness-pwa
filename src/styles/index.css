@@ -25,6 +25,25 @@ body {
   overscroll-behavior: none;
 }
 
+/* Phase G: every focusable element shows the same visible ring — 2px
+   oxblood, offset (DESIGN.md §6). Native buttons, links, inputs, tab
+   stops, and SVG map controls all inherit it; no component may suppress
+   it without providing its own equally visible ring (the map container
+   uses the ring utility instead — see DungeonScreen). */
+:focus-visible {
+  outline: 2px solid #8c2626;
+  outline-offset: 2px;
+}
+
+/* SVG focusables are the one exception: the map's exit discs draw their
+   own dashed ring in the SVG (see DungeonScreen), because Chrome paints
+   the CSS outline around a focused SVG element as a giant rectangle
+   spanning the transformed map — verified by probe (4ad-07-probe2: the
+   rect vanishes when this rule is disabled, the dashed disc ring stays). */
+svg :focus-visible {
+  outline: none;
+}
+
 h1, h2, h3, h4, .font-headline {
   @apply font-display;
 }

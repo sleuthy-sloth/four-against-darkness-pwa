@@ -46,13 +46,19 @@ export const DOOR_STATES: DoorState[] = [
  * - `open` — a way already generated beyond it (the party has passed through).
  * - `closed` — a printed door with nothing generated yet, unlocked (or an
  *   older save's door, which carries no rolled state and defaults unlocked).
- * - `opening` — a plain opening with nothing generated yet.
+ * - `opening` — a plain opening with nothing generated yet, or a door the
+ *   party already opened (pick/bash/spell/Clues) that it has not walked
+ *   through yet — the way is clear, so it must not keep the locked glyph
+ *   or the "Locked door — open the door" label. (Phase G: without this,
+ *   an opened door still reads locked, and a keyboard loop that trusts
+ *   the label never explores through it.)
  * - `locked` / `sealed` / `iron` / `illusionary` / `trapped` / `lever` —
  *   the rolled door table result (R129) for an ungenerated door exit.
  */
 export function doorState(exit: PlacedExit): DoorState {
   if (exit.toTileId) return 'open'
   if (!exit.door) return 'opening'
+  if (exit.doorInfo?.open) return 'opening'
   return exit.doorInfo?.kind === 'unlocked' || !exit.doorInfo ? 'closed' : exit.doorInfo.kind
 }
 

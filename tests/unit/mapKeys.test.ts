@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { mapKeyAction, isTypingTarget, type MapKeyContext } from '../../src/features/dungeon/mapKeys'
 
-const ctx: MapKeyContext = { canEngage: true, canUndo: true, mapFocused: true }
+const ctx: MapKeyContext = { canEngage: true, canUndo: true, mapFocused: true, exitFocused: false }
 
 describe('mapKeyAction (F)', () => {
   it('maps zoom / fit / recenter keys', () => {
@@ -26,6 +26,21 @@ describe('mapKeyAction (F)', () => {
     expect(mapKeyAction('ArrowLeft', ctx)).toBe('pan-left')
     expect(mapKeyAction('ArrowRight', ctx)).toBe('pan-right')
     expect(mapKeyAction('ArrowUp', { ...ctx, mapFocused: false })).toBeNull()
+  })
+  it('arrows move between exits when an exit disc is focused (G)', () => {
+    const exitCtx = { ...ctx, mapFocused: false, exitFocused: true }
+    expect(mapKeyAction('ArrowUp', exitCtx)).toBe('exit-prev')
+    expect(mapKeyAction('ArrowLeft', exitCtx)).toBe('exit-prev')
+    expect(mapKeyAction('ArrowDown', exitCtx)).toBe('exit-next')
+    expect(mapKeyAction('ArrowRight', exitCtx)).toBe('exit-next')
+    // Enter/Space activate only from an exit; Escape returns to the map.
+    expect(mapKeyAction('Enter', exitCtx)).toBe('activate-exit')
+    expect(mapKeyAction(' ', exitCtx)).toBe('activate-exit')
+    expect(mapKeyAction('Escape', exitCtx)).toBe('exit-to-map')
+    // The same keys are inert when no exit is focused.
+    expect(mapKeyAction('Enter', ctx)).toBeNull()
+    expect(mapKeyAction(' ', ctx)).toBeNull()
+    expect(mapKeyAction('Escape', ctx)).toBeNull()
   })
   it('ignores other keys', () => {
     expect(mapKeyAction('x', ctx)).toBeNull()

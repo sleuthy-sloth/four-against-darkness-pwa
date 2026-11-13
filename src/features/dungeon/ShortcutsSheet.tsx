@@ -1,8 +1,13 @@
+import { useDialogFocus } from '../common/useDialogFocus'
+
 /**
  * Keyboard shortcut sheet (Milestone 5 — Phase F). Opened with `?` on the
  * dungeon screen; every mouse action on the map has a keyboard equivalent.
  */
 export default function ShortcutsSheet({ onClose }: { onClose: () => void }) {
+  // Phase G: Tab traps inside the sheet, Escape closes it, focus returns
+  // to the map. The backdrop click still closes it too.
+  const dialogRef = useDialogFocus<HTMLDivElement>(true, onClose)
   const rows: Array<[string, string]> = [
     ['+', 'Zoom in'],
     ['−', 'Zoom out'],
@@ -10,13 +15,18 @@ export default function ShortcutsSheet({ onClose }: { onClose: () => void }) {
     ['R', 'Recenter on the party'],
     ['E', 'Engage the foes on this tile'],
     ['U', 'Undo the last action'],
-    ['← → ↑ ↓', 'Pan the map (when the map is focused)'],
+    ['Tab', 'Move to the map exits'],
+    ['← → ↑ ↓', 'Pan the map (map focused) · move between exits (an exit focused)'],
+    ['Enter / Space', 'Explore the focused exit'],
+    ['Esc', 'Close a dialog · return to the map'],
     ['?', 'This sheet'],
   ]
   return (
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16"
       role="dialog"
+      aria-modal="true"
       aria-label="Keyboard shortcuts"
       onClick={onClose}
     >

@@ -18,6 +18,10 @@ export type MapKeyAction =
   | 'pan-down'
   | 'pan-left'
   | 'pan-right'
+  | 'exit-next'
+  | 'exit-prev'
+  | 'activate-exit'
+  | 'exit-to-map'
 
 export interface MapKeyContext {
   /** An encounter is showing on the current tile and combat has not begun. */
@@ -26,6 +30,8 @@ export interface MapKeyContext {
   canUndo: boolean
   /** The map viewport itself has keyboard focus (arrows pan only then). */
   mapFocused: boolean
+  /** An exit disc has keyboard focus (arrows move between exits). */
+  exitFocused: boolean
 }
 
 /** Map a key press to an action, or null when the key is not a shortcut. */
@@ -50,13 +56,22 @@ export function mapKeyAction(key: string, ctx: MapKeyContext): MapKeyAction | nu
       return ctx.canUndo ? 'undo' : null
     case '?':
       return 'shortcuts'
+    case 'Enter':
+    case ' ':
+      return ctx.exitFocused ? 'activate-exit' : null
+    case 'Escape':
+      return ctx.exitFocused ? 'exit-to-map' : null
     case 'ArrowUp':
+      if (ctx.exitFocused) return 'exit-prev'
       return ctx.mapFocused ? 'pan-up' : null
     case 'ArrowDown':
+      if (ctx.exitFocused) return 'exit-next'
       return ctx.mapFocused ? 'pan-down' : null
     case 'ArrowLeft':
+      if (ctx.exitFocused) return 'exit-prev'
       return ctx.mapFocused ? 'pan-left' : null
     case 'ArrowRight':
+      if (ctx.exitFocused) return 'exit-next'
       return ctx.mapFocused ? 'pan-right' : null
     default:
       return null

@@ -2,6 +2,7 @@ import { useDungeonStore } from '../../state/dungeonStore'
 import { useCampaignStore } from '../../state/campaignStore'
 import { canCast } from '../../engine/combat/combat'
 import { bashBonus, doorLabel, lockpickBonus } from '../../engine/dungeon/doors'
+import { useDialogFocus } from '../common/useDialogFocus'
 
 /**
  * Locked-door dialog (R129-R131). Tapping a door that still needs an
@@ -18,6 +19,10 @@ import { bashBonus, doorLabel, lockpickBonus } from '../../engine/dungeon/doors'
 export function DoorDialog() {
   const { dungeon, pendingDoor, closeDoorDialog, attemptDoor } = useDungeonStore()
   const { campaign, party } = useCampaignStore()
+  // Phase G: focus lands on the first option when the sheet opens, Tab
+  // stays inside it, Escape leaves the door for now, and focus returns
+  // to the exit disc that opened it.
+  const dialogRef = useDialogFocus<HTMLDivElement>(!!pendingDoor, closeDoorDialog)
   if (!dungeon || !pendingDoor) return null
   const tile = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
   const exit = tile?.exits.find((e) => e.id === pendingDoor.exitId)
@@ -30,13 +35,19 @@ export function DoorDialog() {
 
   const optionBtn =
     'rounded border border-stone-600 bg-stone-800 px-3 py-2 text-left text-sm text-parchment disabled:opacity-40'
-  const note = 'mt-1 text-xs text-parchment/50'
+  const note = 'mt-1 text-xs text-parchment/70'
 
   return (
     <div className="fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
-      <div className="panel-in w-full rounded-lg border border-torch/40 bg-stone-900 p-4">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={doorLabel(info)}
+        className="panel-in w-full rounded-lg border border-torch/40 bg-stone-900 p-4"
+      >
         <p className="text-sm text-torch">{doorLabel(info)}</p>
-        <p className="mt-1 text-xs text-parchment/60">
+        <p className="mt-1 text-xs text-parchment/70">
           {info.kind === 'locked' && 'Pick it (rogue), or bash it down. A failed pick means bashing.'}
           {info.kind === 'iron' && 'No bashing an iron door — pick it, or destroy it with Lightning or Fireball.'}
           {info.kind === 'sealed' &&
@@ -49,7 +60,7 @@ export function DoorDialog() {
         <div className="mt-3 space-y-2">
           {(info.kind === 'locked' || info.kind === 'iron') && (
             <div>
-              <p className="text-xs uppercase tracking-wide text-parchment/60">Pick the lock</p>
+              <p className="text-xs uppercase tracking-wide text-parchment/70">Pick the lock</p>
               <div className="mt-1 flex flex-wrap gap-2">
                 {rogues.length === 0 && (
                   <p className={note}>No rogue in the party — nobody can pick this lock.</p>
@@ -70,7 +81,7 @@ export function DoorDialog() {
           )}
           {(info.kind === 'locked') && (
             <div>
-              <p className="text-xs uppercase tracking-wide text-parchment/60">Bash it down</p>
+              <p className="text-xs uppercase tracking-wide text-parchment/70">Bash it down</p>
               <div className="mt-1 flex flex-wrap gap-2">
                 {living.map((p) => (
                   <button
@@ -87,7 +98,7 @@ export function DoorDialog() {
           )}
           {info.kind === 'iron' && (
             <div>
-              <p className="text-xs uppercase tracking-wide text-parchment/60">Destroy it with a spell</p>
+              <p className="text-xs uppercase tracking-wide text-parchment/70">Destroy it with a spell</p>
               <div className="mt-1 flex flex-wrap gap-2">
                 {casters.flatMap((c) =>
                   (['lightning', 'fireball'] as const)
@@ -110,7 +121,7 @@ export function DoorDialog() {
           )}
           {info.kind === 'sealed' && (
             <div>
-              <p className="text-xs uppercase tracking-wide text-parchment/60">Break the seal</p>
+              <p className="text-xs uppercase tracking-wide text-parchment/70">Break the seal</p>
               <div className="mt-1 flex flex-wrap gap-2">
                 {casters.length === 0 && <p className={note}>No wizard or elf in the party.</p>}
                 {casters.map((c) => (
@@ -141,7 +152,7 @@ export function DoorDialog() {
           )}
           {info.kind === 'trapped' && (
             <div>
-              <p className="text-xs uppercase tracking-wide text-parchment/60">Disarm the trap</p>
+              <p className="text-xs uppercase tracking-wide text-parchment/70">Disarm the trap</p>
               <div className="mt-1 flex flex-wrap gap-2">
                 {rogues.length === 0 && <p className={note}>No rogue in the party — opening it triggers the trap.</p>}
                 {rogues.map((r) => (
@@ -175,7 +186,7 @@ export function DoorDialog() {
             </div>
           )}
         </div>
-        <button onClick={closeDoorDialog} className="mt-3 text-xs text-parchment/60 underline">
+        <button onClick={closeDoorDialog} className="mt-3 text-xs text-parchment/70 underline">
           Leave the door for now
         </button>
       </div>

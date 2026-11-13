@@ -15,6 +15,7 @@ import {
   shouldShowPrompt,
   wasShown,
 } from './installPrompt'
+import { useDialogFocus } from './useDialogFocus'
 
 /** The deferred native install prompt (Android/desktop Chrome). */
 interface DeferredInstallPrompt extends Event {
@@ -116,14 +117,22 @@ export default function InstallPrompt() {
     }
   }, [dungeon, tutorialActive, open, pendingDoor])
 
-  if (!open) return null
+  // Phase G: Tab traps inside the sheet, Escape dismisses it (recorded as
+  // shown, like "Not now"), focus returns to whatever opened it. The hook
+  // must sit above the early return — hooks run in order on every render.
+  const dialogRef = useDialogFocus<HTMLDivElement>(open, () => {
+    dismissPrompt(localStorage)
+    setOpen(false)
+  })
 
-  const ios = isIOSDevice(navigator.userAgent, navigator.platform, navigator.maxTouchPoints)
+  if (!open) return null
 
   const dismiss = () => {
     dismissPrompt(localStorage)
     setOpen(false)
   }
+
+  const ios = isIOSDevice(navigator.userAgent, navigator.platform, navigator.maxTouchPoints)
 
   const install = async () => {
     if (!deferred) return
@@ -137,6 +146,7 @@ export default function InstallPrompt() {
 
   return (
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 px-3 pb-16"
       role="dialog"
       aria-modal="true"

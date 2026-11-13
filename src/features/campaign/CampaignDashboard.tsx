@@ -7,6 +7,8 @@ import { listCampaigns, loadParty } from '../../database/repositories/campaignRe
 import { deleteCampaignFull, duplicateCampaign } from '../../database/repositories/backupRepo'
 import Lockup from '../common/Lockup'
 import { ClassIcon } from '../common/ClassIcon'
+import { classDefById } from '../../rulesets/expanded/coreClasses'
+import { useDialogFocus } from '../common/useDialogFocus'
 import { findActiveTutorialCampaign, getTaleScenarios, useTutorialStore } from '../tutorial/tutorialStore'
 
 /**
@@ -23,6 +25,8 @@ export default function CampaignDashboard() {
   const [campaigns, setCampaigns] = useState<CampaignMeta[]>([])
   const [parties, setParties] = useState<Record<string, Character[]>>({})
   const [confirmDelete, setConfirmDelete] = useState<CampaignMeta | null>(null)
+  // Phase G: the delete confirm traps Tab and closes on Escape (keep).
+  const deleteRef = useDialogFocus<HTMLDivElement>(!!confirmDelete, () => setConfirmDelete(null))
   const [hasLiveTutorial, setHasLiveTutorial] = useState(false)
   const tales = getTaleScenarios()
 
@@ -134,7 +138,7 @@ export default function CampaignDashboard() {
           >
             {loading ? 'Creating…' : 'Create campaign'}
           </button>
-          <button onClick={() => setCreating(false)} className="p-2 text-xs text-parchment/50">
+          <button onClick={() => setCreating(false)} className="p-2 text-xs text-parchment/70">
             Cancel
           </button>
         </div>
@@ -160,8 +164,8 @@ export default function CampaignDashboard() {
 
       {/* Milestone 4: prepared tales — pre-formed parties on fixed seeds. */}
       <div className="w-full max-w-md">
-        <p className="mb-1 text-xs uppercase tracking-wide text-parchment/40">Tales to begin</p>
-        <p className="mb-3 text-xs text-parchment/60">
+        <p className="mb-1 text-xs uppercase tracking-wide text-parchment/70">Tales to begin</p>
+        <p className="mb-3 text-xs text-parchment/70">
           Three delves, already prepared — the party is formed, the dungeon is seeded, and the
           backstory is written in your journal when you begin.
         </p>
@@ -194,7 +198,7 @@ export default function CampaignDashboard() {
       {/* campaign list (PROJECT_SPEC §17) */}
       {campaigns.length > 0 && (
         <div className="w-full max-w-md">
-          <p className="mb-2 text-xs uppercase tracking-wide text-parchment/40">All campaigns</p>
+          <p className="mb-2 text-xs uppercase tracking-wide text-parchment/70">All campaigns</p>
           <ul className="space-y-1">
             {campaigns.map((c) => (
               <li
@@ -207,14 +211,19 @@ export default function CampaignDashboard() {
               >
                 <button onClick={() => void open(c)} className="flex-1 text-left">
                   <span className="block text-sm text-parchment">{c.name}</span>
-                  <span className="text-[10px] text-parchment/40">
+                  <span className="text-[10px] text-parchment/70">
                     seed {c.seed} · last played {new Date(c.lastModified).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                   </span>
                   {/* party composition icons (D6) */}
                   {(parties[c.id] ?? []).length > 0 && (
                     <span className="mt-1 flex items-center gap-1">
                       {(parties[c.id] ?? []).map((pc) => (
-                        <ClassIcon key={pc.id} classId={pc.classId} className="h-5 w-5" />
+                        <ClassIcon
+                          key={pc.id}
+                          classId={pc.classId}
+                          className="h-5 w-5"
+                          label={classDefById(pc.classId)?.name ?? pc.classId}
+                        />
                       ))}
                     </span>
                   )}
@@ -248,7 +257,13 @@ export default function CampaignDashboard() {
 
       {confirmDelete && (
         <div className="fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
-          <div className="w-full rounded-lg border border-ember/50 bg-stone-900 p-4">
+          <div
+            ref={deleteRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Delete ${confirmDelete.name}?`}
+            className="w-full rounded-lg border border-ember/50 bg-stone-900 p-4"
+          >
             <p className="text-sm text-ember">
               Delete “{confirmDelete.name}” permanently — party, dungeon, journal and checkpoints?
             </p>

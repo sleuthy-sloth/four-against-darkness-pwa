@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useCampaignStore } from '../../state/campaignStore'
 import { useDungeonStore } from '../../state/dungeonStore'
 import { ITEM_INFO, SHOP_STOCK, sameBuild, NO_MAGIC_CLASSES } from '../../rulesets/expanded/features'
+import { classDefById } from '../../rulesets/expanded/coreClasses'
 import { applyBandage, drinkHealingPotion } from '../../engine/combat/combat'
 import { saveParty } from '../../database/repositories/campaignRepo'
 import type { Character } from '../../rulesets/schema/character'
@@ -10,6 +11,7 @@ import ItemIcon from './ItemIcon'
 import EmptyState from '../common/EmptyState'
 import { CoinDevice } from '../common/Ornament'
 import { stripCitations } from '../common/stripCitations'
+import { useDialogFocus } from '../common/useDialogFocus'
 
 /**
  * Inventory screen (PROJECT_SPEC §25): party equipment, gold, consumables.
@@ -26,6 +28,9 @@ export default function InventoryScreen() {
   const [msg, setMsg] = useState<string | null>(null)
   const [moveItem, setMoveItem] = useState<{ pcId: string; item: string } | null>(null)
   const [buying, setBuying] = useState<string | null>(null)
+  // Phase G: both sheets trap Tab and close on Escape (cancel).
+  const moveRef = useDialogFocus<HTMLDivElement>(!!moveItem, () => setMoveItem(null))
+  const buyRef = useDialogFocus<HTMLDivElement>(!!buying, () => setBuying(null))
   const [loaded, setLoaded] = useState(false)
 
   // Deep-link / PWA-relaunch safety: the store starts empty on a fresh
@@ -36,7 +41,7 @@ export default function InventoryScreen() {
   }, [loadLastCampaign])
 
   if (!loaded) {
-    return <div className="screen-placeholder text-parchment/50">Loading…</div>
+    return <div className="screen-placeholder text-parchment/70">Loading…</div>
   }
 
   if (!party.length) {
@@ -132,9 +137,14 @@ export default function InventoryScreen() {
     <div className="flex flex-1 flex-col overflow-y-auto p-4 pb-6">
       <h1 className="text-xl text-torch">Inventory</h1>
       {(msg || error) && (
-        <p className="mt-2 rounded bg-stone-800 px-3 py-2 text-xs text-parchment/80" onClick={() => { setMsg(null); clearError() }}>
+        <button
+          type="button"
+          onClick={() => { setMsg(null); clearError() }}
+          aria-label="Dismiss message"
+          className="mt-2 block w-full rounded bg-stone-800 px-3 py-2 text-left text-xs text-parchment/80"
+        >
           {stripCitations(msg ?? error ?? '')}
-        </p>
+        </button>
       )}
       {inCombat && <p className="mt-2 text-xs text-ember">Combat is active — armor may not be exchanged; use the combat panel for potions.</p>}
       {!inCombat && (
@@ -153,7 +163,7 @@ export default function InventoryScreen() {
               </button>
             ))}
           </div>
-          <p className="mt-1 text-[10px] text-parchment/40">Tap an item, then who carries it. Armor and weapons come from class kits; magic-item services land with the supplements milestone.</p>
+          <p className="mt-1 text-[10px] text-parchment/70">Tap an item, then who carries it. Armor and weapons come from class kits; magic-item services land with the supplements milestone.</p>
         </div>
       )}
       <div className="mt-3 space-y-3">
@@ -161,12 +171,12 @@ export default function InventoryScreen() {
           <div key={pc.id} className="rounded-lg border border-stone-700 bg-stone-900/70 p-3">
             <div className="flex items-baseline justify-between">
               <span className="text-parchment">
-                {pc.name} <span className="text-parchment/50">({pc.classId} L{pc.level})</span>
+                {pc.name} <span className="text-parchment/70">({classDefById(pc.classId)?.name ?? pc.classId} L{pc.level})</span>
               </span>
               <span className="flex items-center gap-1.5">
                 <CoinDevice size={14} />
-                <span className="font-mono text-sm font-bold text-brass">{pc.gold}</span>
-                <span className="text-xs text-parchment/60">gp</span>
+                <span className="font-mono text-sm font-bold text-brassInk">{pc.gold}</span>
+                <span className="text-xs text-parchment/70">gp</span>
               </span>
             </div>
             {pc.status === 'dead' && <p className="text-xs text-ember">Dead — allies may loot the body.</p>}
@@ -243,7 +253,7 @@ export default function InventoryScreen() {
               })}
             </ul>
             {pc.conditions.filter((c) => c !== 'prayer:healing:n' && c !== 'prayer:blessing:n').length > 0 && (
-              <p className="mt-1 text-[10px] text-ember/80">
+              <p className="mt-1 text-[10px] text-ember">
                 Conditions: {pc.conditions.filter((c) => !c.startsWith('prayer:')).join(', ')}
               </p>
             )}
@@ -252,7 +262,13 @@ export default function InventoryScreen() {
       </div>
       {moveItem && (
         <div className="fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
-          <div className="w-full rounded-lg border border-torch/40 bg-stone-900 p-4">
+          <div
+            ref={moveRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Give ${moveItem.item} to whom?`}
+            className="w-full rounded-lg border border-torch/40 bg-stone-900 p-4"
+          >
             <p className="text-sm text-torch">Give “{moveItem.item}” to whom?</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {living
@@ -282,10 +298,16 @@ export default function InventoryScreen() {
       )}
       {buying && (
         <div className="fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
-          <div className="w-full rounded-lg border border-torch/40 bg-stone-900 p-4">
+          <div
+            ref={buyRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Who buys the ${buying}?`}
+            className="w-full rounded-lg border border-torch/40 bg-stone-900 p-4"
+          >
             <p className="flex items-center gap-1.5 text-sm text-torch">
               Who buys the {buying} (<CoinDevice size={14} />
-              <span className="font-mono font-bold text-brass">{ITEM_INFO[buying].price}</span> gp)?
+              <span className="font-mono font-bold text-brassInk">{ITEM_INFO[buying].price}</span> gp)?
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               {living.map((p) => (

@@ -18,6 +18,7 @@ export default {
         torch: '#8c2626', // dried oxblood / sealing wax (was torch gold)
         ember: '#a83232', // bright wax accent (was ember orange)
         brass: '#9c7428', // antique brass / gold leaf (loot, torch charges) — decorative & large text only: 3.20:1 on canvas, never body text
+        brassInk: '#7d5c1e', // darkened brass for gold numerals at text sizes: 4.63:1 on canvas, 5.30:1 on leaf, 5.69:1 on folio (AA) — DESIGN.md's own fallback
         faint: '#5f5346', // diluted ink / marginalia — 5.63:1 on canvas (AA)
       },
       fontFamily: {

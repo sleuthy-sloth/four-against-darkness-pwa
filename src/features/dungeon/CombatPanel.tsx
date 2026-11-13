@@ -67,7 +67,7 @@ export default function CombatPanel() {
             {combat.phase === 'opening' && 'Encounter!'}
           </h2>
         )}
-        <span className="num-tabular font-mono text-xs text-parchment/50">round {combat.round}</span>
+        <span className="num-tabular font-mono text-xs text-parchment/70">round {combat.round}</span>
       </div>
 
       {/* Darkness (R093): −2 Attack/Defense while the party has no light. */}
@@ -105,7 +105,7 @@ export default function CombatPanel() {
               <span className="flex items-center gap-2">
                 <FragIcon frag={familyFrag(e.profile.family)} size={20} label={e.profile.name} />
                 <span className="font-medium">{e.profile.name}</span>
-                <span className="num-tabular ml-1 font-mono text-xs text-parchment/60">
+                <span className="num-tabular ml-1 font-mono text-xs text-parchment/70">
                   {e.profile.major
                     ? `L${e.level} · Life ${e.life}/${e.maxLife}${e.isFinalBossFlag ? ' · FINAL BOSS' : ''}`
                     : `L${e.level} · ${e.count} left`}
@@ -393,7 +393,7 @@ export default function CombatPanel() {
             {pendingXp.minor && '1 Minor encounter '}
             {pendingXp.boss && '+ FINAL BOSS bonus'}
           </p>
-          <p className="text-xs text-parchment/60">Assign each XP roll to one adventurer:</p>
+          <p className="text-xs text-parchment/70">Assign each XP roll to one adventurer:</p>
           <div className="mt-1 flex flex-wrap gap-1">
             {living.map((p) => (
               <button
@@ -414,7 +414,7 @@ export default function CombatPanel() {
       {combat.phase === 'won' && (dungeon.pendingLevelUps ?? 0) > 0 && (
         <div className="card-folio mb-2 p-3">
           <p className="font-display text-sm text-torch">Slow and Sure: {dungeon.pendingLevelUps} Level{dungeon.pendingLevelUps === 1 ? '' : 's'} to assign</p>
-          <p className="text-xs text-parchment/60">Pick a surviving adventurer — the Level applies at once.</p>
+          <p className="text-xs text-parchment/70">Pick a surviving adventurer — the Level applies at once.</p>
           <div className="mt-1 flex flex-wrap gap-1">
             {living.map((p) => (
               <button
@@ -429,7 +429,7 @@ export default function CombatPanel() {
         </div>
       )}
       {(combat.phase === 'won' || combat.phase === 'lost') && (
-        <p className="mb-2 text-xs text-parchment/50">
+        <p className="mb-2 text-xs text-parchment/70">
           {pendingXp
             ? 'Assign your XP rolls above before leaving — each roll goes to one adventurer.'
             : (dungeon.pendingLevelUps ?? 0) > 0
@@ -458,7 +458,7 @@ export default function CombatPanel() {
       {/* log */}
       <button
         onClick={() => setShowLog((s) => !s)}
-        className="mb-1 self-start text-xs uppercase tracking-wide text-parchment/50"
+        className="mb-1 self-start text-xs uppercase tracking-wide text-parchment/70"
       >
         Combat log {showLog ? '▾' : '▴'}
       </button>
@@ -472,7 +472,7 @@ export default function CombatPanel() {
           ))}
         </ul>
       )}
-      <p className="mt-1 text-[10px] text-parchment/40">{describeEnemies(combat.enemies)}</p>
+      <p className="mt-1 text-[10px] text-parchment/70">{describeEnemies(combat.enemies)}</p>
     </div>
   )
 }

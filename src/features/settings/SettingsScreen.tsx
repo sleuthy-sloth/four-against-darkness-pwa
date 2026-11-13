@@ -18,6 +18,7 @@ import { hapticsEnabled, setHapticsEnabled } from '../common/motion'
 import { useSettingsStore } from '../../state/settingsStore'
 import { XP_SYSTEMS, type XpSystem } from '../../engine/xp'
 import { INSTALL_PROMPT_EVENT, isInstalled, isStandaloneMode } from '../common/installPrompt'
+import { useDialogFocus } from '../common/useDialogFocus'
 
 /**
  * Settings (PROJECT_SPEC §27): save management (named checkpoints, JSON
@@ -50,6 +51,8 @@ export default function SettingsScreen() {
   const [checkpoints, setCheckpoints] = useState<CheckpointRecord[]>([])
   const [msg, setMsg] = useState<string | null>(null)
   const [confirmRestore, setConfirmRestore] = useState<CheckpointRecord | null>(null)
+  // Phase G: the restore confirm traps Tab and closes on Escape (cancel).
+  const restoreRef = useDialogFocus<HTMLDivElement>(!!confirmRestore, () => setConfirmRestore(null))
   // Milestone 5 (E): haptics toggle, default off, stored in localStorage.
   const [haptics, setHaptics] = useState(hapticsEnabled())
   const fileRef = useRef<HTMLInputElement>(null)
@@ -123,22 +126,27 @@ export default function SettingsScreen() {
           className="w-24"
         />
         <p className="mt-2 font-display text-lg text-torch">Four Against Darkness</p>
-        <p className="text-xs text-parchment/60">
+        <p className="text-xs text-parchment/70">
           A solo dungeon crawler for your pocket — offline after install, no account, no
           signal needed.
         </p>
       </section>
       {msg && (
-        <p className="mt-2 rounded bg-stone-800 px-3 py-2 text-xs text-parchment/80" onClick={() => setMsg(null)}>
+        <button
+          type="button"
+          onClick={() => setMsg(null)}
+          aria-label="Dismiss message"
+          className="mt-2 block w-full rounded bg-stone-800 px-3 py-2 text-left text-xs text-parchment/80"
+        >
           {msg}
-        </p>
+        </button>
       )}
 
       <p className="chapter-banner mt-4">Save</p>
       <ChapterOrnament />
       <section className="card-folio mt-2 p-3">
         <p className="text-sm text-torch font-display">Save management (PROJECT_SPEC §18)</p>
-        {!live && <p className="mt-1 text-xs text-parchment/50">Create a campaign first — saves are per campaign.</p>}
+        {!live && <p className="mt-1 text-xs text-parchment/70">Create a campaign first — saves are per campaign.</p>}
         {live && (
           <>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -216,7 +224,7 @@ export default function SettingsScreen() {
               </button>
             ))}
           </div>
-          <p className="mt-1 text-xs text-parchment/60">
+          <p className="mt-1 text-xs text-parchment/70">
             {XP_SYSTEMS.find((s) => s.id === xpSystem)?.blurb}
           </p>
         </div>
@@ -262,7 +270,7 @@ export default function SettingsScreen() {
           />
           Vibrate on engage, victory, and defeat
         </label>
-        <p className="mt-1 text-[10px] text-parchment/50">
+        <p className="mt-1 text-[10px] text-parchment/70">
           Off by default. Never vibrates when your device asks for reduced motion.
         </p>
       </section>
@@ -318,7 +326,13 @@ export default function SettingsScreen() {
 
       {confirmRestore && (
         <div className="fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
-          <div className="w-full rounded-lg border border-ember/50 bg-stone-900 p-4">
+          <div
+            ref={restoreRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Restore ${confirmRestore.name}?`}
+            className="w-full rounded-lg border border-ember/50 bg-stone-900 p-4"
+          >
             <p className="text-sm text-ember">
               Restore “{confirmRestore.name}”? The current campaign state is replaced by the checkpoint.
             </p>

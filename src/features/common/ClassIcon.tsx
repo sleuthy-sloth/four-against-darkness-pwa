@@ -34,16 +34,39 @@ export const CLASS_COLORS: Record<string, string> = {
   elf: 'text-parchment',
   halfling: 'text-torch/80',
   cleric: 'text-parchment/90',
-  rogue: 'text-parchment/60',
-  wizard: 'text-torch/60',
+  rogue: 'text-parchment/70',
+  wizard: 'text-torch/70',
   party: 'text-torch',
 }
 
-export function ClassIcon({ classId, className = 'w-10 h-10' }: { classId: string; className?: string }) {
+/**
+ * Class portrait icons — art from game-icons.net (CC BY 3.0; see
+ * ../../assets/icons/ATTRIBUTION.md). Rendered with currentColor so the
+ * theme palette applies.
+ *
+ * Phase G: the icon is decorative by default (`aria-hidden`) — it always
+ * sits next to the class name in visible text, or inside a button whose
+ * accessible name already names the class. Pass `label` only when the icon
+ * stands alone (campaign-card composition icons), and pass the HUMAN name
+ * ("Cleric"), never the raw id ("cleric").
+ */
+export function ClassIcon({
+  classId,
+  className = 'w-10 h-10',
+  label,
+}: {
+  classId: string
+  className?: string
+  /** Human-readable label when the icon stands alone; omit for decorative use. */
+  label?: string
+}) {
   const frag = ICONS[classId] ?? ICONS.party
   const cls = CLASS_COLORS[classId] ?? 'text-torch'
   return (
-    <span className={`inline-block ${className} ${cls}`} aria-label={classId}>
+    <span
+      className={`inline-block ${className} ${cls}`}
+      {...(label ? { role: 'img', 'aria-label': label } : { 'aria-hidden': true })}
+    >
       <svg viewBox="0 0 512 512" width="100%" height="100%" fill="currentColor">
         <g dangerouslySetInnerHTML={{ __html: cleanIconFragment(frag) }} />
       </svg>

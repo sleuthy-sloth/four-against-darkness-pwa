@@ -40,6 +40,8 @@ import ShortcutsSheet from './ShortcutsSheet'
 import { doorState, floorVariant, fitScale, tileSummary, tileContentVisible, fogState } from './mapStyle'
 import { doorNeedsAction } from '../../engine/dungeon/doors'
 import { mapKeyAction, isTypingTarget } from './mapKeys'
+import { exitLabel, nextExitIndex } from './mapNav'
+import { useDialogFocus } from '../common/useDialogFocus'
 import { hapticBuzz } from '../common/motion'
 
 /** Stone-floor tones per floor variant (C4): rotation is baked into the
@@ -92,10 +94,13 @@ function contentIcon(
   }
 }
 
-/** Render a game-icons fragment centered at (x, y) map units. */
+/** Render a game-icons fragment centered at (x, y) map units. Decorative:
+    the tile's own label already names what is here, so screen readers
+    never hear the icon twice. */
 function MapIcon({ frag, x, y, size = 0.62, className = 'map-icon' }: { frag: string; x: number; y: number; size?: number; className?: string }) {
   return (
     <g
+      aria-hidden="true"
       transform={`translate(${x - size / 2}, ${y - size / 2}) scale(${size / 512})`}
       className={className}
       dangerouslySetInnerHTML={{ __html: frag }}
@@ -112,7 +117,7 @@ function MapIcon({ frag, x, y, size = 0.62, className = 'map-icon' }: { frag: st
  */
 export default function DungeonScreen() {
   const navigate = useNavigate()
-  const { dungeon, log, busy, error, ensureDungeon, explore, search, pendingFind, claimFind, clearError, beginCombat, beginSecretReveal, beginSecretItem, useTreasureLocation, rest, claimQuest, requestUndo, cancelUndo, performUndo, confirmUndo, pendingXp, lightTorch, extinguishTorch, pickupLantern, peekSecretDoor, enterSecretDoor, dipPool, buyPassage, spendLevelUp, spendStoredXp, spendOldSchoolXp, openDoorDialog } =
+  const { dungeon, log, busy, error, ensureDungeon, explore, search, pendingFind, claimFind, clearError, beginCombat, beginSecretReveal, beginSecretItem, useTreasureLocation, rest, claimQuest, requestUndo, cancelUndo, performUndo, confirmUndo, pendingXp, pendingDoor, lightTorch, extinguishTorch, pickupLantern, peekSecretDoor, enterSecretDoor, dipPool, buyPassage, spendLevelUp, spendStoredXp, spendOldSchoolXp, openDoorDialog } =
     useDungeonStore()
   const { campaign, party, loadLastCampaign } = useCampaignStore()
   const [panelOpen, setPanelOpen] = useState(true)
@@ -120,6 +125,13 @@ export default function DungeonScreen() {
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [hover, setHover] = useState<{ tileId: string; text: string; x: number; y: number } | null>(null)
+  // Phase G: roving tabindex over the current tile's exit discs — one Tab
+  // stop for the whole disc group, arrows move between discs, Enter/Space
+  // explores. `focusedExitId` renders the focus ring on the focused disc.
+  const [activeExit, setActiveExit] = useState(0)
+  const [focusedExitId, setFocusedExitId] = useState<string | null>(null)
+  // Phase G: the undo confirm traps Tab and closes on Escape (keep).
+  const undoRef = useDialogFocus<HTMLDivElement>(!!confirmUndo, () => void cancelUndo())
   const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null)
   const pinchRef = useRef<{ dist: number; zoom: number } | null>(null)
   const pointers = useRef(new Map<number, { x: number; y: number }>())
@@ -136,6 +148,11 @@ export default function DungeonScreen() {
 
   const tile = dungeon ? currentTile(dungeon) : null
   const bounds = useMemo(() => (dungeon ? dungeonBounds(dungeon) : null), [dungeon])
+
+  // Roving tabindex follows the party: a new tile resets the active exit.
+  useEffect(() => {
+    setActiveExit(0)
+  }, [tile])
 
   // Light & darkness (R093/R094, Release 0.5 A4): what the party can see
   // by right now, and whether a torch is burning down.
@@ -212,12 +229,30 @@ export default function DungeonScreen() {
   }, [beginCombat])
 
   // ----- keyboard shortcuts (Phase F): every mouse action has a key -----
+  // Phase G: the map's exit discs are a roving-tabindex group — Tab lands
+  // on the active disc, arrows move between discs, Enter/Space explores,
+  // Escape returns focus to the map container (which keeps arrows-pan).
+  // NOTE: the roving index runs over tile.exits (ALL rendered discs,
+  // including the way back) — NOT openExits, which filters to unexplored
+  // exits only and would put the handler in a different index space than
+  // the render's `i === activeExit` tabIndex.
   const content = tile?.content ?? null
   const canEngage = !!content?.encounter && !content.cleared && !dungeon?.combat
   useEffect(() => {
+    const focusExit = (index: number) => {
+      if (!dungeon || !tile) return
+      const target = tile.exits[index]
+      if (!target) return
+      const el = mapRef.current?.querySelector<SVGCircleElement>(
+        `[data-exit-id="${CSS.escape(target.id)}"]`,
+      )
+      el?.focus()
+    }
     const onKey = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target)) return
-      if (dungeon?.pendingChoice || confirmUndo) return
+      // A dialog owns the keyboard while it is open (its own trap handles
+      // Tab/Escape); the undo confirm likewise.
+      if (dungeon?.pendingChoice || pendingDoor || confirmUndo) return
       if (showShortcuts) {
         if (e.key === 'Escape' || e.key === '?') {
           e.preventDefault()
@@ -225,10 +260,13 @@ export default function DungeonScreen() {
         }
         return
       }
+      const activeEl = document.activeElement as Element | null
+      const exitFocused = !!activeEl?.hasAttribute?.('data-exit-id')
       const action = mapKeyAction(e.key, {
         canEngage,
         canUndo: !!dungeon,
         mapFocused: document.activeElement === mapRef.current,
+        exitFocused,
       })
       if (!action) return
       e.preventDefault()
@@ -266,11 +304,33 @@ export default function DungeonScreen() {
         case 'pan-right':
           setPan((p) => ({ ...p, x: p.x - 40 }))
           break
+        case 'exit-next':
+        case 'exit-prev': {
+          if (!dungeon || !tile) break
+          const dir = action === 'exit-next' ? 1 : -1
+          const next = nextExitIndex(activeExit, dir as 1 | -1, tile.exits.length)
+          setActiveExit(next)
+          focusExit(next)
+          break
+        }
+        case 'activate-exit': {
+          if (!dungeon || !tile || dungeon.pendingXp) break
+          const list = tile.exits
+          const focusedId = activeEl?.getAttribute('data-exit-id')
+          const exit = list.find((x) => x.id === focusedId) ?? list[activeExit]
+          if (!exit) break
+          if (doorNeedsAction(exit)) openDoorDialog(exit.id)
+          else void explore(exit.id)
+          break
+        }
+        case 'exit-to-map':
+          mapRef.current?.focus()
+          break
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [dungeon, canEngage, showShortcuts, confirmUndo, fitDungeon, engage, requestUndo])
+  }, [dungeon, tile, canEngage, activeExit, showShortcuts, confirmUndo, fitDungeon, engage, requestUndo, explore, openDoorDialog])
 
   if (!campaign) {
     return (
@@ -303,7 +363,7 @@ export default function DungeonScreen() {
   if (!dungeon || !tile || !bounds) {
     return (
       <div className="screen-placeholder">
-        <p className="text-parchment/50">{busy ? 'Generating…' : error ?? '…'}</p>
+        <p className="text-parchment/70">{busy ? 'Generating…' : error ?? '…'}</p>
       </div>
     )
   }
@@ -329,6 +389,10 @@ export default function DungeonScreen() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
+      {/* Phase G: the screen's heading for assistive tech (axe
+          page-has-heading-one) — the visible room header is a collapse
+          toggle, so it cannot be the h1. */}
+      <h1 className="sr-only">Dungeon</h1>
       {/* map column: viewport + legend; on desktop the panel is a right rail */}
       <div className="flex min-h-0 flex-1 flex-col lg:min-w-0">
         {/* map viewport */}
@@ -336,8 +400,8 @@ export default function DungeonScreen() {
           ref={mapRef}
           tabIndex={0}
           role="application"
-          aria-label="Dungeon map. Plus and minus zoom, zero fits the dungeon, E engages foes, U undoes, question mark lists shortcuts."
-          className="relative min-h-0 flex-1 touch-none bg-stone-950 outline-none focus-visible:ring-2 focus-visible:ring-torch"
+          aria-label="Dungeon map. Tab to the exits, arrow keys move between them, Enter explores. Plus and minus zoom, zero fits the dungeon, E engages foes, U undoes, question mark lists shortcuts."
+          className="relative min-h-0 flex-1 touch-none bg-stone-950"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -427,6 +491,8 @@ export default function DungeonScreen() {
                 return (
                   <g
                     key={t.id}
+                    role="img"
+                    aria-label={`${tileSummary(t, visible)}${isCurrent ? ' — you are here' : ''}`}
                     className={isCurrent && isNewest ? 'tile-reveal' : undefined}
                     onMouseEnter={(e) => {
                       const r = mapRef.current?.getBoundingClientRect()
@@ -720,32 +786,58 @@ export default function DungeonScreen() {
                   assigned from the victory card before leaving,
                   so the discs dim and ignore taps (the store guards explore
                   too, and the panel explains why). */}
-              {tile.exits.map((e) => {
+              {/* Exit discs (Phase G): a roving-tabindex group — one Tab stop
+                  for the whole set, arrows move between discs, Enter/Space
+                  explores. The focused disc gets a dashed oxblood ring on
+                  top of the global focus outline, so it reads at map scale. */}
+              {tile.exits.map((e, i) => {
                 const x = e.cell.col + (e.edge === 'E' ? 1 : e.edge === 'W' ? 0 : 0.5)
                 const y = e.cell.row + (e.edge === 'S' ? 1 : e.edge === 'N' ? 0 : 0.5)
                 const unexplored = !e.toTileId
                 const needsDoor = doorNeedsAction(e)
+                const toTile = e.toTileId ? dungeon.tiles.find((t) => t.id === e.toTileId) : undefined
                 return (
-                  <circle
-                    key={e.id}
-                    cx={x}
-                    cy={y}
-                    r={0.34}
-                    className={`${pendingXp ? 'pointer-events-none opacity-40' : 'cursor-pointer'} stroke-parchment ${
-                      needsDoor ? 'fill-amber-500/80' : unexplored ? 'fill-torch/80' : 'fill-parchment/50'
-                    }`}
-                    strokeWidth={0.05}
-                    onPointerUp={(ev) => {
-                      if (pendingXp) return
-                      if (!dragRef.current?.moved) {
-                        ev.stopPropagation()
-                        // A door that still needs an action opens the door
-                        // dialog; anything else explores straight through.
-                        if (needsDoor) openDoorDialog(e.id)
-                        else void explore(e.id)
-                      }
-                    }}
-                  />
+                  <g key={e.id}>
+                    <circle
+                      data-exit-id={e.id}
+                      tabIndex={pendingXp ? -1 : i === activeExit ? 0 : -1}
+                      role="button"
+                      aria-label={exitLabel(e, toTile?.shapeId ?? null)}
+                      cx={x}
+                      cy={y}
+                      r={0.34}
+                      className={`${pendingXp ? 'pointer-events-none opacity-40' : 'cursor-pointer'} stroke-parchment ${
+                        needsDoor ? 'fill-amber-500/80' : unexplored ? 'fill-torch/80' : 'fill-parchment/50'
+                      }`}
+                      strokeWidth={0.05}
+                      onFocus={() => {
+                        setActiveExit(i)
+                        setFocusedExitId(e.id)
+                      }}
+                      onBlur={() => setFocusedExitId((id) => (id === e.id ? null : id))}
+                      onPointerUp={(ev) => {
+                        if (pendingXp) return
+                        if (!dragRef.current?.moved) {
+                          ev.stopPropagation()
+                          // A door that still needs an action opens the door
+                          // dialog; anything else explores straight through.
+                          if (needsDoor) openDoorDialog(e.id)
+                          else void explore(e.id)
+                        }
+                      }}
+                    />
+                    {focusedExitId === e.id && (
+                      <circle
+                        cx={x}
+                        cy={y}
+                        r={0.44}
+                        pointerEvents="none"
+                        className="fill-none stroke-torch"
+                        strokeWidth={0.05}
+                        strokeDasharray="0.1 0.06"
+                      />
+                    )}
+                  </g>
                 )
               })}
               {/* party marker: banner token on a torch disc — rendered LAST
@@ -837,7 +929,7 @@ export default function DungeonScreen() {
           <div className="flex flex-col lg:min-h-0 lg:flex-1">
             <button
               onClick={() => setPanelOpen((o) => !o)}
-              className="flex w-full items-center justify-between px-3 py-1.5 text-xs uppercase tracking-wide text-parchment/60"
+              className="flex w-full items-center justify-between px-3 py-1.5 text-xs uppercase tracking-wide text-parchment/70"
             >
               <span className="font-label">
                 {isCorridor ? 'Corridor' : 'Room'} · tile {tile.shapeId}
@@ -849,7 +941,7 @@ export default function DungeonScreen() {
             </button>
             {/* Light & darkness (R093/R094): what the party sees by. */}
             {light && (
-              <p className="px-3 text-xs text-parchment/60">
+              <p className="px-3 text-xs text-parchment/70">
                 {light.hasLight
                   ? light.source === 'lantern'
                     ? 'Lit by lantern'
@@ -885,7 +977,7 @@ export default function DungeonScreen() {
                           Level {content.encounter.level} · {content.encounter.count}{' '}
                           {content.encounter.count === 1 ? 'foe' : 'foes'}
                         </p>
-                        <p className="mt-1 text-xs text-parchment/60">
+                        <p className="mt-1 text-xs text-parchment/70">
                           Foes may fight, flee, or demand a bribe — engage to see their reaction
                          .
                         </p>
@@ -1182,7 +1274,7 @@ export default function DungeonScreen() {
                   </div>
                 )}
                 {exits.length === 0 && (
-                  <p className="text-parchment/60">
+                  <p className="text-parchment/70">
                     No open exits here — move through a generated door to retrace (1-in-6 Wandering
                     Monsters).
                   </p>
@@ -1190,7 +1282,7 @@ export default function DungeonScreen() {
                 {/* Log (D1): timestamps, drawn dice, capped with a fade.
                     Rendered strings are citation-stripped (Release 0.5, Part B);
                     the store/journal keeps the internal record. */}
-                <ul className="log-fade num-tabular space-y-0.5 text-xs text-parchment/60">
+                <ul className="log-fade num-tabular space-y-0.5 text-xs text-parchment/70">
                   {log.slice(-6).map((l, i) => (
                     <li key={i}>
                       <span className="mr-1 font-mono text-[10px] text-faint">
@@ -1202,9 +1294,14 @@ export default function DungeonScreen() {
                   ))}
                 </ul>
                 {error && (
-                  <p className="mt-1 text-xs text-ember" onClick={clearError}>
+                  <button
+                    type="button"
+                    onClick={clearError}
+                    aria-label="Dismiss error"
+                    className="mt-1 block text-left text-xs text-ember"
+                  >
                     {stripCitations(error)}
-                  </p>
+                  </button>
                 )}
               </div>
             )}
@@ -1214,9 +1311,15 @@ export default function DungeonScreen() {
       {/* undo (PROJECT_SPEC §19): confirm before reversing the last action */}
       {confirmUndo && (
         <div className="fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
-          <div className="panel-in w-full rounded-lg border border-ember/50 bg-stone-900 p-4">
+          <div
+            ref={undoRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Undo ${confirmUndo.label}?`}
+            className="panel-in w-full rounded-lg border border-ember/50 bg-stone-900 p-4"
+          >
             <p className="text-sm text-torch">Undo “{confirmUndo.label}”?</p>
-            <p className="mt-1 text-[10px] text-parchment/50">
+            <p className="mt-1 text-[10px] text-parchment/70">
               Restores dice, Life, inventory, rooms and the Journal exactly as they were before that action.
             </p>
             <div className="mt-3 flex gap-2">

@@ -4,6 +4,7 @@ import { EVENT_INFO } from '../../rulesets/expanded/features'
 import { MAGIC_TREASURE } from '../../rulesets/expanded/treasure'
 import { clericPrayersLeft } from '../../engine/combat/combat'
 import { SECRET_INFO, WEAKNESS_TARGETS, type SecretId } from '../../rulesets/expanded/secrets'
+import { useDialogFocus } from '../common/useDialogFocus'
 
 /**
  * Player-choice dialog for special features and events
@@ -32,11 +33,15 @@ export function ChoiceDialog() {
   } = useDungeonStore()
   const { party } = useCampaignStore()
   const choice = dungeon?.pendingChoice
+  // Phase G: a choice must be made — Tab traps inside the sheet (no
+  // Escape: there is no "leave it" for a pending choice), focus returns
+  // to the map when the choice resolves.
+  const dialogRef = useDialogFocus<HTMLDivElement>(!!choice)
   if (!choice) return null
   const living = party.filter((p) => p.status !== 'dead')
 
   const unimplementedNote = (
-    <p className="mt-2 text-[10px] text-parchment/40">
+    <p className="mt-2 text-[10px] text-parchment/70">
       Story-driven Secrets (Deal with a Foe, True Name, New Spell, The Prisoner, …) arrive with the
       supplements milestone — only mechanically self-contained Secrets are offered here.
     </p>
@@ -44,7 +49,13 @@ export function ChoiceDialog() {
 
   return (
     <div className="fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
-      <div className="panel-in w-full rounded-lg border border-torch/40 bg-stone-900 p-4">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={choice.prompt}
+        className="panel-in w-full rounded-lg border border-torch/40 bg-stone-900 p-4"
+      >
         <p className="text-sm text-torch">{choice.prompt}</p>
         <div className="mt-3 space-y-2">
           {choice.kind === 'passage' && (

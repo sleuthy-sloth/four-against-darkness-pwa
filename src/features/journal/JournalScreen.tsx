@@ -27,7 +27,7 @@ const CATEGORIES: Array<JournalCategory | 'all'> = [
 const CATEGORY_INK: Record<JournalCategory, string> = {
   explore: 'text-parchment',
   combat: 'text-torch',
-  loot: 'text-brass',
+  loot: 'text-brassInk',
   search: 'text-faint',
   event: 'text-ember',
 }
@@ -123,10 +123,11 @@ export default function JournalScreen() {
             <button
               key={c}
               onClick={() => setFilter(c)}
+              aria-pressed={filter === c}
               className={`shrink-0 rounded-sm border px-3 py-1 font-label text-xs ${
                 filter === c
                   ? 'border-torch bg-torch/15 text-torch'
-                  : 'border-parchment/40 bg-stone-800/60 text-parchment/60'
+                  : 'border-parchment/40 bg-stone-800/60 text-parchment/70'
               }`}
             >
               {c} · {count}
@@ -135,7 +136,7 @@ export default function JournalScreen() {
         })}
       </div>
       {!loaded ? (
-        <p className="text-parchment/50">Loading…</p>
+        <p className="text-parchment/70">Loading…</p>
       ) : shown.length === 0 ? (
         <EmptyState
           kind="journal"

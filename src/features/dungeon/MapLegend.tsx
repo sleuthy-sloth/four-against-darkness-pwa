@@ -89,7 +89,7 @@ const DOOR_LABELS: Record<DoorState, string> = {
 export default function MapLegend() {
   return (
     <details className="shrink-0 border-t border-stone-700 bg-stone-900/95 px-3 py-1.5">
-      <summary className="cursor-pointer list-none text-xs uppercase tracking-wide text-parchment/60">
+      <summary className="cursor-pointer list-none text-xs uppercase tracking-wide text-parchment/70">
         Legend — tap to show the map&apos;s marks
       </summary>
       <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 pb-1 text-xs text-parchment/80">

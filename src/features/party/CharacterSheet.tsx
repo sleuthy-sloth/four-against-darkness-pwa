@@ -18,7 +18,7 @@ export default function CharacterSheet() {
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto p-4 pb-6">
-      <button onClick={() => navigate('/party')} className="mb-2 self-start text-xs text-parchment/50">
+      <button onClick={() => navigate('/party')} className="mb-2 self-start text-xs text-parchment/70">
         ← Party
       </button>
       <div className="flex items-center gap-3">
@@ -36,24 +36,24 @@ export default function CharacterSheet() {
           <div className="text-2xl text-parchment">
             {character.currentLife}/{character.maxLife}
           </div>
-          <div className="text-[10px] uppercase text-parchment/50">Life</div>
+          <div className="text-[10px] uppercase text-parchment/70">Life</div>
           <div className="mt-1 h-1 rounded bg-stone-700">
             <div className="h-1 rounded bg-ember" style={{ width: `${hpPct}%` }} />
           </div>
         </div>
         <div className="rounded-lg bg-stone-800/60 p-3">
           <div className="text-2xl text-parchment">{character.experience}</div>
-          <div className="text-[10px] uppercase text-parchment/50">XP</div>
+          <div className="text-[10px] uppercase text-parchment/70">XP</div>
         </div>
         <div className="rounded-lg bg-stone-800/60 p-3">
           <div className="text-2xl text-parchment">{character.gold}</div>
-          <div className="text-[10px] uppercase text-parchment/50">gp</div>
+          <div className="text-[10px] uppercase text-parchment/70">gp</div>
         </div>
       </div>
 
       {character.spells.length > 0 && (
         <section className="mt-4">
-          <h2 className="text-sm uppercase tracking-wide text-parchment/50">Spells memorized</h2>
+          <h2 className="text-sm uppercase tracking-wide text-parchment/70">Spells memorized</h2>
           <ul className="mt-1 space-y-1">
             {character.spells.map((s) => (
               <li key={s} className="rounded bg-stone-800/60 px-3 py-2 text-sm">
@@ -65,19 +65,19 @@ export default function CharacterSheet() {
       )}
 
       <section className="mt-4">
-        <h2 className="text-sm uppercase tracking-wide text-parchment/50">Traits</h2>
+        <h2 className="text-sm uppercase tracking-wide text-parchment/70">Traits</h2>
         <ul className="mt-1 space-y-1">
           {character.traits.map((t) => (
             <li key={t.roll} className="rounded bg-stone-800/60 px-3 py-2 text-sm">
               <span className="text-torch">{t.name}</span>
-              <span className="block text-xs text-parchment/60">{t.effect}</span>
+              <span className="block text-xs text-parchment/70">{t.effect}</span>
             </li>
           ))}
         </ul>
       </section>
 
       <section className="mt-4">
-        <h2 className="text-sm uppercase tracking-wide text-parchment/50">Equipment</h2>
+        <h2 className="text-sm uppercase tracking-wide text-parchment/70">Equipment</h2>
         <ul className="mt-1 flex flex-wrap gap-1">
           {character.equipment.map((e, i) => (
             <li key={i} className="rounded bg-stone-800/60 px-2 py-1 text-xs">
@@ -88,10 +88,10 @@ export default function CharacterSheet() {
       </section>
 
       <section className="mt-4">
-        <h2 className="text-sm uppercase tracking-wide text-parchment/50">Class abilities</h2>
+        <h2 className="text-sm uppercase tracking-wide text-parchment/70">Class abilities</h2>
         <ul className="mt-1 space-y-1">
           {def.abilities.map((a, i) => (
-            <li key={i} className="text-xs text-parchment/60">
+            <li key={i} className="text-xs text-parchment/70">
               · {stripCitations(a)}
             </li>
           ))}

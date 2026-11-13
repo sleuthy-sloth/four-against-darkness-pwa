@@ -38,7 +38,7 @@ export default function PartyCreation() {
   return (
     <div className="flex flex-1 flex-col overflow-y-auto p-4 pb-6">
       <h1 className="text-xl text-torch">Form your party</h1>
-      <p className="mb-3 text-xs text-parchment/60">
+      <p className="mb-3 text-xs text-parchment/70">
         Four adventurers, one of each class. Tap to choose {picked.length}/4.
       </p>
       <div className="grid grid-cols-2 gap-2">
@@ -48,6 +48,7 @@ export default function PartyCreation() {
             <button
               key={c.id}
               onClick={() => toggle(c.id)}
+              aria-pressed={selected}
               className={`rounded-lg border p-3 text-left ${
                 selected ? 'border-torch bg-torch/15' : 'border-stone-700 bg-stone-800/60'
               }`}
@@ -70,7 +71,7 @@ export default function PartyCreation() {
                   onChange={(e) => setNames((n) => ({ ...n, [id]: e.target.value }))}
                   placeholder={`${def.name} name`}
                   maxLength={40}
-                  className="min-w-0 flex-1 rounded-md border border-stone-700 bg-stone-900 px-3 py-2 text-sm text-parchment placeholder:text-parchment/30"
+                  className="min-w-0 flex-1 rounded-md border border-stone-700 bg-stone-900 px-3 py-2 text-sm text-parchment placeholder:text-parchment/70"
                 />
               </label>
             )
@@ -79,9 +80,14 @@ export default function PartyCreation() {
       )}
 
       {error && (
-        <p className="mt-3 text-sm text-ember" onClick={clearError}>
+        <button
+          type="button"
+          onClick={clearError}
+          aria-label="Dismiss error"
+          className="mt-3 block text-left text-sm text-ember"
+        >
           {stripCitations(error)}
-        </p>
+        </button>
       )}
 
       <button
@@ -91,7 +97,7 @@ export default function PartyCreation() {
       >
         {loading ? 'Creating…' : 'Create party'}
       </button>
-      <button onClick={() => navigate('/campaign')} className="mt-2 p-2 text-xs text-parchment/50">
+      <button onClick={() => navigate('/campaign')} className="mt-2 p-2 text-xs text-parchment/70">
         Back
       </button>
     </div>

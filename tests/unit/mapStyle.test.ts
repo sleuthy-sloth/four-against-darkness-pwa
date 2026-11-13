@@ -57,6 +57,16 @@ describe('doorState (C4 + locked doors R129)', () => {
     }
     expect(doorState(exit({ door: true, doorInfo: { kind: 'unlocked', level: 0 } }))).toBe('closed')
   })
+  it('an opened door reads as an opening, not as its old kind (Phase G)', () => {
+    // A picked/bashed/spelled door sets info.open; the map and the disc
+    // label must stop calling it locked, or a keyboard player never
+    // explores through it (the 08 delve stalled oscillating tile 1 ↔ 25).
+    for (const kind of ['locked', 'sealed', 'iron', 'illusionary', 'trapped', 'lever'] as const) {
+      expect(doorState(exit({ door: true, doorInfo: { kind, level: 3, open: true } }))).toBe('opening')
+    }
+    // A shut door still shows its kind.
+    expect(doorState(exit({ door: true, doorInfo: { kind: 'locked', level: 3, open: false } }))).toBe('locked')
+  })
   it('older exits with no rolled state render as plain closed doors', () => {
     expect(doorState(exit({ door: true }))).toBe('closed')
   })

@@ -39,7 +39,7 @@ export default function PartyScreen() {
   }, [loadLastCampaign])
 
   if (!loaded || loading) {
-    return <div className="screen-placeholder text-parchment/50">Loading…</div>
+    return <div className="screen-placeholder text-parchment/70">Loading…</div>
   }
 
   /** Marching order = party array order (FADEE pp.97, 104, 163). */
@@ -66,7 +66,7 @@ export default function PartyScreen() {
         className="-mx-4 -mt-4 h-44 w-[calc(100%+2rem)] max-w-none object-cover object-top"
       />
       <h1 className="mt-3 text-xl text-torch">Party</h1>
-      {campaign && <p className="text-xs text-parchment/50">{campaign.name}</p>}
+      {campaign && <p className="text-xs text-parchment/70">{campaign.name}</p>}
 
       {party.length === 0 ? (
         <EmptyState
@@ -94,35 +94,42 @@ export default function PartyScreen() {
               const classLine = c.name === def.name ? `L${c.level}` : `${def.name} · L${c.level}`
               return (
                 <div key={c.id} className="card-folio p-3">
-                  <button
-                    onClick={() => navigate(`/party/${encodeURIComponent(c.id)}`)}
-                    className="block w-full text-left active:opacity-80"
-                    aria-label={`${c.name}, ${def.name}, level ${c.level}, ${c.currentLife} of ${c.maxLife} Life`}
-                  >
-                    <div className="flex items-baseline justify-between">
+                  {/* Phase G (WCAG 2.5.3): the card button holds only the
+                      name — its visible text ("1. Warrior") is contained
+                      in the accessible name. The class line and Life block
+                      sit outside the button as plain text (still in the
+                      tree for browse mode); the whole card used to be the
+                      button, but its composite visible text made any
+                      curated label a name-mismatch. */}
+                  <div className="flex items-baseline justify-between">
+                    <button
+                      onClick={() => navigate(`/party/${encodeURIComponent(c.id)}`)}
+                      className="text-left active:opacity-80"
+                      aria-label={`${idx + 1}. ${c.name}, ${def.name}, level ${c.level}, ${c.currentLife} of ${c.maxLife} Life`}
+                    >
                       <span className="flex items-center gap-2 text-base text-parchment">
                         <ClassIcon classId={c.classId} className="w-7 h-7 shrink-0" />
                         {idx + 1}. {c.name}
                       </span>
-                      <span className="text-xs text-parchment/50">{classLine}</span>
-                    </div>
-                    {/* Life bar with numerals at both ends (D2) */}
-                    <div className={flashIds.has(c.id) ? 'life-delta rounded-sm px-1 -mx-1' : ''}>
+                    </button>
+                    <span className="text-xs text-parchment/70">{classLine}</span>
+                  </div>
+                  {/* Life bar with numerals at both ends (D2) */}
+                  <div className={flashIds.has(c.id) ? 'life-delta rounded-sm px-1 -mx-1' : ''}>
                       <div className="mt-2 flex items-center gap-2">
-                        <span className="font-mono text-[11px] text-parchment/60">{c.currentLife}</span>
+                        <span className="font-mono text-[11px] text-parchment/70">{c.currentLife}</span>
                         <div className="h-1.5 flex-1 rounded bg-stone-700">
                           <div className="h-1.5 rounded bg-ember" style={{ width: `${hpPct}%` }} />
                         </div>
-                        <span className="font-mono text-[11px] text-parchment/60">{c.maxLife}</span>
+                        <span className="font-mono text-[11px] text-parchment/70">{c.maxLife}</span>
                       </div>
-                      <div className="mt-1 text-[11px] text-parchment/50">
+                      <div className="mt-1 text-[11px] text-parchment/70">
                         Life · {c.gold} gp · {c.traits.length} trait{c.traits.length === 1 ? '' : 's'}
                       </div>
                     </div>
-                  </button>
                   {/* Marching order (FADEE pp.97, 104): first = leader; position
                       4 eats falling stones, rearmost eats ambush hits. */}
-                  <div className="mt-2 flex items-center gap-2 text-[10px] text-parchment/40">
+                  <div className="mt-2 flex items-center gap-2 text-[10px] text-parchment/70">
                     <span aria-hidden="true" className="tracking-tighter text-parchment/30">⋮⋮</span>
                     <span>{idx === 0 ? 'leading' : idx === 3 ? 'rearmost' : `position ${idx + 1}`}</span>
                     {idx > 0 && (
@@ -154,11 +161,11 @@ export default function PartyScreen() {
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <span className="flex items-center gap-1.5">
                 <CoinDevice size={14} />
-                <span className="font-mono text-sm font-bold text-brass">{totalGold}</span> gp pooled
+                <span className="font-mono text-sm font-bold text-brassInk">{totalGold}</span> gp pooled
               </span>
               {xpBanked > 0 && <span>{xpBanked} XP roll{xpBanked === 1 ? '' : 's'} banked — spend in the combat panel</span>}
             </div>
-            <p className="mt-1 text-[10px] text-parchment/40">
+            <p className="mt-1 text-[10px] text-parchment/70">
               Marching order: leader first — position 4 takes falling stones, the rearmost takes ambush hits.
             </p>
           </div>

@@ -47,7 +47,7 @@ introduce one-off sizes. Line length for log/journal text: cap at ~65ch.
 
 ## 3. Contrast rules (measured, not vibes)
 
-Measured 2026-11-11, on canvas unless noted:
+Measured 2026-11-11, re-measured 2026-11-12 (Phase G) on canvas unless noted:
 
 | Pair | Ratio | Verdict |
 |---|---|---|
@@ -57,15 +57,45 @@ Measured 2026-11-11, on canvas unless noted:
 | Faint / canvas | **5.63:1** | Pass (AA) — was 4.47:1 at `#6e6255`, fixed in milestone 1 |
 | Faint / leaf | 6.44:1 | Pass |
 | Faint / folio | 6.93:1 | Pass |
-| Brass / canvas | **3.20:1** | **Decorative / large text only — never body text** |
+| Faint / well | 5.08:1 | Pass |
+| Brass / canvas | **3.20:1** | **Decorative only — never text** |
+| Brass ink `#7d5c1e` / canvas | 4.63:1 | Pass (AA) — gold numerals use this, not brass |
+| Brass ink / leaf | 5.30:1 | Pass |
+| Brass ink / folio | 5.69:1 | Pass |
+| Brass ink / well | 4.17:1 | Fail — gold numerals never sit on well |
+| Parchment 70% / canvas | 5.50:1 | Pass — the floor for parchment text |
+| Parchment 70% / leaf | 5.10:1 | Pass |
+| Parchment 70% / folio | 5.10:1 | Pass |
+| Parchment 70% / well | 4.69:1 | Pass (worst light surface) |
+| Parchment 60% / canvas | 4.04:1 | **Fail — no parchment text below 70% opacity** |
+| Ember / canvas | 5.00:1 | Pass |
+| Ember / leaf | 5.72:1 | Pass |
+| Ember / folio | 6.15:1 | Pass |
+| Ember / well | 4.51:1 | Pass |
+| Ember 80% / leaf | 3.99:1 | Fail — fixed to solid ember (Phase G) |
+| Amber-500 / dark tile `#14100c` | 8.82:1 | Pass (locked-door disc) |
+| Folio / dark tile | 17.56:1 | Pass (unexplored-tile text) |
+| Folio / oxblood (foe-count badge) | 8.05:1 | Pass |
+| Ink / amber-500 (trapped "!" disc) | ≈8.8:1 | Pass |
 
 Rules:
 
 - Every text pair must meet **≥ 4.5:1** (normal text) / **3:1** (large text).
-  Gated by `tests/unit/designTokens.test.ts` (added in milestone 1).
-- **Brass rule:** brass `#9c7428` is 3.20:1 on canvas. Use it for decoration,
-  numerals ≥ 18px, or bold ≥ 14px only. Never brass body text. If brass text
-  is ever needed at body size, darken to `#7d5c1e` first.
+  Gated by `tests/unit/designTokens.test.ts` (added in milestone 1,
+  extended in Phase G with a source scan).
+- **Parchment opacity floor (Phase G):** no parchment text below 70%
+  opacity — /60 measures 3.61–4.04:1 on the light surfaces and fails AA.
+  The only exceptions are disabled controls (exempt from WCAG/axe) and
+  `aria-hidden` decorative glyphs; both are allowlisted by file and line
+  count in the gate test. Prefer `text-faint` over a low opacity when the
+  text is meant to recede.
+- **Brass rule (corrected, Phase G):** brass `#9c7428` is 3.20:1 on canvas.
+  It is decorative only — never text. The old allowance ("numerals ≥ 18px,
+  or bold ≥ 14px") was wrong: WCAG large text needs ≥ 18.66px bold or
+  ≥ 24px regular, so 14px bold is normal text and brass fails it at
+  3.67:1 (leaf) / 3.94:1 (folio). Gold numerals (inventory, journal,
+  party gold) use `brassInk` `#7d5c1e` instead (4.63–5.69:1 on
+  canvas/leaf/folio).
 - Do not reintroduce the old `#6e6255` faint value.
 
 ## 4. Shape, spacing, shadow
