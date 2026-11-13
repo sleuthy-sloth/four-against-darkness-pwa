@@ -212,7 +212,7 @@ describe('special events (FADEE p.153)', () => {
   })
 })
 
-describe('traps (FADEE p.163)', () => {
+describe('traps (FADEE p.164)', () => {
   it('poison gas saves with barbarian/halfling +L; failures lose 1 Life', () => {
     const party = [pc('barbarian', 'b', 5), pc('warrior', 'w', 5)]
     party[0].level = 4

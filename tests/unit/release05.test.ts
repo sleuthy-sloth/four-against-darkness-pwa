@@ -230,8 +230,8 @@ describe('A1/A3 Environment loot (R150-R154)', () => {
 })
 
 describe('A4 Light & darkness (R093/R094/R041)', () => {
-  it('darkvision list is empty by design — the ledger names no classes', () => {
-    expect(DARKVISION_CLASSES).toEqual([])
+  it('darkvision classes are dwarf and elf (ruling 2026-11-13, FADEE p.93)', () => {
+    expect(DARKVISION_CLASSES).toEqual(['dwarf', 'elf'])
   })
 
   it('no light means darkness −2', () => {

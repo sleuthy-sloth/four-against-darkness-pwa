@@ -311,7 +311,7 @@ export function resolveEvent(
   }
 }
 
-// ---------- Traps (FADEE p.163) ----------
+// ---------- Traps (FADEE p.164) ----------
 
 export interface TrapResult {
   messages: string[]
@@ -342,15 +342,15 @@ export function resolveTrap(
       // Defense-roll traps take the normal Defense.
       const target = hcl + 1
       const { bonus } = defenseBonusFor(victim)
-      const defense = rng.roll(1, 6, bonus, `${victim.name} Defense vs. dart L${target} (FADEE p.163)`)
-      // Halflings reroll a failed Defense roll (FADEE p.163).
+      const defense = rng.roll(1, 6, bonus, `${victim.name} Defense vs. dart L${target} (FADEE p.164)`)
+      // Halflings reroll a failed Defense roll (FADEE p.164).
       const rolled = defense <= target && victim.classId === 'halfling'
-        ? rng.roll(1, 6, bonus, `${victim.name} halfling reroll (FADEE p.163)`)
+        ? rng.roll(1, 6, bonus, `${victim.name} halfling reroll (FADEE p.164)`)
         : defense
-      if (rolled > target) messages.push(`Dart! ${victim.name} dodges. (FADEE p.163)`)
+      if (rolled > target) messages.push(`Dart! ${victim.name} dodges. (FADEE p.164)`)
       else {
         hurt(victim, 1)
-        messages.push(`Dart! ${victim.name} is hit for 1 Life (${victim.currentLife}/${victim.maxLife}). (FADEE p.163)`)
+        messages.push(`Dart! ${victim.name} is hit for 1 Life (${victim.currentLife}/${victim.maxLife}). (FADEE p.164)`)
       }
       break
     }
@@ -358,7 +358,7 @@ export function resolveTrap(
       const hit: string[] = []
       for (const pc of living) {
         const bonus = pc.classId === 'barbarian' || pc.classId === 'halfling' ? pc.level : 0
-        const roll = rng.roll(1, 6, bonus, `${pc.name} Save vs. HCL+${hcl + 2} poison (FADEE p.163)`)
+        const roll = rng.roll(1, 6, bonus, `${pc.name} Save vs. HCL+${hcl + 2} poison (FADEE p.164)`)
         if (roll < hcl + 2) {
           hurt(pc, 1)
           hit.push(pc.name)
@@ -366,8 +366,8 @@ export function resolveTrap(
       }
       messages.push(
         hit.length
-          ? `Poison gas! ${hit.join(', ')} lose 1 Life each. (FADEE p.163)`
-          : 'Poison gas! Everyone holds their breath. (FADEE p.163)',
+          ? `Poison gas! ${hit.join(', ')} lose 1 Life each. (FADEE p.164)`
+          : 'Poison gas! Everyone holds their breath. (FADEE p.164)',
       )
       break
     }
@@ -378,11 +378,11 @@ export function resolveTrap(
       if (leader.equipment.some((e) => e.includes('heavy armor'))) mod -= 2
       if (leader.classId === 'halfling' || leader.classId === 'elf') mod += 1
       if (leader.classId === 'rogue') mod += leader.level
-      const roll = rng.roll(1, 6, mod, `${leader.name} Save vs. trapdoor HCL+${hcl + 3} (FADEE p.163)`)
-      if (roll >= hcl + 3) messages.push(`A trapdoor yawns open — ${leader.name} avoids it. (FADEE p.163)`)
+      const roll = rng.roll(1, 6, mod, `${leader.name} Save vs. trapdoor HCL+${hcl + 3} (FADEE p.164)`)
+      if (roll >= hcl + 3) messages.push(`A trapdoor yawns open — ${leader.name} avoids it. (FADEE p.164)`)
       else {
         hurt(leader, 1)
-        messages.push(`${leader.name} falls into the trapdoor: 1 Life lost (${leader.currentLife}/${victimMax(leader)}), and an ally must help them out. (FADEE p.163)`)
+        messages.push(`${leader.name} falls into the trapdoor: 1 Life lost (${leader.currentLife}/${victimMax(leader)}), and an ally must help them out. (FADEE p.164)`)
       }
       break
     }
@@ -391,12 +391,12 @@ export function resolveTrap(
       let mod = 0
       if (leader.classId === 'halfling' || leader.classId === 'elf') mod += 1
       if (leader.classId === 'rogue') mod += leader.level
-      const roll = rng.roll(1, 6, mod, `${leader.name} Save vs. bear trap HCL+${hcl + 3} (FADEE p.163)`)
-      if (roll >= hcl + 3) messages.push(`${leader.name} sidesteps the bear trap. (FADEE p.163)`)
+      const roll = rng.roll(1, 6, mod, `${leader.name} Save vs. bear trap HCL+${hcl + 3} (FADEE p.164)`)
+      if (roll >= hcl + 3) messages.push(`${leader.name} sidesteps the bear trap. (FADEE p.164)`)
       else {
         hurt(leader, 1)
         leader.conditions.push('bear-trapped')
-        messages.push(`${leader.name} steps into the bear trap: 1 Life lost, -1 Attack and Defense until the Life is recovered. (FADEE p.163)`)
+        messages.push(`${leader.name} steps into the bear trap: 1 Life lost, -1 Attack and Defense until the Life is recovered. (FADEE p.164)`)
       }
       break
     }
@@ -411,7 +411,7 @@ export function resolveTrap(
         // Defense vs HCL+4 with the full Defense bonus (R076/R077) —
         // armor, shield, rogue +L — like the dart above.
         const { bonus } = defenseBonusFor(pc)
-        const defense = rng.roll(1, 6, bonus, `${pc.name} Defense vs. spears L${hcl + 4} (FADEE p.163)`)
+        const defense = rng.roll(1, 6, bonus, `${pc.name} Defense vs. spears L${hcl + 4} (FADEE p.164)`)
         if (defense <= hcl + 4) {
           hurt(pc, 1)
           hit.push(pc.name)
@@ -419,8 +419,8 @@ export function resolveTrap(
       }
       messages.push(
         hit.length
-          ? `Spears! ${hit.join(', ')} are struck for 1 Life. (FADEE p.163)`
-          : 'Spears! Both targets dodge. (FADEE p.163)',
+          ? `Spears! ${hit.join(', ')} are struck for 1 Life. (FADEE p.164)`
+          : 'Spears! Both targets dodge. (FADEE p.164)',
       )
       break
     }
@@ -429,15 +429,15 @@ export function resolveTrap(
       // 4th living PC (flagged in IMPLEMENTATION_STATUS).
       const victim = living[3] ?? living[living.length - 1]
       if (!victim) break
-      // Armor bonus applies, shield does not (FADEE p.163).
+      // Armor bonus applies, shield does not (FADEE p.164).
       let mod = 0
       if (victim.equipment.some((e) => e.includes('heavy armor'))) mod += 2
       else if (victim.equipment.some((e) => e.includes('light armor'))) mod += 1
-      const defense = rng.roll(1, 6, mod, `${victim.name} Defense vs. falling stone HCL+${hcl + 4} (FADEE p.163)`)
-      if (defense > hcl + 4) messages.push(`The stone crashes down — ${victim.name} leaps clear. (FADEE p.163)`)
+      const defense = rng.roll(1, 6, mod, `${victim.name} Defense vs. falling stone HCL+${hcl + 4} (FADEE p.164)`)
+      if (defense > hcl + 4) messages.push(`The stone crashes down — ${victim.name} leaps clear. (FADEE p.164)`)
       else {
         hurt(victim, 2)
-        messages.push(`The stone hits ${victim.name} for 2 Life (${victim.currentLife}/${victim.maxLife}). (FADEE p.163)`)
+        messages.push(`The stone hits ${victim.name} for 2 Life (${victim.currentLife}/${victim.maxLife}). (FADEE p.164)`)
       }
       break
     }

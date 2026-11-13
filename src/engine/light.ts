@@ -11,14 +11,10 @@ import type { Character } from '../rulesets/schema/character'
  * - Lantern: carried in a hand (or on a shield hook). Bearer killed /
  *   paralyzed / stoned → it drops; picking it up costs 1 turn (R094).
  *
- * DARKVISION AMBIGUITY (flagged, not resolved silently): R093 says
- * "Darkvision classes exempt" but no entry in the ledger — and no class
- * data in this repo — names which classes have darkvision. The list below
- * is therefore EMPTY by design: no implemented class is treated as
- * exempt until the owner confirms the book's list. Add class ids here
- * when confirmed; everything else reads from this one constant.
+ * DARKVISION (ruling 2026-11-13, owner's best judgement; FADEE p.93):
+ * dwarf and elf have darkvision. Halflings do not.
  */
-export const DARKVISION_CLASSES: string[] = []
+export const DARKVISION_CLASSES: string[] = ['dwarf', 'elf']
 
 export interface LightState {
   hasLight: boolean

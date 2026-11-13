@@ -1682,10 +1682,14 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     dungeon.storedXp = (dungeon.storedXp ?? 0) - cost
     if (training > 0) pc.gold -= training
-    const roll = rng.d(6) + extra
-    const success = roll > pc.level || roll >= 6
+    const natural = rng.d(6)
+    const roll = natural + extra
+    // R174 (FADEE p.118): "6 always succeeds" means a NATURAL 6 only — a
+    // boosted total of 6+ does not trigger the auto-success (it just meets
+    // the target number normally via `roll > pc.level`).
+    const success = roll > pc.level || natural === 6
     const entries: LogEntry[] = [
-      { ts: Date.now(), text: `Slower Advancement: ${pc.name} spends ${cost} XP (target L${targetLevel}) — d6=${roll - extra}${extra ? ` +${extra}` : ''} vs L${pc.level} → ${success ? 'LEVEL UP!' : 'no level'}` },
+      { ts: Date.now(), text: `Slower Advancement: ${pc.name} spends ${cost} XP (target L${targetLevel}) — d6=${natural}${extra ? ` +${extra}` : ''} vs L${pc.level} → ${success ? 'LEVEL UP!' : 'no level'}` },
     ]
     if (success) {
       pc.level += 1
@@ -1699,7 +1703,8 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     set({ dungeon: { ...dungeon }, log: [...get().log, ...entries].slice(-100) })
   },
 
-  /** Old School (R173): spend (Tier+2)×100 XP to level up. */
+  /** Old School (R173): spend (Tier+2)×100 XP to level up — Tier of the
+   *  TARGET level being entered, not the PC's current level. */
   spendOldSchoolXp: async (pcId) => {
     await snap('spendOldSchoolXp', useCampaignStore.getState().campaign?.id ?? '')
     const { dungeon } = get()
@@ -1712,7 +1717,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       set({ error: 'Old School: no PC levels up twice in a row (unless sole survivor).' })
       return
     }
-    const cost = oldSchoolLevelCost(pc.level)
+    const cost = oldSchoolLevelCost(pc.level + 1)
     if ((dungeon.oldSchoolXp ?? 0) < cost) {
       set({ error: `Old School: levelling ${pc.name} costs ${cost} XP (tally ${dungeon.oldSchoolXp ?? 0}).` })
       return

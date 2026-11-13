@@ -302,13 +302,23 @@ export function makeEnemy(
 
 /**
  * Final Boss buff, part 1 (R118, p.105): +1 Life. Applied at combat
- * start by the store, wherever a Final Boss combat begins. (+1 attack is
- * NOT applied here: the ledger does not say whether it raises the L PCs
- * defend against, the L they attack against, or damage — needs the book.)
+ * start by the store, wherever a Final Boss combat begins. The +1 attack
+ * is applied separately at the foe-attack sites (runFoesTurn, fleeCombat):
+ * the boss attacks at L+1 — the target PCs defend against — while its
+ * Defense (the target PCs attack) stays at base L.
  */
 export function applyFinalBossBuff(enemy: EnemyInstance): void {
   enemy.life += 1
   enemy.maxLife += 1
+}
+
+/**
+ * Final Boss attack bonus (FADEE p.105, R118): the Final Boss attacks at
+ * +1. This raises ONLY the target PCs defend against — never the PCs'
+ * own attack target, which stays at the foe's base L (effectiveLevel).
+ */
+function finalBossAttackBonus(enemy: EnemyInstance): number {
+  return enemy.isFinalBossFlag ? 1 : 0
 }
 
 export function startCombat(
@@ -687,6 +697,10 @@ function runFoesTurn(state: CombatState, rng: Rng): void {
       const minotaurCharge = enemy.profile.name === 'Minotaur' && state.round === 1
       if (minotaurCharge) def.bonus -= 1
       const effLevel = effectiveLevel(state, enemy)
+      // R118 (FADEE p.105): the Final Boss attacks at +1 — its attack
+      // rolls use L+1. Its Defense (the target PCs must hit) stays at
+      // base L, so this bonus applies only here, never in pcAttack.
+      const attackLevel = effLevel + finalBossAttackBonus(enemy)
       const { rolls, total } = rollCombatDie(state, rng, `defense roll (${pc.name})`)
       const finalTotal = total + def.bonus
       // A natural 1 always fails (R076) — the die face, not the total:
@@ -694,9 +708,9 @@ function runFoesTurn(state: CombatState, rng: Rng): void {
       const naturalOne = rolls[0] === 1
       log(
         state,
-        `${attackerLabel} attacks ${pc.name}: defense d6[${rolls.join('+')}] ${def.bonus >= 0 ? '+' : ''}${def.bonus} (${def.note}${protection ? `, +${protection} Protection` : ''}${(state.darknessPenalty ?? 0) < 0 ? ', darkness -2' : ''}${shieldStripped ? ', no shield — surprised' : ''}${minotaurCharge ? ', Minotaur charge -1' : ''}) = ${finalTotal}; needs > L${effLevel}`,
+        `${attackerLabel} attacks ${pc.name}: defense d6[${rolls.join('+')}] ${def.bonus >= 0 ? '+' : ''}${def.bonus} (${def.note}${protection ? `, +${protection} Protection` : ''}${(state.darknessPenalty ?? 0) < 0 ? ', darkness -2' : ''}${shieldStripped ? ', no shield — surprised' : ''}${minotaurCharge ? ', Minotaur charge -1' : ''}${enemy.isFinalBossFlag ? ', Final Boss +1 attack' : ''}) = ${finalTotal}; needs > L${attackLevel}`,
       )
-      if (finalTotal <= effLevel || naturalOne) {
+      if (finalTotal <= attackLevel || naturalOne) {
         // hit — failed defense
         pc.currentLife = Math.max(0, pc.currentLife - 1)
         log(state, naturalOne && finalTotal > effLevel ? `${pc.name} rolled a natural 1: it always fails. 1 damage → ${pc.currentLife}/${pc.maxLife} Life.` : `${pc.name} fails the defense: 1 damage → ${pc.currentLife}/${pc.maxLife} Life.`)
@@ -840,11 +854,13 @@ export function fleeCombat(state: CombatState, rng: Rng, opts: { unattacked?: bo
       const finalTotal = total + fleeMod
       // A natural 1 always fails (R076) — the die face, not the total.
       const naturalOne = rolls[0] === 1
+      // R118 (FADEE p.105): the Final Boss attacks at +1, fleeing included.
+      const attackLevel = enemy.level + finalBossAttackBonus(enemy)
       log(
         state,
-        `${enemy.profile.name} strikes at fleeing ${pc.name}: defense ${finalTotal} vs L${enemy.level} (no shield bonus${(state.darknessPenalty ?? 0) < 0 ? ', darkness -2' : ''}${state.fungalSlippery && !slipperyExempt.includes(pc.classId) ? ', slippery -1' : ''}${naturalOne ? ', natural 1' : ''})`,
+        `${enemy.profile.name} strikes at fleeing ${pc.name}: defense ${finalTotal} vs L${attackLevel} (no shield bonus${(state.darknessPenalty ?? 0) < 0 ? ', darkness -2' : ''}${state.fungalSlippery && !slipperyExempt.includes(pc.classId) ? ', slippery -1' : ''}${naturalOne ? ', natural 1' : ''}${enemy.isFinalBossFlag ? ', Final Boss +1 attack' : ''})`,
       )
-      if (finalTotal <= enemy.level || naturalOne) {
+      if (finalTotal <= attackLevel || naturalOne) {
         pc.currentLife = Math.max(0, pc.currentLife - 1)
         log(state, `${pc.name} takes 1 damage → ${pc.currentLife}/${pc.maxLife}.`)
         if (pc.currentLife === 0) {

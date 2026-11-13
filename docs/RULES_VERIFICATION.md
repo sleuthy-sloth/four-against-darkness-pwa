@@ -216,12 +216,12 @@ Three workers verified the ledger against `src/` (numbers checked, not vibes), f
 ### Part 16 — Open questions
 | ID | Status | Note |
 | --- | --- | --- |
-| OQ-1 | NEEDS BOOK | Search Table "0-1" on a d6 (p.107) — treated as 1 = Wandering Monsters; confirm against the printed page |
-| OQ-2 | NEEDS BOOK | Tile shapes from page images (pp.149-151); low-confidence d66 32/35 + starting 4/5; ledger says 23/33/35/62/63 art-covered but `tiles.ts` marks 23/33/62 high (63 medium) — unresolved either way |
+| OQ-1 | RESOLVED (ruling 1, 2026-11-13) | Search Table "0-1" on a d6 (p.107) is a misprint for "1"; code already treats 1 = Wandering Monsters — no code change |
+| OQ-2 | RESOLVED (ruling 2, 2026-11-13) | Tile shapes accepted as-is; structurally valid (100-seeded-dungeon simulation passes); low-confidence d66 32/35 + starting 4/5 and the 23/33/35/62/63 confidence mismatch remain as residual uncertainty, not blocking — no code change |
 | OQ-3 | NOTED | "Backstabbing" rogue skill (p.147) — supplement content; ignore for core |
 | OQ-4 | NOTED | Fiendish flat Life (7/8/12) — deliberate for L3+ parties; treat as data |
 | OQ-5 | V | "Tier" = tier number (1-5); verified by p.94 ogre example |
-| Darkvision | NEEDS BOOK | `DARKVISION_CLASSES` in `src/engine/light.ts` is `[]` by design — no ledger entry or class data names which classes have darkvision; do not invent a list |
+| Darkvision | RESOLVED (ruling 3, 2026-11-13) | Dwarf and elf have darkvision (FADEE p.93); `DARKVISION_CLASSES = ['dwarf', 'elf']` in `src/engine/light.ts`; tests in `tests/unit/rulingsDarkvision.test.ts` |
 
 
 
@@ -481,11 +481,30 @@ Ammo (optional): 12 arrows/shot per quiver/bag; replacement 6gp/20gp; 1 ammo per
 
 | ID | Question | Where | Risk handling |
 | --- | --- | --- | --- |
-| OQ-1 | Search Table shows "0-1" on a d6 (p.107) — almost certainly a misprint for "1". | p.107 | Treat 1 = Wandering Monsters; confirm against the printed page with the owner. |
-| OQ-2 | Tile shapes transcribed from page IMAGES (pp.149-151); a few diagrams partly covered by decorative art (23, 33, 35, 62, 63 door positions). | pp.149-151 | Re-render + verify visually before IMPLEMENTED; validate with generation-simulation tests. |
+| OQ-1 | Search Table shows "0-1" on a d6 (p.107) — almost certainly a misprint for "1". | p.107 | RESOLVED (ruling 1, 2026-11-13): "0-1" is a misprint for "1". Code already treats 1 = Wandering Monsters; no code change. |
+| OQ-2 | Tile shapes transcribed from page IMAGES (pp.149-151); a few diagrams partly covered by decorative art (23, 33, 35, 62, 63 door positions). | pp.149-151 | RESOLVED (ruling 2, 2026-11-13): shapes accepted as-is; structurally valid (100-seeded-dungeon simulation passes). Low-confidence d66 32/35 + starting 4/5 and the ledger-vs-`tiles.ts` confidence mismatch (ledger 23/33/35/62/63 art-covered vs `tiles.ts` 23/33/62 high, 63 medium) remain as residual uncertainty, NOT blocking; no code change. |
 | OQ-3 | p.147 references a "Backstabbing" rogue skill not defined in this book (supplement content). | p.147 | Ignore for core build; note in data pack. |
 | OQ-4 | Fiendish Foes use flat Life values (7/8/12) rather than Tier formulas — deliberate for L3+ parties; treat as data. | pp.183-184 | None. |
 | OQ-5 | "Tier" in Life formulas means the tier NUMBER (1-5); verified by the p.94 ogre example. | p.94 | None. |
+
+## Rulings (2026-11-13, owner's best judgement)
+
+All 12 open questions from the rules verification pass are RESOLVED by the owner's best judgement. Each ruling below gives the ruling, the reasoning, and the code location / test that implements it (or "no code change" where the code already matched).
+
+| # | Ruling | Reasoning | Code location / test |
+| --- | --- | --- | --- |
+| 1 | OQ-1: Search Table "0-1" is a misprint for "1" (p.107). | A d6 has no 0. | No code change — code already treats 1 = Wandering Monsters (R123). |
+| 2 | OQ-2: Tile shapes accepted as-is. | Structurally valid: the 100-seeded-dungeon simulation passes. | No code change. Residual uncertainty, NOT blocking: low-confidence d66 32/35 + starting 4/5, and the confidence mismatch (ledger 23/33/35/62/63 art-covered vs `tiles.ts` 23/33/62 high, 63 medium). |
+| 3 | Darkvision: dwarf and elf have darkvision; halflings do not (FADEE p.93). | Book p.93 names dwarf and elf as the darkvision classes. | `src/engine/light.ts` — `DARKVISION_CLASSES = ['dwarf', 'elf']`; `computeLight` already grants light when all living PCs are darkvision-exempt. Tests: `tests/unit/rulingsDarkvision.test.ts` (dwarf/elf-only party lit; halfling-containing party dark). |
+| 4 | R117 Final Boss base count: PREVIOUS Major Foes only — the boss itself is not a Major Foe. | "Met so far" counts foes already met, not the boss being rolled. | No code change — code already rolls d6 + previous majors only. |
+| 5 | R118 Final Boss "+1 attack": the boss attacks at L+1; Defense stays at L. | "+1 attack" modifies the attack, not the Defense. | `src/engine/combat/combat.ts` — foe attack roll; test added alongside the fix. (+1 Life, fight-to-death, and treasure were already implemented.) |
+| 6 | Traps page: p.164, not p.163. | The ledger cites p.164 twice (Part 10 header and R132) versus one code citation of p.163. | Citation updated in `src/engine/features/resolve.ts` (Traps section header, roll/log citations) and `src/rulesets/expanded/features.ts` (`TRAP_INFO` sources + header comment); `tests/unit/phase5.test.ts` trap describe label. No mechanics change. The p.163 citation in `src/engine/combat/combat.ts:1070` (Holy symbol of healing, Epic Rewards) is a different rule and is unchanged. |
+| 7 | R048 cleric scroll rate: +0 on non-Blessing scrolls. | The ledger's non-Blessing cleric rate is unambiguous at +0 once read against the caster/non-caster split. | No code change — code already uses +0. |
+| 8 | R173 Old School cost: Tier of the TARGET level. | The cost pays for the level being bought, so its tier applies. | Call site in `src/state/dungeonStore.ts` passes `pc.level + 1`; test added alongside the fix. |
+| 9 | R174 Slower boosted 6: NATURAL 6 only — a boosted total of 6+ does not auto-succeed. | "6 always succeeds" refers to the die face, not the boosted total. | XP-roll site; test added alongside the fix. |
+| 10 | Part 3 vs R060 stealth: Part 3 wins — elf Stealth +1, halfling Stealth +L. | The Part 3 class table is the authoritative class summary. | No code change — stealth is not implemented yet. Recorded as a DESIGN RULING for when the stealth system is built. |
+| 11 | Torch price: 1 gp per dozen torches (FADEE p.81). | "Torch 1/dozen" prices the dozen, not the single torch. | `src/rulesets/expanded/features.ts` — `ITEM_INFO['torch']` price 1, `unit: 'dozen'`, source p.81; shop UI shows "torch · 1gp/dozen" (`src/features/inventory/InventoryScreen.tsx`). Tests: `tests/unit/rulingsTorchPrice.test.ts`. Note: the 'torch' equipment name is load-bearing (light system, free-hand rule, starting gear all key off `equipment.includes('torch')`), so the entry is not renamed — the purchase unit is a dozen at 1 gp. Equipment tracks torch possession, not individual torch counts (burnout only extinguishes the lit torch; relighting needs a 'torch' entry), so one purchase = one 'torch' entry representing the dozen. |
+| 12 | Cavern/fungal trap bonus: rogue gets +½L AND +L (both stack). | "All +½L, rogue +L" reads as an additional rogue bonus on top of the general one. | No code change — code already adds both. |
 
 ## Part 17 — Release 0.1 (playable prototype) scope mapping
 

@@ -133,7 +133,7 @@ Do not guess these — each needs the physical book (or a design decision from S
 - **R144/R143 4-as-5 lists.** Cavern "shadows" don't exist; code uses rogue/assassin/halfling (caverns) and halfling/mushroom-monk (fungal) — reasonable.
 - **R145 animal companions.** Not implemented (roster: Hawk, Owl, Peacock, Warhound, Wildcat, Warhorse, Crow with stats in ledger).
 - **R114 roll 5 caverns.** Content-5 cavern feature OVERWRITES the entry feature in store `explore()` (single `cavernFeature` field) — ambiguous whether book intends two features.
-- **Part 10 citation mismatch.** Dungeon traps cited as p.163 throughout code (`features.ts`, `resolve.ts` messages) but ledger Part 10 header and R132 say p.164. Citation only; needs book to settle.
+- **Part 10 citation mismatch — RESOLVED by ruling 6 (2026-11-13): p.164.** Dungeon traps now cite p.164 throughout code (`features.ts`, `resolve.ts` messages), matching the ledger Part 10 header and R132.
 - **Cavern/fungal trap bonus ambiguity.** "All +½L, rogue +L" — code adds both (rogue gets ½L+L); replacement reading (rogue gets +L instead of ½L) is equally plausible. Left as-is.
 - **Deterministic readings (documented in code, need book to confirm).** Hidden-treasure trap complication; spore-cloud two-save semantics; shrieking-mushroom `>= 3` threshold; sealed-door L = HCL+d6 by analogy.
 - **R117 WM exclusion.** Code excludes WM Majors from being Final Boss (citing p.104); ledger supports it explicitly only for event WM raids (R160: "no Final Boss possible"). Retracing-WM exclusion rests on the code's p.104 citation, not on ledger text.

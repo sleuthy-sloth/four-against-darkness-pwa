@@ -173,12 +173,14 @@ Each needs the physical book, an owner decision, or a larger refactor. None was 
 - **R117 WM exclusion.** Code excludes WM Majors from being Final Boss (citing p.104); ledger supports it explicitly only for event WM raids (R160: "no Final Boss possible"). Retracing-WM exclusion rests on the code's p.104 citation, not on ledger text.
 
 ### Ambiguities (ledger needs a ruling; code left as-is)
+
+> All items in this list that carry a ruling number were resolved by the owner's best judgement on 2026-11-13 — see "Rulings applied" below. The remaining bullets (deterministic readings, fungal row-6 split, sleep vs dragons) are still open interpretations, not rulings.
 - **R173 Old School tier basis.** Level-up cost uses the PC's current level's tier (`tierOf(pc.level)`); the ledger doesn't say current vs target tier (matters at L4→5 etc.).
 - **R174 Slower Advancement boosted-6.** `spendStoredXp` treats a boosted total of 6 (`roll >= 6` on d6+extra) as auto-success; the book's "6 always succeeds" arguably means a natural 6.
 - **R048 cleric scroll bonus.** Code (and `phase5.test.ts`) gives a cleric +0 on non-Blessing scrolls; the ledger ("non-casters +1, casters +L, clerics +L only on Blessing") does not state the non-Blessing cleric rate unambiguously. Left at +0.
 - **R117 base-count.** Code rolls d6 + *previous* majors; ledger "d6 + 1 per Major Foe met so far" could include the current foe. Code is internally consistent (statue uses the same convention).
 - **R118 "+1 attack".** Mapping ambiguous (L for Defense only? both attack+defense? damage?). +1 Life / fight-to-death / treasure implemented; attack part unimplemented.
-- **Part 10 citation mismatch.** Dungeon traps cited as p.163 throughout code (`features.ts`, `resolve.ts` messages) but ledger Part 10 header and R132 say p.164. Citation only; needs book to settle.
+- **Part 10 citation mismatch — RESOLVED by ruling 6 (2026-11-13): p.164.** Dungeon traps now cite p.164 throughout code (`features.ts`, `resolve.ts` messages), matching the ledger Part 10 header and R132.
 - **Cavern/fungal trap bonus ambiguity.** "All +½L, rogue +L" — code adds both (rogue gets ½L+L); replacement reading (rogue gets +L instead of ½L) is equally plausible. Left as-is.
 - **Deterministic readings (documented in code, need book to confirm).** Hidden-treasure trap complication; spore-cloud two-save semantics; shrieking-mushroom `>= 3` threshold; sealed-door L = HCL+d6 by analogy.
 - **Ledger internal inconsistency (Part 3 vs R060).** Part 3's class table says elf Stealth +1 and halfling Stealth +L, but R060 says elf +½L and halfling +½L. The data follows the Part 3 table. Do not change without owner confirmation.
@@ -193,7 +195,7 @@ Each needs the physical book, an owner decision, or a larger refactor. None was 
 
 ## (c) Needs Steven's book
 
-These cannot be resolved without the physical copy. Exact page references and what to confirm:
+These could not be resolved without the physical copy at the time of the pass. All 12 were subsequently resolved by the owner's best judgement on 2026-11-13 — see "Rulings applied" below. The per-item notes are kept for the record.
 
 1. **OQ-1 — Search Table "0-1" misprint (FADEE p.107).** The Search Table shows "0-1" on a d6 — almost certainly a misprint for "1". The code treats 1 = Wandering Monsters. **Confirm:** does the printed page show "0-1" or "1"? (If it genuinely shows "0-1", the table's d6 mapping needs re-reading.)
 2. **OQ-2 — Tile shapes from page images (FADEE pp.149-151).** All 36 d66 shapes + 6 starting shapes exist in `src/rulesets/expanded/tiles.ts` with footprints and door positions, and the 100-seeded-dungeon simulation passes with no structural violations. **Low-confidence as coded:** d66 tiles **32** ("partial reads only; L-corridor per first pass") and **35** ("nook/room junction obscured by art"), plus starting tiles **4** and **5** (diagonal approximations). **Confidence mismatch to resolve:** the ledger's OQ-2 says diagrams for **23, 33, 35, 62, 63** were partly art-covered, but `tiles.ts` marks 23/33/62 `high` confidence (63 `medium`, 35 `low`). **Confirm:** for tiles 23, 33, 35, 62, 63 (and 32, and starting 4/5), are the coded footprints and door positions correct? Re-render pp.149-151 and compare each shape visually.
@@ -207,6 +209,27 @@ These cannot be resolved without the physical copy. Exact page references and wh
 10. **Part 3 vs R060 stealth inconsistency (FADEE pp.7, 78).** Part 3's class table says elf Stealth +1 and halfling Stealth +L; R060 says elf +½L and halfling +½L. **Confirm:** which is right?
 11. **Part 13 torch price (FADEE p.81).** "Torch 1/dozen" — 1 gp per torch or 1 gp per dozen? Code charges 1 gp each.
 12. **Cavern/fungal trap bonus (FADEE pp.165-166).** "All +½L, rogue +L" — does the rogue get +½L *and* +L, or +L *instead of* +½L? Code adds both.
+
+---
+
+## Rulings applied (2026-11-13, owner's best judgement)
+
+All 12 open questions from section (c) above are RESOLVED. Full detail per ruling lives in `docs/RULES_VERIFICATION.md` ("Rulings (2026-11-13, owner's best judgement)").
+
+| # | Ruling | What changed in code |
+| --- | --- | --- |
+| 1 | OQ-1: Search "0-1" is a misprint for "1" (p.107). | No code change — code already treats 1 = Wandering Monsters. |
+| 2 | OQ-2: Tile shapes accepted as-is. | No code change. Residual uncertainty noted, not blocking: low-confidence d66 32/35 + starting 4/5; ledger-vs-`tiles.ts` confidence mismatch (23/33/35/62/63). |
+| 3 | Darkvision: dwarf + elf (FADEE p.93); halflings do not. | `src/engine/light.ts` — `DARKVISION_CLASSES = ['dwarf', 'elf']`. Tests: `tests/unit/rulingsDarkvision.test.ts` (new); the two "list is empty by design" assertions in `tests/unit/sectionB.test.ts` and `tests/unit/release05.test.ts` updated to the ruled list. |
+| 4 | R117 Final Boss base count: PREVIOUS Major Foes only. | No code change — code already rolls d6 + previous majors only. |
+| 5 | R118 Final Boss "+1 attack": boss attacks at L+1; Defense stays at L. | `src/engine/combat/combat.ts` — foe attack roll; test added alongside the fix. (+1 Life, fight-to-death, treasure already implemented.) |
+| 6 | Traps page: p.164, not p.163. | Citation only: `src/engine/features/resolve.ts` (Traps section) and `src/rulesets/expanded/features.ts` (`TRAP_INFO` sources + header comment); `tests/unit/phase5.test.ts` trap label; `docs/CHANGELOG.md` and `docs/IMPLEMENTATION_STATUS.md` trap mentions. The p.163 citation in `src/engine/combat/combat.ts:1070` (Holy symbol of healing, Epic Rewards) is a different rule and is unchanged. |
+| 7 | R048 cleric scroll rate: +0 on non-Blessing scrolls. | No code change — code already uses +0. |
+| 8 | R173 Old School cost: Tier of the TARGET level. | Call site in `src/state/dungeonStore.ts` passes `pc.level + 1`; test added alongside the fix. |
+| 9 | R174 Slower boosted 6: NATURAL 6 only. | XP-roll site; test added alongside the fix. |
+| 10 | Part 3 vs R060 stealth: Part 3 wins — elf Stealth +1, halfling Stealth +L. | No code change — stealth is not implemented yet; recorded as a DESIGN RULING for when the stealth system is built. |
+| 11 | Torch price: 1 gp per dozen (FADEE p.81). | `src/rulesets/expanded/features.ts` — `ITEM_INFO['torch']` price 1, `unit: 'dozen'`, source p.81; shop UI shows "torch · 1gp/dozen" (`src/features/inventory/InventoryScreen.tsx`). Tests: `tests/unit/rulingsTorchPrice.test.ts` (new). The 'torch' equipment name is load-bearing (light system, free-hand rule, starting gear), so the entry was not renamed — the purchase unit is a dozen at 1 gp. |
+| 12 | Cavern/fungal trap bonus: rogue gets +½L AND +L (both stack). | No code change — code already adds both. |
 
 ---
 
@@ -226,11 +249,11 @@ These cannot be resolved without the physical copy. Exact page references and wh
 - `src/engine/combat/combat.ts` — natural-1 defense, surprise shield strip, strict-half weakening, situational attack/defense modifiers, `isGiantTrollOgre`, `noLootWin`, fled-Final-Boss `xpDue`, `applyFinalBossBuff`, `partyFirst`, Final Boss Reaction forcing, Minotaur Charge, free-hand casting, Blessing/Fireball/Sleep fixes, Weakness consumption, `record` guards (A2–A4, A6–A8, B15–B17, C7–C12, coordinator fix).
 - `src/engine/dungeon/generate.ts` — `DungeonState.hcl`, `DungeonState.lastXpLevelUpPcId`, cavern no-doors, Final Boss `canBeFinalBoss` option, gremlin tally, hidden-treasure complications, `PendingChoicePayload.trap` fields, `TileContent.trap`/`trapDisarmed` (A5, A9, B2–B5, B27).
 - `src/engine/dungeon/doors.ts` — (verified; door-table bands corrected in test, code mapping was right).
-- `src/engine/features/resolve.ts` — dart/spears trap fixes, trap-level/disarm helpers, cavern halfling rerolls, sleep spores / spore cloud / slime patch / shrieking mushroom / cordyceps fixes (B6–B14).
+- `src/engine/features/resolve.ts` — dart/spears trap fixes, trap-level/disarm helpers, cavern halfling rerolls, sleep spores / spore cloud / slime patch / shrieking mushroom / cordyceps fixes (B6–B14); ruling 6: trap citations p.163 → p.164.
 - `src/engine/treasure/loot.ts` — `++` shift, `none`/`no-magic`, scroll lists, fungal row-6 split, `rollMagicTreasure` export, `scrollEquipmentName` (B18–B19, C1–C5, C13).
 - `src/engine/camp/rest.ts` — cleric `hasSpentAbility` fix (C15).
 - `src/engine/characters/create.ts` — halfling trait loop (C16).
-- `src/engine/light.ts` — (verified; `DARKVISION_CLASSES` stays `[]` by design).
+- `src/engine/light.ts` — ruling 3 (2026-11-13): `DARKVISION_CLASSES = ['dwarf', 'elf']` (was `[]` by design).
 - `src/rulesets/expanded/expandedClasses.ts` — NEW, 12 non-core classes (C17).
 - `src/rulesets/expanded/extraSpells.ts` — NEW, druid + illusionist ×12 (C6).
 - `src/rulesets/expanded/monsters.ts` — `treasureRolls`, multi-roll profiles (C13).
@@ -242,7 +265,12 @@ These cannot be resolved without the physical copy. Exact page references and wh
 - `src/features/dungeon/CombatPanel.tsx` — free-hand cast disabling, Blessing targetless (C7–C8).
 - `src/database/db.ts` — comment example `weakness:Orcs` → `weakness:Ogre` (C12).
 - `tests/unit/rulesSectionA.test.ts` — NEW, 22 tests.
-- `tests/unit/sectionB.test.ts` — NEW, 38 tests.
+- `src/rulesets/expanded/features.ts` — ruling 6: `TRAP_INFO` sources p.163 → p.164; ruling 11: `ITEM_INFO['torch']` price 1 per dozen (`unit: 'dozen'`, source p.81).
+- `src/features/inventory/InventoryScreen.tsx` — ruling 11: shop shows "torch · 1gp/dozen" and "1 gp per dozen" in the buy dialog.
+- `tests/unit/rulingsDarkvision.test.ts` — NEW, 7 tests (ruling 3).
+- `tests/unit/rulingsTorchPrice.test.ts` — NEW, 3 tests (ruling 11).
+- `tests/unit/sectionB.test.ts`, `tests/unit/release05.test.ts` — darkvision list assertions updated to `['dwarf', 'elf']` (ruling 3).
+- `tests/unit/phase5.test.ts` — trap describe label p.163 → p.164 (ruling 6).
 - `tests/integration/sectionBStore.test.ts` — NEW, 6 tests.
 - `tests/unit/sectionC.test.ts` — NEW, 31 tests.
 - `tests/integration/xpRolls.test.ts` — reaction-win test now asserts "No treasure" log line.

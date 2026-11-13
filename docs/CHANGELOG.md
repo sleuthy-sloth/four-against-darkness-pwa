@@ -176,7 +176,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Healing potion (all damage, 1/adventure, free action in combat) and bandage (+1 Life, never in combat) from Inventory and combat panel (p.83)
 - Dungeon Special Features table fully resolved (p.152): Fountain, Blessed Temple, Armory, Cursed Altar, Statue (living-statue boss fight or 3d6×10gp), Puzzle Box (Save vs. its L)
 - Dungeon Special Events table (p.153): Ghost fear Saves with Life-or-Madness choice, WM ambushes, wandering healer & alchemist shops, trap rolls; Lady in White appears (quest acceptance deferred, flagged)
-- Dungeon Traps table (p.163): all six traps with exact Save/Defense math
+- Dungeon Traps table (p.164): all six traps with exact Save/Defense math
 - Equipment exchange with same-build armor rule and combat restrictions (p.111); ChoiceDialog for every player choice
 - 97 tests including a 600-tile features/events simulation; live-verified ambush combat and consumables
 - Spells in combat: Sleep/Fireball/Lightning/Protection/Escape; slots consumed on cast (p.64); failed casts waste the spell (p.67); Sleep immunities; sleeping-foe rules (p.68)

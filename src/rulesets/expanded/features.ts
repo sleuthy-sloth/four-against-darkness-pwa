@@ -3,7 +3,7 @@ import { z } from 'zod'
 /**
  * Dungeon special features, special events, and traps — data only.
  * Sources: FADEE Expanded Edition, Dungeon Special Feature Table (p.152),
- * Dungeon Special Events Table (p.153), Dungeon Traps Table (p.163).
+ * Dungeon Special Events Table (p.153), Dungeon Traps Table (p.164).
  * Original paraphrase; page references verify against the book.
  */
 
@@ -40,27 +40,27 @@ export type DungeonTrap = (typeof DUNGEON_TRAPS)[number]
 export const TRAP_INFO: Record<DungeonTrap, { text: string; source: string }> = {
   dart: {
     text: 'Dart! A random PC defends vs. HCL+1 or loses 1 Life. Halflings may reroll a failed Defense roll.',
-    source: 'FADEE p.163',
+    source: 'FADEE p.164',
   },
   poisonGas: {
     text: 'Poison gas! All PCs Save vs. HCL+2 poison or lose 1 Life. Barbarians and halflings add +L.',
-    source: 'FADEE p.163',
+    source: 'FADEE p.164',
   },
   trapdoor: {
     text: 'Trapdoor (HCL+3) under the Marching Order leader: Save at -1 light armor / -2 heavy armor, +1 halfling/elf, rogues +L. Fail = 1 Life lost and a hand needed to climb out.',
-    source: 'FADEE p.163',
+    source: 'FADEE p.164',
   },
   bearTrap: {
     text: 'Bear trap under the Marching Order leader: Save vs. HCL+3 (+1 halfling/elf, rogues +L). Fail = 1 Life lost, -1 Attack and Defense until that Life is recovered.',
-    source: 'FADEE p.163',
+    source: 'FADEE p.164',
   },
   spears: {
     text: 'Spears strike 2 random PCs: Defense vs. HCL+4 or lose 1 Life.',
-    source: 'FADEE p.163',
+    source: 'FADEE p.164',
   },
   fallingStone: {
     text: 'A giant stone falls on the Marching Order position 4 PC: Defense vs. HCL+4 (armor applies, shield does not) or lose 2 Life.',
-    source: 'FADEE p.163',
+    source: 'FADEE p.164',
   },
 }
 
@@ -115,8 +115,10 @@ export const FEATURE_INFO: Record<DungeonFeature, { text: string; source: string
   },
 }
 
-/** Consumables usable from the inventory (FADEE pp.83-85). */
-export const ITEM_INFO: Record<string, { text: string; price: number; source: string }> = {
+/** Consumables usable from the inventory (FADEE pp.83-85). `price` is the
+ * price of one purchase unit; `unit` names the unit when it is not a single
+ * item (e.g. torches are sold by the dozen, FADEE p.81). */
+export const ITEM_INFO: Record<string, { text: string; price: number; source: string; unit?: string }> = {
   'healing potion': {
     text: 'Heals all damage. No PC may drink more than 1 per adventure. Free action, usable in combat.',
     price: 100,
@@ -143,9 +145,10 @@ export const ITEM_INFO: Record<string, { text: string; price: number; source: st
     source: 'FADEE p.82',
   },
   torch: {
-    text: 'Light source: burns for 6 rooms (1 hour). Melee-usable as a light crushing weapon; extinguishes on a roll of 1; +2 vs flammable.',
+    text: 'Light source: burns for 6 rooms (1 hour). Melee-usable as a light crushing weapon; extinguishes on a roll of 1; +2 vs flammable. Sold by the dozen — 1 gp buys 12 torches (FADEE p.81).',
     price: 1,
-    source: 'FADEE p.110',
+    source: 'FADEE p.81',
+    unit: 'dozen',
   },
   rations: {
     text: 'Food for 1 person for 1 day. Max 10 per PC. Bribes ravenous creatures.',

@@ -36,7 +36,7 @@ export function tierOf(level: number): number {
   return 1
 }
 
-/** Old School level-up cost (R173): (Tier+2)×100, Tier of the PC's level. */
+/** Old School level-up cost (R173): (Tier+2)×100, Tier of the TARGET level being entered. */
 export function oldSchoolLevelCost(level: number): number {
   return (tierOf(level) + 2) * 100
 }

@@ -446,8 +446,8 @@ describe('cavern openings have no doors (R141)', () => {
 })
 
 describe('light and darkvision (R093/R094)', () => {
-  it('no class is treated as darkvision-exempt: the list is empty by design', () => {
-    expect(DARKVISION_CLASSES).toEqual([])
+  it('darkvision classes are dwarf and elf (ruling 2026-11-13, FADEE p.93)', () => {
+    expect(DARKVISION_CLASSES).toEqual(['dwarf', 'elf'])
   })
 
   it('a torch burns 6 rooms: lit at 5, out at 6', () => {

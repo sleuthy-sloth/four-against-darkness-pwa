@@ -176,7 +176,7 @@ export default function InventoryScreen() {
                 title={ITEM_INFO[item].text}
               >
                 <ItemIcon item={item} size={16} />
-                {item} · {ITEM_INFO[item].price}gp
+                {item} · {ITEM_INFO[item].price}gp{ITEM_INFO[item].unit ? `/${ITEM_INFO[item].unit}` : ''}
               </button>
             ))}
           </div>
@@ -328,7 +328,8 @@ export default function InventoryScreen() {
           >
             <p className="flex items-center gap-1.5 text-sm text-torch">
               Who buys the {buying} (<CoinDevice size={14} />
-              <span className="font-mono font-bold text-brassInk">{ITEM_INFO[buying].price}</span> gp)?
+              <span className="font-mono font-bold text-brassInk">{ITEM_INFO[buying].price}</span> gp
+              {ITEM_INFO[buying].unit ? ` per ${ITEM_INFO[buying].unit}` : ''})?
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               {living.map((p) => (
