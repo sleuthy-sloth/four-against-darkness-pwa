@@ -27,6 +27,56 @@ export function parseRollFromText(text: string): ParsedRoll | null {
   return null
 }
 
+/**
+ * Damage out of a log line (Stream 2 — damage numerals). Display-only:
+ * reads the engine's fixed spellings, never rolls anything.
+ *   "<Foe> takes 2 damage → 3/5 Life."          → foe damage
+ *   "<PC> fails the defense: 1 damage → ..."    → PC damage
+ *   "<PC> takes 1 damage → ..."                 → PC damage (flee hits,
+ *     the cap's bite)
+ * "A natural 1 always fails: 1 damage." names no target, so it parses
+ * to null — the grid shake already covers that hit. The caller decides
+ * foe-vs-PC by matching `target` against its own name lists.
+ */
+export function parseDamageFromText(text: string): { target: string; amount: number } | null {
+  const defense = /^(.+?) fails the defense: (\d+) damage\b/.exec(text)
+  if (defense) return { target: defense[1], amount: Number(defense[2]) }
+  const takes = /^(.+?) takes (\d+) damage\b/.exec(text)
+  if (takes) return { target: takes[1], amount: Number(takes[2]) }
+  return null
+}
+
+/**
+ * Healing out of a log line (Stream 2 — healing glow + numeral).
+ *   "<Cleric> prays for Healing: <PC> recovers 4 Life → ..."
+ *   "<PC> drinks a healing potion and recovers ALL 5 lost Life → ..."
+ * A wasted potion ("at full Life — it is wasted") carries no number
+ * and parses to null.
+ */
+export function parseHealFromText(text: string): { target: string; amount: number } | null {
+  const prayer = /prays for Healing: (.+?) recovers (\d+) Life\b/.exec(text)
+  if (prayer) return { target: prayer[1], amount: Number(prayer[2]) }
+  const potion = /^(.+?) drinks a healing potion and recovers ALL (\d+)/.exec(text)
+  if (potion) return { target: potion[1], amount: Number(potion[2]) }
+  return null
+}
+
+/**
+ * The attacker named on the "X attacks Y: d6[…]" line just before a
+ * strike (Stream 2 — the lunge lands on the true attacker, not just
+ * the best attacker). Scans back at most 3 lines: a minor-slay can put
+ * a "sleeping … dispatched" line between the attack and the "Hit!".
+ * A spell's damage line has no attack line before it, so this returns
+ * null for casts — the foe still shakes, but no PC lunges.
+ */
+export function parseAttackerForStrike(lines: string[], strikeIdx: number): string | null {
+  for (let i = strikeIdx; i >= Math.max(0, strikeIdx - 3); i--) {
+    const m = /^(.+?) attacks (.+): d6\[/.exec(lines[i])
+    if (m) return m[1]
+  }
+  return null
+}
+
 /** Pip centres for a d6 face in a 100×100 box (standard layout). */
 export function pipsFor(value: number): Array<{ x: number; y: number }> {
   const tl = { x: 28, y: 28 }

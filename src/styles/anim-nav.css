@@ -1,0 +1,71 @@
+/* Animation round (2026-11-13) — Stream 1: navigation fluidity.
+   Tab transitions and screen mount easing. Owned by the Stream 1
+   implementer. The reduced-motion gate at the end of index.css lists
+   every animated class defined here.
+
+   How it works (see src/features/common/ScreenTransition.tsx): the
+   outgoing screen stays mounted for one 200ms beat, absolutely
+   positioned under the incoming screen, so the two crossfade/slide
+   past each other instead of the old screen vanishing instantly.
+   Motion follows the tap — nothing here delays navigation or input:
+   the entering screen is interactive from the first frame, and the
+   exiting copy is pointer-events-none. Timing matches the sliding
+   brass tab indicator (200ms ease-out). */
+
+@keyframes screen-in-forward {
+  0% { opacity: 0; transform: translateX(14px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+@keyframes screen-in-back {
+  0% { opacity: 0; transform: translateX(-14px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+@keyframes screen-in-neutral {
+  0% { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes screen-out-forward {
+  0% { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(-14px); }
+}
+@keyframes screen-out-back {
+  0% { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(14px); }
+}
+@keyframes screen-out-neutral {
+  0% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-4px); }
+}
+
+/* Incoming screen: fades + slides in from the direction of travel
+   (forward = from the right, back = from the left); a same-level
+   switch (e.g. one character sheet to another) eases in with a
+   short fade + slight rise instead. Also the mount easing for the
+   very first screen. */
+.screen-enter-forward {
+  animation: screen-in-forward 0.2s ease-out 1;
+  will-change: transform, opacity;
+}
+.screen-enter-back {
+  animation: screen-in-back 0.2s ease-out 1;
+  will-change: transform, opacity;
+}
+.screen-enter-neutral {
+  animation: screen-in-neutral 0.2s ease-out 1;
+  will-change: transform, opacity;
+}
+
+/* Outgoing screen: fades + slides away in the direction of travel
+   while the incoming screen arrives over it. */
+.screen-exit-forward {
+  animation: screen-out-forward 0.2s ease-out 1;
+  will-change: transform, opacity;
+}
+.screen-exit-back {
+  animation: screen-out-back 0.2s ease-out 1;
+  will-change: transform, opacity;
+}
+.screen-exit-neutral {
+  animation: screen-out-neutral 0.2s ease-out 1;
+  will-change: transform, opacity;
+}

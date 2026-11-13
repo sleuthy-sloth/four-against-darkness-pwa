@@ -1,0 +1,183 @@
+/* Animation round (2026-11-13) — Stream 2: combat and dice feel.
+   Attack motion, damage numerals, dice tumble, foe defeat, healing
+   glow, encounter/victory/XP flow continuity. Owned by the Stream 2
+   implementer. The reduced-motion gate at the end of index.css lists
+   every animated class defined here (the coordinator owns that list —
+   see the class list at the bottom of this file).
+   Shared easing: one continuous motion from encounter card → victory
+   stamp → XP panel, so the flow reads as a single gesture, not pops.
+   All motion is presentation only: nothing here delays a game action
+   or blocks input. */
+
+:root {
+  --combat-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* --- (f) Flow continuity: encounter → victory → XP, one easing --- */
+
+/* The combat panel mounts when an encounter opens (and remounts on a
+   new encounter): fade + a short rise, same easing as the steps below. */
+@keyframes combat-flow-enter {
+  0% { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.combat-flow-enter {
+  animation: combat-flow-enter 0.32s var(--combat-ease) 1;
+}
+
+/* Later steps in the same flow (the "Back to the room" row, the
+   post-victory hint): same easing, a beat behind the panel. */
+@keyframes combat-flow-step {
+  0% { opacity: 0; transform: translateY(4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.combat-flow-step {
+  animation: combat-flow-step 0.32s var(--combat-ease) 0.12s 1 backwards;
+}
+
+/* The XP-roll card (and the Slow-and-Sure level card): same easing,
+   a beat behind the victory stamp, so stamp → spoils reads as one
+   continuous motion rather than two pops. */
+.combat-xp-flow {
+  animation: combat-flow-step 0.32s var(--combat-ease) 0.06s 1 backwards;
+}
+
+/* Victory / Fallen stamp: the base stamp-in lives in index.css; this
+   restates it with the shared flow easing and a touch more settle, so
+   the stamp lands on the same beat as the panel. The doubled selector
+   outranks .victory-stamp's animation without touching index.css. */
+@keyframes combat-stamp-flow {
+  0% { opacity: 0; transform: rotate(-4deg) scale(1.4); }
+  70% { opacity: 1; transform: rotate(-4deg) scale(1.02); }
+  100% { opacity: 1; transform: rotate(-4deg) scale(1); }
+}
+.victory-stamp.combat-victory-flow {
+  animation: combat-stamp-flow 0.32s var(--combat-ease) 1;
+}
+
+/* --- (a) Attack motion --- */
+
+/* The attacker lunges toward the foe row (above the party grid): a
+   short rise that returns to place. Keyed by the hit line's index, so
+   each new hit replays it. */
+@keyframes combat-attacker-lunge {
+  0% { transform: translateY(0); }
+  35% { transform: translateY(-8px); }
+  100% { transform: translateY(0); }
+}
+.combat-attacker-lunge {
+  animation: combat-attacker-lunge 0.32s var(--combat-ease) 1;
+}
+
+/* The struck foe flashes (existing combat-hit-flash, index.css) and
+   shakes: a short lateral shudder on the same inner span. */
+@keyframes combat-foe-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  50% { transform: translateX(3px); }
+  75% { transform: translateX(-2px); }
+}
+.combat-foe-shake {
+  animation: combat-foe-shake 0.3s ease-in-out 1;
+}
+
+/* The struck PC's cell: an oxblood flash + the same shudder, so a foe's
+   hit reads on the portrait and Life bar, not just the whole grid. */
+@keyframes combat-pc-hit {
+  0% { background-color: rgba(140, 38, 38, 0.4); transform: translateX(0); }
+  25% { background-color: rgba(140, 38, 38, 0.25); transform: translateX(-3px); }
+  50% { transform: translateX(3px); }
+  75% { transform: translateX(-2px); }
+  100% { background-color: transparent; transform: translateX(0); }
+}
+.combat-pc-hit {
+  animation: combat-pc-hit 0.3s ease-in-out 1;
+}
+
+/* --- (b) Damage numerals --- */
+
+/* A numeral floats up from the struck foe/PC and fades. Base opacity
+   is 0, so under prefers-reduced-motion (animation: none) the numeral
+   simply never appears — the log line still carries the number. */
+@keyframes combat-dmg-rise {
+  0% { opacity: 0; transform: translateY(4px); }
+  15% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-14px); }
+}
+.combat-dmg-numeral {
+  position: absolute;
+  z-index: 10;
+  pointer-events: none;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1;
+  opacity: 0;
+  text-shadow: 0 1px 2px rgba(31, 26, 22, 0.6);
+  animation: combat-dmg-rise 0.9s ease-out 1;
+}
+/* Brass for damage the party deals, oxblood for a PC taking a hit,
+   warm torch-gold for Life recovered. Colour only — the motion is on
+   the base class. */
+.combat-dmg-brass {
+  color: #c9a227;
+}
+.combat-dmg-oxblood {
+  color: #d98a7a;
+}
+.combat-dmg-heal {
+  color: #e8b64c;
+}
+
+/* --- (d) Foe defeat: fade and shrink away, not a vanish --- */
+
+/* The row settles into its dim dead styling (already applied by the
+   component) — the animation only carries it there, so under
+   prefers-reduced-motion the row is simply dim at once. */
+@keyframes combat-foe-defeat {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0.35; transform: scale(0.97); }
+}
+.combat-foe-defeat {
+  animation: combat-foe-defeat 0.45s ease-out 1 forwards;
+}
+
+/* --- (e) Healing glow: a soft pulse on the healed PC's cell --- */
+
+/* Warm halo that breathes once and releases; the portrait and Life
+   bar sit inside the cell, so both catch the glow. */
+@keyframes combat-heal-glow {
+  0% { box-shadow: 0 0 0 0 rgba(232, 182, 76, 0); }
+  30% { box-shadow: 0 0 12px 2px rgba(232, 182, 76, 0.55); }
+  100% { box-shadow: 0 0 0 0 rgba(232, 182, 76, 0); }
+}
+.combat-heal-glow {
+  animation: combat-heal-glow 0.9s ease-out 1;
+}
+
+/* --- (c) Dice tumble: the d6 spins/rolls, then settles --- */
+
+/* Applied to the die face while it tumbles (JS cycles the pips); the
+   face then swaps to .die-settle (index.css) for the landing. The
+   tumble is a short roll — a turn and a small hop — never a spin. */
+@keyframes die-tumble {
+  0% { transform: rotate(-28deg) translateY(0); }
+  50% { transform: rotate(14deg) translateY(-3px); }
+  100% { transform: rotate(0deg) translateY(0); }
+}
+.die-tumble {
+  animation: die-tumble 0.28s ease-in-out 1;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* Reduced-motion gate: owned by the coordinator — every animated
+   class above must be listed in the consolidated
+   prefers-reduced-motion block at the end of src/styles/index.css:
+   .combat-flow-enter, .combat-flow-step, .combat-xp-flow,
+   .combat-victory-flow, .combat-attacker-lunge, .combat-foe-shake,
+   .combat-pc-hit, .combat-dmg-numeral, .combat-foe-defeat,
+   .combat-heal-glow, .die-tumble
+   (Colour-only modifiers .combat-dmg-brass / .combat-dmg-oxblood /
+   .combat-dmg-heal carry no animation and need no gate entry.) */

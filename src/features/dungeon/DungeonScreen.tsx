@@ -253,6 +253,43 @@ export default function DungeonScreen() {
   const tile = dungeon ? currentTile(dungeon) : null
   const bounds = useMemo(() => (dungeon ? dungeonBounds(dungeon) : null), [dungeon])
 
+  // Party token position (first cell of the current tile) — the torch
+  // falloff is centred here, and the token always renders last, on top.
+  // Defined before the early returns so the glide effect below can use it.
+  const partyX = tile?.cells[0] ? tile.cells[0].col + 0.5 : 0
+  const partyY = tile?.cells[0] ? tile.cells[0].row + 0.5 : 0
+
+  // Stream 3 (a): party marker glide — when the party explores to a new
+  // tile, the token glides from the old tile instead of jumping. FLIP:
+  // on a tile change the marker renders at the old position first, then
+  // moves to the new one on the next frame, and the .party-glide
+  // transition (350ms) does the moving. Presentation only: the next tap
+  // works mid-glide, and under reduced motion it jumps instantly (the
+  // CSS gate also kills the transition). First mount and retracing to
+  // the same cell render in place — no glide from nowhere.
+  const prevPartyRef = useRef<{ x: number; y: number } | null>(null)
+  const [partyPos, setPartyPos] = useState<{ x: number; y: number } | null>(null)
+  const tileId = tile?.id
+  useEffect(() => {
+    if (!tile) return
+    const next = { x: partyX, y: partyY }
+    const prev = prevPartyRef.current
+    prevPartyRef.current = next
+    if (!prev || (prev.x === next.x && prev.y === next.y) || prefersReducedMotion()) {
+      setPartyPos(next)
+      return
+    }
+    setPartyPos(prev)
+    let raf2 = 0
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setPartyPos(next))
+    })
+    return () => {
+      cancelAnimationFrame(raf1)
+      cancelAnimationFrame(raf2)
+    }
+  }, [tileId, partyX, partyY])
+
   // Roving tabindex follows the party: a new tile resets the active exit.
   useEffect(() => {
     setActiveExit(0)
@@ -517,10 +554,6 @@ export default function DungeonScreen() {
   const isCorridor = D66_TILES.find((t) => t.id === tile.shapeId)?.corridor ?? false
   const searchable = content?.kind === 'empty' && tile.searchRoll === null
   const seed = campaign.seed
-  // Party token position (first cell of the current tile) — the torch
-  // falloff is centred here, and the token always renders last, on top.
-  const partyX = tile.cells[0].col + 0.5
-  const partyY = tile.cells[0].row + 0.5
   const newestTileId = dungeon.tiles[dungeon.tiles.length - 1].id
 
   const zoomButtons: Array<{ label: string; title: string; glyph: string; onClick: () => void }> = [
@@ -1104,6 +1137,42 @@ export default function DungeonScreen() {
                         />
                       </g>
                     )}
+                    {/* Stream 3 (b): fog lift — a dark veil the colour of
+                        unexplored stone over the newly entered tile that
+                        fades out over 650ms, so the room fades in out of
+                        the fog as one piece. Only the newest tile gets
+                        it, so retracing never replays it. Fog semantics
+                        unchanged: unexplored tiles stay dark and
+                        content-hidden; this is only the transition when
+                        a tile becomes explored. */}
+                    {isCurrent && isNewest && (
+                      <rect
+                        key={`fog-lift-${t.id}`}
+                        x={minCol}
+                        y={minRow}
+                        width={maxCol - minCol + 1}
+                        height={maxRow - minRow + 1}
+                        fill="#0f0c09"
+                        className="tile-fog-lift"
+                        pointerEvents="none"
+                      />
+                    )}
+                    {/* Stream 3 (d): secret-door edge shimmer — a brief
+                        brass shimmer around the edge of the tile a secret
+                        door leads from, played once when the door is
+                        found (keyed by its destination tile). */}
+                    {isCurrent && dungeon.secretDoor?.fromTileId === t.id && (
+                      <rect
+                        key={`secret-shimmer-${dungeon.secretDoor.toTileId}`}
+                        x={minCol - 0.04}
+                        y={minRow - 0.04}
+                        width={maxCol - minCol + 1.08}
+                        height={maxRow - minRow + 1.08}
+                        className="secret-door-edge-shimmer fill-none stroke-brass"
+                        strokeWidth={0.06}
+                        pointerEvents="none"
+                      />
+                    )}
                   </g>
                 )
               })}
@@ -1162,7 +1231,7 @@ export default function DungeonScreen() {
                       r={0.34}
                       className={`${pendingXp ? 'pointer-events-none opacity-40' : 'cursor-pointer'} stroke-parchment ${
                         needsDoor ? 'fill-amber-500/80' : unexplored ? 'fill-torch/80' : 'fill-parchment/50'
-                      }`}
+                      } ${unexplored && !pendingXp ? 'exit-pulse' : ''}`}
                       strokeWidth={0.05}
                       onFocus={() => {
                         setActiveExit(i)
@@ -1196,15 +1265,25 @@ export default function DungeonScreen() {
               })}
               {/* party marker: banner token on a torch disc — rendered LAST
                   so it is always on top, never overlapped by the exit discs
-                  (C4). The pulse ring is the "you are here" (C5). */}
+                  (C4). The pulse ring is the "you are here" (C5). Stream 3
+                  (a): the whole token rides in a .party-glide group whose
+                  transform glides between tile positions (see the FLIP
+                  effect above); children are drawn around (0, 0) and the
+                  group carries the position, so the glide moves token,
+                  pulse ring, and warm disc together. */}
               {tile.cells.length > 0 && (
-                <g>
+                <g
+                  className="party-glide"
+                  style={{
+                    transform: `translate(${partyPos?.x ?? partyX}px, ${partyPos?.y ?? partyY}px)`,
+                  }}
+                >
                   {/* warm disc under the token (Stream 2): the torch's
                       heart, breathing almost imperceptibly — instant
                       under reduced motion (see the gate in index.css) */}
                   <circle
-                    cx={partyX}
-                    cy={partyY}
+                    cx={0}
+                    cy={0}
                     r={0.52}
                     fill="#d9a441"
                     opacity={0.22}
@@ -1212,24 +1291,24 @@ export default function DungeonScreen() {
                     aria-hidden="true"
                   />
                   <circle
-                    cx={partyX}
-                    cy={partyY}
+                    cx={0}
+                    cy={0}
                     r={0.3}
                     className="party-pulse fill-none stroke-torch"
                     strokeWidth={0.05}
                     aria-hidden="true"
                   />
                   <circle
-                    cx={partyX}
-                    cy={partyY}
+                    cx={0}
+                    cy={0}
                     r={0.3}
                     className="fill-torch stroke-parchment"
                     strokeWidth={0.05}
                   />
                   <MapIcon
                     frag={cleanIconFragment(partyIconFrag)}
-                    x={partyX}
-                    y={partyY}
+                    x={0}
+                    y={0}
                     size={0.34}
                     className="fill-stone-800"
                   />
@@ -1531,7 +1610,10 @@ export default function DungeonScreen() {
                 )}
                 {/* Secret door (R125): peek at the tile beyond, then enter. */}
                 {dungeon.secretDoor && dungeon.currentTileId === dungeon.secretDoor.fromTileId && (
-                  <div className="mb-2 rounded border border-torch/40 bg-torch/10 p-2">
+                  <div
+                    key={dungeon.secretDoor.toTileId}
+                    className="secret-door-card-shimmer mb-2 rounded border border-torch/40 bg-torch/10 p-2"
+                  >
                     <p className="text-xs text-torch">
                       A secret door leads onward
                       {dungeon.secretDoor.peeked ? ' — peeked: the tile beyond is mapped' : ' — peek before you enter.'}

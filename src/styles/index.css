@@ -10,6 +10,13 @@
 @import '@fontsource/jetbrains-mono/500.css';
 @import '@fontsource/jetbrains-mono/700.css';
 
+/* Animation round (2026-11-13): per-stream motion files, imported here
+   (before Tailwind) so the reduced-motion gate at the end of this file
+   stays last in the cascade and overrides them. */
+@import './anim-nav.css';
+@import './anim-combat.css';
+@import './anim-map.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -495,7 +502,29 @@ h1, h2, h3, h4, .font-headline {
   .fade-in,
   .torch-flicker,
   .card-folio,
-  .card-interactive {
+  .card-interactive,
+  .screen-enter-forward,
+  .screen-enter-back,
+  .screen-enter-neutral,
+  .screen-exit-forward,
+  .screen-exit-back,
+  .screen-exit-neutral,
+  .party-glide,
+  .tile-fog-lift,
+  .exit-pulse,
+  .secret-door-edge-shimmer,
+  .secret-door-card-shimmer,
+  .combat-flow-enter,
+  .combat-flow-step,
+  .combat-xp-flow,
+  .combat-victory-flow,
+  .combat-attacker-lunge,
+  .combat-foe-shake,
+  .combat-pc-hit,
+  .combat-dmg-numeral,
+  .combat-foe-defeat,
+  .combat-heal-glow,
+  .die-tumble {
     animation: none;
     transition: none;
   }

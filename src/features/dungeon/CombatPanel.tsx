@@ -5,6 +5,7 @@ import { canLeaveCombat, describeEnemies, clericPrayersLeft, attackBonusFor } fr
 import { canUseWand, canUseStaff, hasRing, hasFoolsGold } from '../../engine/items/magicItems'
 import { stripCitations } from '../common/stripCitations'
 import { LogDie } from '../common/Die'
+import { parseDamageFromText, parseHealFromText, parseAttackerForStrike } from '../common/dice'
 import FragIcon from '../common/FragIcon'
 import { ClassIcon } from '../common/ClassIcon'
 import { familyFrag } from './foeIcons'
@@ -79,14 +80,55 @@ export default function CombatPanel() {
     hitIdx !== null
       ? feedbackTargetName(combat.log[hitIdx].text, combat.enemies.map((e) => e.profile.name))
       : null
+  // Stream 2 — damage numerals + healing glow, from the same log lines:
+  // the latest damage / heal per target in the last 8 lines (same
+  // bounded window as the feedback channels above). A numeral is keyed
+  // by its log index, so a new event replays the rise-and-fade.
+  const dmgByTarget = new Map<string, { amount: number; index: number }>()
+  const healByTarget = new Map<string, { amount: number; index: number }>()
+  for (let i = Math.max(0, logTexts.length - 8); i < logTexts.length; i++) {
+    const dmg = parseDamageFromText(logTexts[i])
+    if (dmg) dmgByTarget.set(dmg.target, { amount: dmg.amount, index: i })
+    const heal = parseHealFromText(logTexts[i])
+    if (heal) healByTarget.set(heal.target, { amount: heal.amount, index: i })
+  }
+  // The PC a foe just struck (defense-fail line names them; a natural-1
+  // line names nobody, so the grid-level shake covers that one).
+  const defTarget =
+    defIdx !== null
+      ? feedbackTargetName(combat.log[defIdx].text, party.map((p) => p.name))
+      : null
+  // Stream 2 — the strike channel: "Hit!" only logs for Minor Foes
+  // (combat.ts: only the minor-slain branch writes it), so a Major Foe
+  // taking damage logs no hit line at all. A strike is the latest of
+  // either signal — a "Hit!" line or a "takes N damage" line about a
+  // foe — and the attacker is the PC named on the "X attacks Y: d6[…]"
+  // line just before it, so the lunge lands on the true attacker (a
+  // spell's damage line has no attack line before it, so no PC lunges
+  // for a cast — the foe still shakes and the numeral still floats).
+  const foeNames = combat.enemies.map((e) => e.profile.name)
+  let strikeIdx: number | null = null
+  let strikeFoe: string | null = null
+  if (hitIdx !== null && hitTarget) {
+    strikeIdx = hitIdx
+    strikeFoe = hitTarget
+  }
+  for (const [name, dmg] of dmgByTarget) {
+    if (foeNames.includes(name) && (strikeIdx === null || dmg.index > strikeIdx)) {
+      strikeIdx = dmg.index
+      strikeFoe = name
+    }
+  }
+  const strikeAttacker =
+    strikeIdx !== null ? parseAttackerForStrike(logTexts, strikeIdx) : null
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col overflow-y-auto p-3 pb-4">
+    <div className="combat-flow-enter flex min-w-0 flex-1 flex-col overflow-y-auto p-3 pb-4">
       <div className="mb-2 flex items-baseline justify-between">
         {combat.phase === 'won' ? (
-          <div className="victory-stamp" role="status">Victory</div>
+          <div className="victory-stamp combat-victory-flow" role="status">Victory</div>
         ) : combat.phase === 'lost' ? (
-          <div className="victory-stamp" role="status">Fallen</div>
+          <div className="victory-stamp combat-victory-flow" role="status">Fallen</div>
         ) : (
           <h2 className="text-lg text-ember">
             {combat.phase === 'fled' && 'You fled'}
@@ -115,28 +157,45 @@ export default function CombatPanel() {
       <div className="mb-2 space-y-1">
         {combat.enemies.map((e) => {
           const dead = e.fled || e.count === 0 || e.life === 0
-          const hitFlash = hitIdx !== null && hitTarget === e.profile.name
           const moraleSlump = moraleIdx !== null && e.fled
+          // Stream 2: a defeated (not fled) foe fades and shrinks away
+          // instead of vanishing; a damage numeral floats up from the
+          // row for the latest "takes N damage" line about this foe.
+          // The struck foe flashes and shakes on ANY strike — a "Hit!"
+          // line (Minors) or a "takes N damage" line (Majors, spells).
+          const foeDmg = dmgByTarget.get(e.profile.name)
+          const struck = strikeFoe === e.profile.name
           return (
             <button
               key={e.id}
               disabled={dead || combat.phase !== 'pcTurn'}
               onClick={() => setTargetId(e.id)}
-              className={`block w-full rounded border px-2 py-1.5 text-left text-sm transition-shadow duration-150 hover:shadow-raised ${
+              className={`relative block w-full rounded border px-2 py-1.5 text-left text-sm transition-shadow duration-150 hover:shadow-raised ${
                 dead
                   ? 'border-stone-800 bg-stone-900 text-parchment/30'
                   : targetId === e.id || (!targetId && active?.id === e.id)
                     ? 'border-ember bg-ember/15 text-parchment'
                     : 'border-stone-700 bg-stone-800/60 text-parchment'
-              } ${moraleSlump ? 'combat-morale-slump' : ''}`}
+              } ${moraleSlump ? 'combat-morale-slump' : ''} ${dead && !e.fled ? 'combat-foe-defeat' : ''}`}
             >
-              {/* The hit flash lives on this inner span (keyed by the hit
-                  line's index, so a new hit replays it) — not on the
-                  button, so remounting it never steals the button's focus. */}
+              {foeDmg && (
+                <span
+                  key={`dmg-${foeDmg.index}`}
+                  className="combat-dmg-numeral combat-dmg-brass right-2 top-0"
+                  aria-hidden="true"
+                >
+                  −{foeDmg.amount}
+                </span>
+              )}
+              {/* The hit flash lives on this inner span (keyed by the
+                  strike line's index, so a new strike replays it) — not
+                  on the button, so remounting it never steals the
+                  button's focus. Stream 2: the struck foe also shakes
+                  on the same span. */}
               <span
-                key={hitFlash ? `hit-${hitIdx}` : 'no-hit'}
+                key={struck ? `strike-${strikeIdx}` : 'no-strike'}
                 className={`-mx-2 -my-1.5 flex items-center gap-2 rounded px-2 py-1.5 ${
-                  hitFlash ? 'combat-hit-flash' : ''
+                  struck ? 'combat-hit-flash combat-foe-shake' : ''
                 }`}
               >
                 <FragIcon frag={familyFrag(e.profile.family)} size={20} label={e.profile.name} />
@@ -171,8 +230,41 @@ export default function CombatPanel() {
         {party.map((p) => {
           const dead = p.status === 'dead'
           const hpPct = (p.currentLife / p.maxLife) * 100
+          // Stream 2: the striking PC lunges on a hit; the struck PC's
+          // portrait/Life bar flashes and shakes on a defense fail; a
+          // healed PC glows. The cell remounts (key) on a new event for
+          // that PC, so each event replays its motion; cells hold no
+          // focus, so remounting is safe. Damage/heal numerals float up
+          // from the cell, keyed by their log line.
+          const lunges = strikeAttacker === p.name
+          const struck = defTarget === p.name
+          const pcDmg = dmgByTarget.get(p.name)
+          const pcHeal = healByTarget.get(p.name)
           return (
-            <div key={p.id} className="rounded bg-stone-800/60 px-1.5 py-1 text-center">
+            <div
+              key={`${p.id}|${lunges ? `lunge-${strikeIdx}` : ''}|${struck ? `hit-${defIdx}` : ''}|${pcHeal ? `heal-${pcHeal.index}` : ''}`}
+              className={`relative rounded bg-stone-800/60 px-1.5 py-1 text-center ${
+                lunges ? 'combat-attacker-lunge' : ''
+              } ${struck ? 'combat-pc-hit' : ''} ${pcHeal ? 'combat-heal-glow' : ''}`}
+            >
+              {pcDmg && (
+                <span
+                  key={`dmg-${pcDmg.index}`}
+                  className="combat-dmg-numeral combat-dmg-oxblood right-1 top-0"
+                  aria-hidden="true"
+                >
+                  −{pcDmg.amount}
+                </span>
+              )}
+              {pcHeal && (
+                <span
+                  key={`heal-${pcHeal.index}`}
+                  className="combat-dmg-numeral combat-dmg-heal right-1 top-3"
+                  aria-hidden="true"
+                >
+                  +{pcHeal.amount}
+                </span>
+              )}
               <span
                 className={`mx-auto flex h-8 w-8 items-center justify-center rounded-full border border-stone-700 bg-stone-900/60 p-0.5 ${
                   dead ? 'opacity-40 grayscale' : ''
@@ -452,7 +544,7 @@ export default function CombatPanel() {
 
       {/* outcome: the XP-roll prompt is a proper folio card (D3) */}
       {combat.phase === 'won' && pendingXp && (
-        <div className="card-folio mb-2 p-3">
+        <div className="card-folio combat-xp-flow mb-2 p-3">
           <p className="font-display text-sm text-torch">Spoils of victory</p>
           <p className="num-tabular text-sm text-parchment">
             XP earned: {pendingXp.major > 0 && `${pendingXp.major} Major Foe roll(s) `}
@@ -478,7 +570,7 @@ export default function CombatPanel() {
           while combat is open, and "Back to the room" stays disabled until
           the Level is assigned, so the card must be reachable here. */}
       {combat.phase === 'won' && (dungeon.pendingLevelUps ?? 0) > 0 && (
-        <div className="card-folio mb-2 p-3">
+        <div className="card-folio combat-xp-flow mb-2 p-3">
           <p className="font-display text-sm text-torch">Slow and Sure: {dungeon.pendingLevelUps} Level{dungeon.pendingLevelUps === 1 ? '' : 's'} to assign</p>
           <p className="text-xs text-parchment/70">Pick a surviving adventurer — the Level applies at once.</p>
           <div className="mt-1 flex flex-wrap gap-1">
@@ -495,7 +587,7 @@ export default function CombatPanel() {
         </div>
       )}
       {(combat.phase === 'won' || combat.phase === 'lost') && (
-        <p className="mb-2 text-xs text-parchment/70">
+        <p className="combat-flow-step mb-2 text-xs text-parchment/70">
           {pendingXp
             ? 'Assign your XP rolls above before leaving — each roll goes to one adventurer.'
             : (dungeon.pendingLevelUps ?? 0) > 0
@@ -515,7 +607,7 @@ export default function CombatPanel() {
           onClick={() => void leaveCombat()}
           disabled={!!pendingXp || (dungeon.pendingLevelUps ?? 0) > 0}
           aria-disabled={!!pendingXp || (dungeon.pendingLevelUps ?? 0) > 0}
-          className="btn-wax mb-2 w-full px-4 py-2 text-sm disabled:opacity-50"
+          className="btn-wax combat-flow-step mb-2 w-full px-4 py-2 text-sm disabled:opacity-50"
         >
           Back to the room
         </button>
@@ -530,9 +622,11 @@ export default function CombatPanel() {
       </button>
       {showLog && (
         <ul className="num-tabular space-y-0.5 text-[11px] leading-relaxed text-parchment/70">
-          {combat.log.slice(-14).map((l) => (
+          {combat.log.slice(-14).map((l, i, arr) => (
             <li key={`${l.ts}-${l.text}`} className="log-line">
-              <LogDie text={l.text} />
+              {/* Stream 2: only the newest line's die tumbles; older dice
+                  render settled (tumble=false shows the final face). */}
+              <LogDie text={l.text} tumble={i === arr.length - 1} />
               · {stripCitations(l.text)}
             </li>
           ))}

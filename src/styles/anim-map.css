@@ -1,0 +1,83 @@
+/* Animation round (2026-11-13) — Stream 3: map movement.
+   Party marker glide, tile reveal, exit pulse, secret-door shimmer.
+   Owned by the Stream 3 implementer. The reduced-motion gate at the
+   end of index.css lists every animated class defined here.
+
+   Reduced-motion safety (by construction, so the gate can only help):
+   - .party-glide is a transition — under the gate it becomes instant.
+   - .tile-fog-lift and .secret-door-edge-shimmer are one-shot overlays
+     whose base opacity is 0: with the animation disabled they are
+     invisible, never a permanent dark veil or stray frame.
+   - .exit-pulse is infinite but opacity/scale only, base opacity 1.
+   - .secret-door-card-shimmer is a one-shot box-shadow glow, base none. */
+
+/* (a) Party marker glide: the token group moves on a transform
+   transition (350ms, easeOutQuint) between tile positions. The
+   component FLIPs it: on a tile change it renders at the old tile
+   first, then on the next frame at the new tile, so the transition
+   glides instead of jumping. Never delays input — the next tap works
+   mid-glide; the transform is presentation only. */
+.party-glide {
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* (b) Tile reveal: a dark veil the colour of unexplored stone lifts
+   off a newly entered tile (650ms, opacity only). The veil sits on
+   top of the whole tile — floor, walls, icons — so the room fades in
+   out of the fog as one piece. Only the newest tile gets it, so
+   retracing never replays it. Fog semantics unchanged: unexplored
+   tiles stay dark and content-hidden; this is the transition when a
+   tile becomes explored. */
+@keyframes tile-fog-lift {
+  0% { opacity: 0.85; }
+  100% { opacity: 0; }
+}
+.tile-fog-lift {
+  opacity: 0;
+  animation: tile-fog-lift 0.65s ease-out 1 forwards;
+}
+
+/* (c) Exit pulse: available (unexplored) exit discs breathe gently —
+   a slow 2.8s opacity/scale pulse, subtle enough not to fight the
+   torch glow or the flickering warm disc under the party token. The
+   way back (dim) and door-needing discs keep their own reads; only
+   the way forward pulses. transform-box keeps the scale centred on
+   the disc itself. */
+@keyframes exit-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.72; transform: scale(1.05); }
+}
+.exit-pulse {
+  animation: exit-pulse 2.8s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* (d) Secret-door reveal, map edge: a brief brass shimmer that runs
+   once around the edge of the tile the secret door leads from — a
+   dashed stroke that sweeps (dashoffset) and fades over 1.4s, then
+   rests invisible. Keyed by the secret door's destination tile, so
+   a newly found door replays it once. */
+@keyframes secret-door-edge-shimmer {
+  0% { opacity: 0; stroke-dashoffset: 0; }
+  25% { opacity: 0.9; }
+  100% { opacity: 0; stroke-dashoffset: -1.2; }
+}
+.secret-door-edge-shimmer {
+  opacity: 0;
+  stroke-dasharray: 0.3 0.15;
+  animation: secret-door-edge-shimmer 1.4s ease-out 1 forwards;
+}
+
+/* (d) Secret-door reveal, panel card: the same moment in the bottom
+   panel — a one-shot warm glow that swells and settles (1.2s), so the
+   "secret door leads onward" card catches the eye once when it
+   appears, then reads as a normal card. */
+@keyframes secret-door-card-shimmer {
+  0% { box-shadow: 0 0 0 0 rgba(217, 164, 65, 0); }
+  30% { box-shadow: 0 0 18px 2px rgba(217, 164, 65, 0.45); }
+  100% { box-shadow: 0 0 0 0 rgba(217, 164, 65, 0); }
+}
+.secret-door-card-shimmer {
+  animation: secret-door-card-shimmer 1.2s ease-out 1;
+}

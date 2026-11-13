@@ -190,7 +190,11 @@ test('fog of war: secret-door tile hidden until entered, peek reveals it', async
   await bootstrap(page, 'Probe Fog')
   await importFixture(page, 'search', 'Search Find Fixture')
 
-  const darkCells = () => page.locator('svg rect[fill="#14100c"]')
+  // Unexplored tiles render as solid dark recesses (fill #0f0c09, no
+  // pattern). The tile-fog-lift overlay (Stream 3 animation) shares the
+  // fill, so exclude it — it is a transient veil on the current tile,
+  // not an unexplored cell.
+  const darkCells = () => page.locator('svg rect[fill="#0f0c09"]:not(.tile-fog-lift)')
   await dismissInstallPrompt(page)
   await expect(page.getByRole('button', { name: 'Search this tile' })).toBeVisible()
   await page.getByRole('button', { name: 'Search this tile' }).click()

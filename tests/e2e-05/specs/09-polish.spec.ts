@@ -73,6 +73,11 @@ test('map zoom animates, panel peek animates, dice settle, dialog fades', async 
   // needed to reach a fight.
   await bootstrap(page, 'Polish Probe')
   await importFixture(page, 'trinket', 'Trinket Fixture')
+  // The install sheet's 1.2s auto-show timer starts once the imported
+  // dungeon counts as delved. Wait past it so the sheet has actually
+  // appeared before dismissing — an early dismissal is a no-op and the
+  // sheet then slides up mid-test and swallows keyboard input.
+  await page.waitForTimeout(1500)
   // The imported dungeon counts as delved, so the install sheet may
   // slide up over the map at any moment; dismiss it before it can
   // cover the bottom panel.
