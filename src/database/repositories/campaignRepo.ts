@@ -13,7 +13,7 @@ import type { Character } from '../../rulesets/schema/character'
 export async function createCampaign(
   name: string,
   seed: number,
-  opts?: { idSuffix?: string; scenarioId?: string; tutorial?: CampaignMeta['tutorial'] },
+  opts?: { idSuffix?: string; scenarioId?: string; tutorial?: CampaignMeta['tutorial']; clues?: number },
 ): Promise<CampaignMeta> {
   const db = getDb()
   const meta: CampaignMeta = {
@@ -27,6 +27,7 @@ export async function createCampaign(
     saveVersion: 2,
     ...(opts?.scenarioId ? { scenarioId: opts.scenarioId } : {}),
     ...(opts?.tutorial ? { tutorial: opts.tutorial } : {}),
+    ...(opts?.clues !== undefined ? { clues: opts.clues } : {}),
   }
   await db.transaction('rw', db.campaigns, async () => {
     await db.campaigns.put(meta)

@@ -64,6 +64,23 @@ describe('combat modifiers (FADEE pp.146-148)', () => {
     expect(attackBonusFor(pc('wizard', 'D')).bonus).toBe(0)
   })
 
+  it('the best attacker is the warrior, not the first PC in Dexie order', () => {
+    // loadParty returns Dexie rows in primary-key order (alphabetical
+    // by class), so the party array is cleric, rogue, warrior, wizard
+    // after a reload. The Attack button must not strike with living[0]
+    // (the cleric, +½L) when the warrior (+L) is standing right there —
+    // the tutorial party was losing fights it could win because Anya
+    // was swinging at L5 foes she could barely hit.
+    const party = [
+      pc('cleric', 'Anya'),
+      pc('rogue', 'Joss'),
+      pc('warrior', 'Torsten'),
+      pc('wizard', 'Fen'),
+    ]
+    const best = [...party].sort((a, b) => attackBonusFor(b).bonus - attackBonusFor(a).bonus)[0]
+    expect(best.name).toBe('Torsten')
+  })
+
   it('defense modifiers: armor + shield + rogue L (FADEE p.96)', () => {
     const w = defenseBonusFor(pc('warrior', 'W'))
     expect(w.bonus).toBe(2) // light armor +1, shield +1

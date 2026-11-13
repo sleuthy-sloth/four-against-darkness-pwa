@@ -42,5 +42,15 @@
   "art-dashboard-hero": "Original art generated for this project (AI-generated line art; no third-party source)",
   "art-delve-entrance": "Original art generated for this project (AI-generated line art; no third-party source)",
   "art-journal-header": "Original art generated for this project (AI-generated line art; no third-party source)",
-  "art-splash-torch": "Original art generated for this project (AI-generated line art; no third-party source)"
+  "art-splash-torch": "Original art generated for this project (AI-generated line art; no third-party source)",
+  "art-dungeon-corridor": "Original art generated for this project (AI-generated line art; no third-party source)",
+  "art-dungeon-victory": "Original art generated for this project (AI-generated line art; no third-party source)",
+  "monster-vermin": "Original art generated for this project (AI-generated line art, traced to SVG with VTracer; no third-party source)",
+  "monster-minions": "Original art generated for this project (AI-generated line art, traced to SVG with VTracer; no third-party source)",
+  "monster-undead": "Original art generated for this project (AI-generated line art, traced to SVG with VTracer; no third-party source)",
+  "monster-orcs": "Original art generated for this project (AI-generated line art, traced to SVG with VTracer; no third-party source)",
+  "treasure-gold": "Original art generated for this project (AI-generated line art, traced to SVG with VTracer; no third-party source)",
+  "treasure-potion": "Original art generated for this project (AI-generated line art, traced to SVG with VTracer; no third-party source)",
+  "treasure-scroll": "Original art generated for this project (AI-generated line art, traced to SVG with VTracer; no third-party source)",
+  "treasure-magic": "Original art generated for this project (AI-generated line art, traced to SVG with VTracer; no third-party source)"
 }

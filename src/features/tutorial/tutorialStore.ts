@@ -112,6 +112,7 @@ export const useTutorialStore = create<TutorialState>((set, get) => ({
         idSuffix: Date.now().toString(36),
         scenarioId: scenario.id,
         tutorial: { stepId: TUTORIAL_STEPS[0].id, status: 'active' },
+        ...(scenario.startingClues !== undefined ? { clues: scenario.startingClues } : {}),
       })
       useCampaignStore.setState({ campaign: meta, party: [] })
       const ok = await formParty(scenario)
@@ -134,6 +135,7 @@ export const useTutorialStore = create<TutorialState>((set, get) => ({
       const meta = await createCampaign(scenario.name, scenario.seed, {
         idSuffix: Date.now().toString(36),
         scenarioId: scenario.id,
+        ...(scenario.startingClues !== undefined ? { clues: scenario.startingClues } : {}),
       })
       useCampaignStore.setState({ campaign: meta, party: [] })
       const ok = await formParty(scenario)

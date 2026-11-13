@@ -8,10 +8,27 @@ import { applyBandage, drinkHealingPotion } from '../../engine/combat/combat'
 import { saveParty } from '../../database/repositories/campaignRepo'
 import type { Character } from '../../rulesets/schema/character'
 import ItemIcon from './ItemIcon'
+import { TreasureIcon } from '../common/TreasureIcon'
 import EmptyState from '../common/EmptyState'
 import { CoinDevice } from '../common/Ornament'
 import { stripCitations } from '../common/stripCitations'
 import { useDialogFocus } from '../common/useDialogFocus'
+
+/** Treasure-table magic items (Stream 3): these are the rows ItemIcon
+    cannot picture (it shows an honest "?" for unrecognised items), so
+    they get the ink magic mark instead. Potion and scroll rows already
+    have dedicated icons and keep them; gold keeps its coin device. */
+const MAGIC_ITEM_PREFIXES = [
+  'Wand of Sleep',
+  'Fireball Staff',
+  'Ring of Teleportation',
+  "Fools' Gold",
+  'Magic Weapon',
+  'Puffball Smokebomb',
+  "Xicthul's Cap",
+  'Red Death',
+  'Morel Crusher',
+]
 
 /**
  * Inventory screen (PROJECT_SPEC §25): party equipment, gold, consumables.
@@ -196,7 +213,11 @@ export default function InventoryScreen() {
                       : null
                 return (
                   <li key={item} className="flex items-center gap-2 text-sm">
-                    <ItemIcon item={item} size={20} />
+                    {MAGIC_ITEM_PREFIXES.some((prefix) => item.startsWith(prefix)) ? (
+                      <TreasureIcon kind="magic" width={20} className="text-parchment" />
+                    ) : (
+                      <ItemIcon item={item} size={20} />
+                    )}
                     <span className="flex-1 text-parchment/90">
                       {item}
                       {count > 1 && (

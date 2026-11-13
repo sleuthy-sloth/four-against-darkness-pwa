@@ -91,12 +91,23 @@ test('map zoom animates, panel peek animates, dice settle, dialog fades', async 
   await page.getByRole('button', { name: 'Zoom out' }).click()
   await page.waitForTimeout(300)
   expect(await transform()).toContain('scale(1)')
+  // The install sheet's 1.2s timer can fire during the button-zoom
+  // steps (after the opening dismissal, which ran before it appeared),
+  // and an open sheet swallows keyboard input — dismiss it again so
+  // the '+' key reaches the map, not the sheet's focus trap.
+  await dismissInstallPrompt(page)
   // Keyboard zoom works too (focus the map; a click could land on an
   // exit disc and explore).
   await page.locator('[role="application"]').focus()
   await page.keyboard.press('+')
   await page.waitForTimeout(300)
   expect(await transform()).toContain('scale(1.25)')
+  // The install sheet's 1.2s auto-show timer can fire during the zoom
+  // steps (after the opening dismissal, which ran before it appeared),
+  // and an open sheet swallows the '0' key — dismiss it again so the
+  // fit shortcut reaches the map.
+  await dismissInstallPrompt(page)
+  await page.locator('[role="application"]').focus()
   await page.keyboard.press('0')
   await page.waitForTimeout(300)
   // Fit sets the zoom to fitScale(container, viewBox) — recompute it

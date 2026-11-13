@@ -7,6 +7,17 @@ import { ClassIcon } from '../common/ClassIcon'
 import EmptyState from '../common/EmptyState'
 import { CoinDevice } from '../common/Ornament'
 
+/** Life-bar fill colour by remaining Life (Stream 3): warm brass while
+    healthy, oxblood when hurt, bright wax when critical. The same helper
+    lives in CombatPanel.tsx — keep the thresholds in step. */
+function lifeFillClass(current: number, max: number): string {
+  const pct = max > 0 ? (current / max) * 100 : 0
+  if (pct <= 0) return 'bg-stone-700'
+  if (pct <= 25) return 'bg-ember'
+  if (pct <= 50) return 'bg-torch'
+  return 'bg-brassInk'
+}
+
 /** Party dashboard (PROJECT_SPEC §24): four character cards + create flow.
  * Milestone 3 (D2): no duplicated class text, Life numerals at both ends of
  * the bar with a delta flash on change, a party footer, and labelled
@@ -101,25 +112,37 @@ export default function PartyScreen() {
                       tree for browse mode); the whole card used to be the
                       button, but its composite visible text made any
                       curated label a name-mismatch. */}
-                  <div className="flex items-baseline justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <button
                       onClick={() => navigate(`/party/${encodeURIComponent(c.id)}`)}
                       className="text-left active:opacity-80"
                       aria-label={`${idx + 1}. ${c.name}, ${def.name}, level ${c.level}, ${c.currentLife} of ${c.maxLife} Life`}
                     >
-                      <span className="flex items-center gap-2 text-base text-parchment">
-                        <ClassIcon classId={c.classId} className="w-7 h-7 shrink-0" />
+                      <span className="flex items-center gap-3 text-base text-parchment">
+                        {/* Stream 3: the style-1 class face, larger, in a
+                            roundel — class icon and level legible beside
+                            it. A dead PC's portrait greys out. */}
+                        <span
+                          className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-stone-700 bg-stone-800/60 p-1.5 ${
+                            c.status === 'dead' ? 'opacity-40 grayscale' : ''
+                          }`}
+                        >
+                          <ClassIcon classId={c.classId} className="h-full w-full shrink-0" />
+                        </span>
                         {idx + 1}. {c.name}
                       </span>
                     </button>
-                    <span className="text-xs text-parchment/70">{classLine}</span>
+                    <span className="shrink-0 text-xs text-parchment/70">{classLine}</span>
                   </div>
-                  {/* Life bar with numerals at both ends (D2) */}
+                  {/* Life bar with numerals at both ends (D2); the fill
+                      shifts brass → oxblood → bright wax as Life drops
+                      (Stream 3). The life-bar-fill class keeps the 300ms
+                      width ease the polish spec checks. */}
                   <div className={flashIds.has(c.id) ? 'life-delta rounded-sm px-1 -mx-1' : ''}>
                       <div className="mt-2 flex items-center gap-2">
                         <span className="font-mono text-[11px] text-parchment/70">{c.currentLife}</span>
-                        <div className="h-1.5 flex-1 rounded bg-stone-700">
-                          <div className="life-bar-fill h-1.5 rounded bg-ember" style={{ width: `${hpPct}%` }} />
+                        <div className="h-2 flex-1 rounded bg-stone-700">
+                          <div className={`life-bar-fill h-2 rounded ${lifeFillClass(c.currentLife, c.maxLife)}`} style={{ width: `${hpPct}%` }} />
                         </div>
                         <span className="font-mono text-[11px] text-parchment/70">{c.maxLife}</span>
                       </div>

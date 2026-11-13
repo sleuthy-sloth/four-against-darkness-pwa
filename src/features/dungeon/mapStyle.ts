@@ -14,6 +14,13 @@ import type { PlacedExit, PlacedTile } from '../../engine/dungeon/generate'
  * steps through it, and renders dark with no content until then. A
  * peeked secret-door tile shows its contents (the peek already told the
  * player what is there) while staying unexplored until entered.
+ *
+ * Stream 2 (richer map visuals): the four floor variants now read as
+ * different stone (flagstone / cobble / ashlar / rough), fog states carry
+ * their own tint and opacity so depth reads at a glance, and each tile
+ * gets a whisper of per-tile tone. The render (DungeonScreen) draws
+ * these; this file stays the single source of truth for what each state
+ * looks like, so the map and the tests agree.
  */
 
 /** Door states the engine can express, from a placed exit alone. */
@@ -112,6 +119,66 @@ export function hashString(s: string): number {
  */
 export function floorVariant(seed: number, tileId: string): 0 | 1 | 2 | 3 {
   return (hashString(`${seed}:${tileId}`) % 4) as 0 | 1 | 2 | 3
+}
+
+/** What each floor variant IS (Stream 2): the four variants read as
+    different stone at a glance, so neighbouring rooms tell apart. */
+export const FLOOR_KINDS = ['flagstone', 'cobble', 'ashlar', 'rough'] as const
+export type FloorKind = (typeof FLOOR_KINDS)[number]
+
+export function floorKind(variant: 0 | 1 | 2 | 3): FloorKind {
+  return FLOOR_KINDS[variant]
+}
+
+/**
+ * Which SVG floor pattern a tile draws, by fog state (Stream 2):
+ * - `current` — the torch-lit pattern, warm and bright.
+ * - `explored` / `peeked` — the dim pattern; the peeked tile is dimmed
+ *   further by floorOpacity + fogTint, not by a different pattern.
+ * - `unexplored` — no pattern at all: a solid dark recess (the render
+ *   fills `#0f0c09`), so unentered stone never reads as lit floor.
+ * Returns null for unexplored; otherwise the pattern id (no `url()`).
+ */
+export function floorPatternId(fog: FogState, variant: 0 | 1 | 2 | 3): string | null {
+  if (fog === 'unexplored') return null
+  if (fog === 'current') return `stoneFloorLit${variant}`
+  return `stoneFloor${variant}`
+}
+
+/**
+ * Floor opacity by fog state (Stream 2): explored corridors stay dimmer
+ * than rooms (each tile by its own shape), and a peeked tile — seen but
+ * not entered — sits half-lit over the dark void, recessed next to the
+ * rooms the party has actually stood in.
+ */
+export function floorOpacity(fog: FogState, isCorridor: boolean): number {
+  if (fog === 'peeked') return 0.55
+  if (fog === 'explored' && isCorridor) return 0.55
+  return 1
+}
+
+/**
+ * Per-tile tone whisper (Stream 2), deterministic from seed + tile id:
+ * -0.04 … +0.04 in 0.02 steps. The render lays a white (positive) or
+ * black (negative) wash at that opacity over the tile, so no two
+ * neighbouring rooms read as one flat slab. Subtle by design.
+ */
+export function floorShade(seed: number, tileId: string): number {
+  return ((hashString(`${seed}:${tileId}:shade`) % 5) - 2) * 0.02
+}
+
+/**
+ * Warm/dark tint wash over a tile's bounding box, by fog state
+ * (Stream 2) — the depth cue on top of the pattern:
+ * - `explored` — a faint warm wash: stood-in stone stays lit.
+ * - `peeked` — a dark wash: seen through a secret door, still recessed.
+ * - `current` / `unexplored` — none (the torch glow, or the solid dark
+ *   fill, already says it).
+ */
+export function fogTint(fog: FogState): { fill: string; opacity: number } | null {
+  if (fog === 'explored') return { fill: '#d9a441', opacity: 0.05 }
+  if (fog === 'peeked') return { fill: '#0d0a08', opacity: 0.3 }
+  return null
 }
 
 /**

@@ -49,10 +49,34 @@ describe('scenarios', () => {
 
   it('gives the tutorial party the nails it needs to rest', () => {
     const tutorial = getScenario(TUTORIAL_SCENARIO_ID)!
-    const nails = tutorial.party.flatMap((m) => m.extraEquipment ?? [])
+    const kit = tutorial.party.flatMap((m) => m.extraEquipment ?? [])
     // Resting needs one bag per door (FADEE p.114) and a tile has at most 4
     // doors, so 4 bags rest the party in any room it reaches.
-    expect(nails).toEqual(['bag of nails', 'bag of nails', 'bag of nails', 'bag of nails'])
+    expect(kit.filter((e) => e === 'bag of nails')).toEqual([
+      'bag of nails',
+      'bag of nails',
+      'bag of nails',
+      'bag of nails',
+    ])
+  })
+
+  it('gives the tutorial party the one torch its backstory promises', () => {
+    // The backstory says "four adventurers, one torch" — without it the
+    // whole guided delve is fought in darkness (-2, no Search), and the
+    // party can be wiped by the Lesson 7 Hobgoblins. Torsten carries it.
+    const tutorial = getScenario(TUTORIAL_SCENARIO_ID)!
+    const kit = tutorial.party.flatMap((m) => m.extraEquipment ?? [])
+    expect(kit.filter((e) => e === 'torch')).toEqual(['torch'])
+  })
+
+  it('gives the tutorial party three starting Clues, so a Clue-door cannot strand it', () => {
+    // A lever door answers to 1 Clue and an illusionary door to 3; the
+    // party earns Clues only by searching, which is the lesson it is
+    // trying to reach — so a Clue-door on the way there strands a new
+    // party with no way out. Three opens any single Clue-door. (One
+    // Clue was tried first and the party still trapped on Tile 14.)
+    const tutorial = getScenario(TUTORIAL_SCENARIO_ID)!
+    expect(tutorial.startingClues).toBe(3)
   })
 
   it('rejects a broken scenario table', () => {

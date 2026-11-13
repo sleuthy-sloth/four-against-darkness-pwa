@@ -1,14 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
 import { useDungeonStore } from '../../state/dungeonStore'
 import { useCampaignStore } from '../../state/campaignStore'
-import { canLeaveCombat, describeEnemies, clericPrayersLeft } from '../../engine/combat/combat'
+import { canLeaveCombat, describeEnemies, clericPrayersLeft, attackBonusFor } from '../../engine/combat/combat'
 import { canUseWand, canUseStaff, hasRing, hasFoolsGold } from '../../engine/items/magicItems'
 import { stripCitations } from '../common/stripCitations'
 import { LogDie } from '../common/Die'
 import FragIcon from '../common/FragIcon'
+import { ClassIcon } from '../common/ClassIcon'
 import { familyFrag } from './foeIcons'
+import { MonsterPortrait } from './MonsterPortrait'
 import { feedbackTargetName, latestKindIndex } from './combatFeedback'
 import { hapticBuzz } from '../common/motion'
+
+/** Life-bar fill colour by remaining Life (Stream 3): warm brass while
+    healthy, oxblood when hurt, bright wax when critical. The same helper
+    lives in PartyScreen.tsx — keep the thresholds in step. */
+function lifeFillClass(current: number, max: number): string {
+  const pct = max > 0 ? (current / max) * 100 : 0
+  if (pct <= 0) return 'bg-stone-700'
+  if (pct <= 25) return 'bg-ember'
+  if (pct <= 50) return 'bg-torch'
+  return 'bg-brassInk'
+}
 
 /**
  * Combat interface (PROJECT_SPEC §13): party health, enemy group, actions,
@@ -43,6 +56,15 @@ export default function CombatPanel() {
   const active = combat.enemies.find((e) => !e.fled && e.count > 0 && e.life > 0)
   const bribe = combat.pendingBribe
   const living = party.filter((p) => p.status !== 'dead')
+  // The Attack button strikes with ONE PC. The party array comes back
+  // from Dexie in primary-key order (alphabetical by class), so
+  // living[0] is the cleric after a reload — the weakest attacker, who
+  // can barely hit a L5 foe. Attack with the best attacker instead
+  // (highest class attack bonus; ties keep party order). A human player
+  // suffers the same trap, so this is a game fix, not a test nicety.
+  const bestAttacker = [...living].sort(
+    (a, b) => attackBonusFor(b).bonus - attackBonusFor(a).bonus,
+  )[0]
 
   // Feedback channels (D3, polish pass): hit, defense-fail, and morale
   // are separate channels with separate targets — a hit must not be
@@ -118,6 +140,12 @@ export default function CombatPanel() {
                 }`}
               >
                 <FragIcon frag={familyFrag(e.profile.family)} size={20} label={e.profile.name} />
+                {/* Stream 3: the small ink portrait for the foe's family,
+                    beside the existing family icon. It inherits the row's
+                    text colour, so a dead foe's portrait dims with it.
+                    Engine families without a portrait (demon, beast,
+                    construct, boss) get the generic threshold-arch mark. */}
+                <MonsterPortrait family={e.profile.family} width={28} />
                 <span className="font-medium">{e.profile.name}</span>
                 <span className="num-tabular ml-1 font-mono text-xs text-parchment/70">
                   {e.profile.major
@@ -131,21 +159,40 @@ export default function CombatPanel() {
         })}
       </div>
 
-      {/* party: Life numerals tabular; the row shakes on a failed defense.
-          The grid remounts (key) on a new defense-fail so the shake replays;
-          its cells hold no focus. */}
+      {/* party: small roundel portraits, Life numerals tabular, and a Life
+          bar that shifts colour as Life drops (Stream 3). A dead PC's
+          portrait greys out and the bar empties, so who is hurt and who
+          is down reads at a glance. The grid remounts (key) on a new
+          defense-fail so the shake replays; its cells hold no focus. */}
       <div
         key={`def-${defIdx ?? 'none'}`}
         className={`mb-2 grid grid-cols-4 gap-1 ${defIdx !== null ? 'combat-defense-shake' : ''}`}
       >
-        {party.map((p) => (
-          <div key={p.id} className="rounded bg-stone-800/60 px-1.5 py-1 text-center">
-            <div className="truncate text-[11px] text-parchment">{p.name}</div>
-            <div className={`num-tabular font-mono text-xs ${p.status === 'dead' ? 'text-ember' : 'text-parchment/70'}`}>
-              {p.currentLife}/{p.maxLife}
+        {party.map((p) => {
+          const dead = p.status === 'dead'
+          const hpPct = (p.currentLife / p.maxLife) * 100
+          return (
+            <div key={p.id} className="rounded bg-stone-800/60 px-1.5 py-1 text-center">
+              <span
+                className={`mx-auto flex h-8 w-8 items-center justify-center rounded-full border border-stone-700 bg-stone-900/60 p-0.5 ${
+                  dead ? 'opacity-40 grayscale' : ''
+                }`}
+              >
+                <ClassIcon classId={p.classId} className="h-full w-full shrink-0" />
+              </span>
+              <div className="mt-0.5 truncate text-[11px] text-parchment">{p.name}</div>
+              <div className={`num-tabular font-mono text-xs ${dead ? 'text-ember' : 'text-parchment/70'}`}>
+                {p.currentLife}/{p.maxLife}
+              </div>
+              <div className="mt-1 h-1 rounded bg-stone-700">
+                <div
+                  className={`life-bar-fill h-1 rounded ${lifeFillClass(p.currentLife, p.maxLife)}`}
+                  style={{ width: `${hpPct}%` }}
+                />
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* pending bribe */}
@@ -177,7 +224,7 @@ export default function CombatPanel() {
           <button
             disabled={!targetId && !active}
             onClick={() => {
-              const pc = living[0]
+              const pc = bestAttacker
               if (pc) void combatAttack(pc.id, targetId ?? active!.id)
             }}
             className="flex-1 rounded border border-torch/40 bg-torch/10 px-3 py-2 text-torch disabled:opacity-40"
@@ -205,7 +252,7 @@ export default function CombatPanel() {
           <button
             disabled={!targetId && !active}
             onClick={() => {
-              const pc = living[0]
+              const pc = bestAttacker
               if (pc) void combatAttack(pc.id, targetId ?? active!.id)
             }}
             className="w-full rounded border border-torch/40 bg-torch/10 px-3 py-2 text-torch disabled:opacity-40"
@@ -220,7 +267,7 @@ export default function CombatPanel() {
             combat.enemies.find((e) => e.id === (targetId ?? active!.id))?.profile.name === dungeon.quest.target && (
               <button
                 onClick={() => {
-                  const pc = living[0]
+                  const pc = bestAttacker
                   if (pc) void combatAttackSubdue(pc.id, targetId ?? active!.id)
                 }}
                 className="w-full rounded border border-ember/50 bg-ember/10 px-3 py-2 text-ember"

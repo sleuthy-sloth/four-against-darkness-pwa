@@ -37,7 +37,7 @@ import FragIcon from '../common/FragIcon'
 import { familyFrag } from './foeIcons'
 import MapLegend from './MapLegend'
 import ShortcutsSheet from './ShortcutsSheet'
-import { doorState, floorVariant, fitScale, tileSummary, tileContentVisible, fogState } from './mapStyle'
+import { doorState, floorVariant, floorKind, floorPatternId, floorOpacity, floorShade, fogTint, fitScale, tileSummary, tileContentVisible, fogState } from './mapStyle'
 import { doorNeedsAction } from '../../engine/dungeon/doors'
 import { mapKeyAction, isTypingTarget } from './mapKeys'
 import { exitLabel, nextExitIndex } from './mapNav'
@@ -45,6 +45,7 @@ import { useDialogFocus } from '../common/useDialogFocus'
 import { hapticBuzz, prefersReducedMotion } from '../common/motion'
 import { debounce } from '../common/debounce'
 import { feedbackTargetName, latestKindIndex } from './combatFeedback'
+import DungeonVignette from './DungeonVignette'
 
 /** Stone-floor tones per floor variant (C4): rotation is baked into the
     pattern defs below, so the same dungeon always draws the same floors. */
@@ -107,6 +108,77 @@ function MapIcon({ frag, x, y, size = 0.62, className = 'map-icon' }: { frag: st
       className={className}
       dangerouslySetInnerHTML={{ __html: frag }}
     />
+  )
+}
+
+/**
+ * Stream 2: the joint geometry that makes each floor variant read as a
+ * different stone at a glance, inside its 1×1 pattern cell (rotation is
+ * baked into the pattern defs, so the same variant still varies by tile):
+ * - flagstone (0): large slabs — thick cross joints, half-joints offset.
+ * - cobble (1): small rounded stones — a 3×3 of pale-topped rounds.
+ * - ashlar (2): running-bond courses — offset vertical joints per course.
+ * - rough (3): speckled stone — scattered pits and one wandering crack.
+ * Drawn in black/white at low opacity, so the same geometry reads on
+ * both the dim pattern and the warm torch-lit pattern. The kind name
+ * lives in mapStyle.floorKind; this component draws it.
+ */
+function FloorPatternInner({ variant }: { variant: 0 | 1 | 2 | 3 }) {
+  const kind = floorKind(variant)
+  if (kind === 'flagstone') {
+    return (
+      <path
+        d="M0 0.5h1M0.5 0v1M0 0.25h0.5M0.5 0.75h0.5"
+        className="stroke-parchment/30"
+        strokeWidth={0.07}
+        fill="none"
+      />
+    )
+  }
+  if (kind === 'cobble') {
+    return (
+      <g fill="#ffffff" fillOpacity={0.09} stroke="#2b241f" strokeOpacity={0.35} strokeWidth={0.03}>
+        <circle cx={0.17} cy={0.17} r={0.13} />
+        <circle cx={0.5} cy={0.17} r={0.13} />
+        <circle cx={0.83} cy={0.17} r={0.13} />
+        <circle cx={0.17} cy={0.5} r={0.13} />
+        <circle cx={0.5} cy={0.5} r={0.13} />
+        <circle cx={0.83} cy={0.5} r={0.13} />
+        <circle cx={0.17} cy={0.83} r={0.13} />
+        <circle cx={0.5} cy={0.83} r={0.13} />
+        <circle cx={0.83} cy={0.83} r={0.13} />
+      </g>
+    )
+  }
+  if (kind === 'ashlar') {
+    return (
+      <path
+        d="M0 0.33h1M0 0.66h1M0.66 0v0.33M0.33 0.33v0.33M0.66 0.66V1"
+        className="stroke-parchment/30"
+        strokeWidth={0.06}
+        fill="none"
+      />
+    )
+  }
+  // rough
+  return (
+    <g>
+      <path
+        d="M0.15 0.1 L0.35 0.45 L0.3 0.7 L0.5 0.95"
+        stroke="#2b241f"
+        strokeOpacity={0.3}
+        strokeWidth={0.03}
+        fill="none"
+      />
+      <g fill="#2b241f" fillOpacity={0.25}>
+        <circle cx={0.2} cy={0.3} r={0.03} />
+        <circle cx={0.7} cy={0.2} r={0.025} />
+        <circle cx={0.4} cy={0.6} r={0.035} />
+        <circle cx={0.85} cy={0.75} r={0.03} />
+        <circle cx={0.15} cy={0.85} r={0.025} />
+        <circle cx={0.6} cy={0.9} r={0.03} />
+      </g>
+    </g>
   )
 }
 
@@ -198,7 +270,10 @@ export default function DungeonScreen() {
     })
   }, [dungeon, party, tile])
   const env: EnvironmentId = (tile?.environment ?? dungeon?.environment ?? 'dungeon') as EnvironmentId
-  const hasTorch = party.some((p) => p.equipment.includes('torch'))
+  // A torch on a dead PC is lost (lightTorch requires a living carrier,
+  // and there is no "pick up the dropped torch" action) — showing the
+  // button then would promise light the game cannot give.
+  const hasTorch = party.some((p) => p.status !== 'dead' && p.equipment.includes('torch'))
   const hasRope = party.some((p) => p.equipment.includes('rope'))
   const living = party.filter((p) => p.status !== 'dead')
 
@@ -465,6 +540,27 @@ export default function DungeonScreen() {
       <h1 className="sr-only">Dungeon</h1>
       {/* map column: viewport + legend; on desktop the panel is a right rail */}
       <div className="flex min-h-0 flex-1 flex-col lg:min-w-0">
+        {/* Stream 2: scene art above the map — a calm corridor panel
+            while exploring (no combat active), the sunlit-steps panel
+            once the fight is won (the victory stamp shows in the rail
+            at the same time). A fixed-height banner, shrink-0: it never
+            covers the map, the exit discs, or any button, and it leaves
+            the map full-height while a fight is still running. */}
+        {dungeon.combat?.phase === 'won' ? (
+          <div className="shrink-0 px-3 pt-2">
+            <DungeonVignette
+              kind="victory"
+              className="mx-auto h-32 w-full object-cover shadow-folio sm:h-40"
+            />
+          </div>
+        ) : !dungeon.combat ? (
+          <div className="shrink-0 px-3 pt-2">
+            <DungeonVignette
+              kind="entrance"
+              className="mx-auto h-20 w-full object-cover shadow-folio sm:h-24"
+            />
+          </div>
+        ) : null}
         {/* map viewport */}
         <div
           ref={mapRef}
@@ -484,8 +580,11 @@ export default function DungeonScreen() {
             preserveAspectRatio="xMidYMid meet"
           >
             <defs>
-              {/* stone floors, four variants (C4): rotation + tone baked in,
-                  chosen per tile from the campaign seed, so replays match */}
+              {/* stone floors, four variants (C4, Stream 2): each variant is
+                  a different stone now (flagstone / cobble / ashlar /
+                  rough — see FloorPatternInner), rotation + tone baked in
+                  and chosen per tile from the campaign seed, so replays
+                  match */}
               {[0, 1, 2, 3].map((v) => (
                 <pattern
                   key={`f${v}`}
@@ -497,7 +596,7 @@ export default function DungeonScreen() {
                 >
                   <rect width="1" height="1" fill={FLOOR_TONES[v]} />
                   <rect width="1" height="1" fill="#544b38" opacity="0.35" />
-                  <path d="M0 0.5h1M0.5 0v1" className="stroke-parchment/30" strokeWidth={0.06} />
+                  <FloorPatternInner variant={v as 0 | 1 | 2 | 3} />
                 </pattern>
               ))}
               {[0, 1, 2, 3].map((v) => (
@@ -511,25 +610,61 @@ export default function DungeonScreen() {
                 >
                   <rect width="1" height="1" fill={FLOOR_LIT_TONES[v]} />
                   <rect width="1" height="1" fill="#a3742c" opacity="0.3" />
-                  <path d="M0 0.5h1M0.5 0v1" className="stroke-parchment/30" strokeWidth={0.06} />
+                  <FloorPatternInner variant={v as 0 | 1 | 2 | 3} />
                 </pattern>
               ))}
-              {/* torch-lit gradient falloff (C4, deepened in the polish
-                  pass): bright at the party token, dimming with distance
-                  — no flat two-tone */}
+              {/* torchlight (C4, deepened in Stream 2): the dark falloff
+                  now reaches further and darker at the edges, and two
+                  warm glows sit on top of it — a bright heart on the
+                  party's tile and a faint wash over the explored rooms,
+                  so lit stone reads warm and the fog reads as depth.
+                  No flat two-tone */}
               <radialGradient
                 id="torchFalloff"
                 gradientUnits="userSpaceOnUse"
                 cx={partyX}
                 cy={partyY}
-                r={7}
+                r={9}
               >
                 <stop offset="0%" stopColor="#2b241f" stopOpacity="0" />
-                <stop offset="55%" stopColor="#2b241f" stopOpacity="0.1" />
-                <stop offset="100%" stopColor="#2b241f" stopOpacity="0.38" />
+                <stop offset="30%" stopColor="#2b241f" stopOpacity="0.05" />
+                <stop offset="60%" stopColor="#2b241f" stopOpacity="0.22" />
+                <stop offset="100%" stopColor="#2b241f" stopOpacity="0.55" />
+              </radialGradient>
+              <radialGradient
+                id="torchGlow"
+                gradientUnits="userSpaceOnUse"
+                cx={partyX}
+                cy={partyY}
+                r={3.2}
+              >
+                <stop offset="0%" stopColor="#d9a441" stopOpacity="0.3" />
+                <stop offset="45%" stopColor="#d9a441" stopOpacity="0.14" />
+                <stop offset="100%" stopColor="#d9a441" stopOpacity="0" />
+              </radialGradient>
+              <radialGradient
+                id="torchGlowWide"
+                gradientUnits="userSpaceOnUse"
+                cx={partyX}
+                cy={partyY}
+                r={8}
+              >
+                <stop offset="0%" stopColor="#d9a441" stopOpacity="0.09" />
+                <stop offset="100%" stopColor="#d9a441" stopOpacity="0" />
               </radialGradient>
             </defs>
             <g transform={`translate(${2 - bounds.minCol}, ${2 - bounds.minRow})`}>
+              {/* dark void under the dungeon (Stream 2): semi-transparent
+                  floors (corridors, peeked tiles) read as recessed stone
+                  over this, never as light canvas showing through */}
+              <rect
+                x={bounds.minCol}
+                y={bounds.minRow}
+                width={bounds.maxCol - bounds.minCol + 1}
+                height={bounds.maxRow - bounds.minRow + 1}
+                fill="#171208"
+                aria-hidden="true"
+              />
               {dungeon.tiles.map((t) => {
                 const geo = tileGeometry(t)
                 const isCurrent = t.id === tile.id
@@ -558,6 +693,14 @@ export default function DungeonScreen() {
                   visible && t.content?.encounter && !t.content.cleared ? t.content.encounter.count : 0
                 // Corridors read darker than rooms (each tile by its own shape).
                 const tIsCorridor = D66_TILES.find((s) => s.id === t.shapeId)?.corridor ?? false
+                // Stream 2: which floor this tile draws, and the washes
+                // over it — pattern by fog state, a whisper of per-tile
+                // tone, and the fog tint (warm on explored, dark on
+                // peeked). Unexplored tiles get no pattern at all.
+                const patternId = floorPatternId(fog, variant)
+                const cellOpacity = floorOpacity(fog, tIsCorridor)
+                const tint = fogTint(fog)
+                const shade = floorShade(seed, t.id)
                 const isHovered = hover?.tileId === t.id
                 return (
                   <g
@@ -585,9 +728,11 @@ export default function DungeonScreen() {
                     onMouseLeave={() => setHover((h) => (h?.tileId === t.id ? null : h))}
                   >
                     <title>{tileSummary(t, visible)}</title>
-                    {/* floor: patterned stone; the current tile is torch-lit,
-                        explored tiles dim stone, unexplored tiles dark and
-                        blank (fog of war) */}
+                    {/* floor: patterned stone by variant and fog state —
+                        the current tile is torch-lit, explored tiles dim
+                        stone with a warm wash, peeked tiles sit half-lit
+                        and recessed, unexplored tiles are a solid dark
+                        recess with no contents (fog of war) */}
                     {t.cells.map((c, i) => (
                       <rect
                         key={i}
@@ -595,16 +740,50 @@ export default function DungeonScreen() {
                         y={c.row}
                         width={1}
                         height={1}
-                        fill={
-                          fog === 'unexplored'
-                            ? '#14100c'
-                            : isCurrent
-                              ? `url(#stoneFloorLit${variant})`
-                              : `url(#stoneFloor${variant})`
-                        }
-                        opacity={fog === 'unexplored' ? 1 : tIsCorridor ? 0.55 : 1}
+                        fill={patternId ? `url(#${patternId})` : '#0f0c09'}
+                        opacity={cellOpacity}
                       />
                     ))}
+                    {/* per-tile tone whisper + fog tint, over the tile's
+                        bounding box (Stream 2) */}
+                    {shade !== 0 && fog !== 'unexplored' && (
+                      <rect
+                        x={minCol}
+                        y={minRow}
+                        width={maxCol - minCol + 1}
+                        height={maxRow - minRow + 1}
+                        fill={shade > 0 ? '#ffffff' : '#000000'}
+                        opacity={Math.abs(shade)}
+                        pointerEvents="none"
+                      />
+                    )}
+                    {tint && (
+                      <rect
+                        x={minCol}
+                        y={minRow}
+                        width={maxCol - minCol + 1}
+                        height={maxRow - minRow + 1}
+                        fill={tint.fill}
+                        opacity={tint.opacity}
+                        pointerEvents="none"
+                      />
+                    )}
+                    {/* current-tile marker (Stream 2): an oxblood frame
+                        around the party's tile, on top of the lit floor
+                        and the torch glow — the "you are here" reads
+                        before the token does */}
+                    {isCurrent && (
+                      <rect
+                        x={minCol}
+                        y={minRow}
+                        width={maxCol - minCol + 1}
+                        height={maxRow - minRow + 1}
+                        className="fill-none stroke-torch"
+                        strokeWidth={0.05}
+                        opacity={0.85}
+                        pointerEvents="none"
+                      />
+                    )}
                     {/* hover highlight (F): the tile under the pointer */}
                     {isHovered && (
                       <rect
@@ -618,7 +797,11 @@ export default function DungeonScreen() {
                       />
                     )}
                     {/* walls: deep shadow base + pale carved edge; the
-                        entrance keeps a distinct brass treatment (C4) */}
+                        entrance keeps a distinct brass treatment (C4).
+                        Unexplored tiles (Stream 2) get faint, flat walls
+                        — no carved edge, no caps in full ink — so they
+                        sit recessed in the fog instead of reading as
+                        solid rooms */}
                     {geo.walls.map((w, i) => (
                       <line
                         key={i}
@@ -626,21 +809,23 @@ export default function DungeonScreen() {
                         y1={w.y1}
                         x2={w.x2}
                         y2={w.y2}
-                        className={isEntrance ? 'stroke-brass' : 'stroke-parchment'}
+                        className={fog === 'unexplored' ? 'stroke-faint' : isEntrance ? 'stroke-brass' : 'stroke-parchment'}
                         strokeWidth={isEntrance ? 0.16 : 0.14}
+                        opacity={fog === 'unexplored' ? 0.6 : 1}
                       />
                     ))}
-                    {geo.walls.map((w, i) => (
-                      <line
-                        key={`hl${i}`}
-                        x1={w.x1}
-                        y1={w.y1}
-                        x2={w.x2}
-                        y2={w.y2}
-                        className="stroke-faint"
-                        strokeWidth={0.04}
-                      />
-                    ))}
+                    {fog !== 'unexplored' &&
+                      geo.walls.map((w, i) => (
+                        <line
+                          key={`hl${i}`}
+                          x1={w.x1}
+                          y1={w.y1}
+                          x2={w.x2}
+                          y2={w.y2}
+                          className="stroke-faint"
+                          strokeWidth={0.04}
+                        />
+                      ))}
                     {/* corner caps (C4): square caps where walls turn */}
                     {wallCorners(geo.walls).map((c, i) => (
                       <rect
@@ -649,22 +834,37 @@ export default function DungeonScreen() {
                         y={c.y - 0.08}
                         width={0.16}
                         height={0.16}
-                        className={isEntrance ? 'fill-brass' : 'fill-parchment'}
+                        className={fog === 'unexplored' ? 'fill-faint' : isEntrance ? 'fill-brass' : 'fill-parchment'}
                       />
                     ))}
-                    {/* doors (C4): open = bare threshold, closed = oxblood
-                        leaf + swing arc, plain opening = dashed gap.
-                        Rolled doors (R129) get their own mark: locked =
-                        amber padlock, sealed = violet diamond, iron =
-                        slate leaf, illusionary = dashed violet leaf,
-                        trapped = amber warning triangle, lever = brass
-                        lever. */}
+                    {/* doors (C4, Stream 2): open = bare threshold, closed
+                        = oxblood leaf + swing arc + knob, plain opening =
+                        dashed gap. Rolled doors (R129) each sit on a dark
+                        backing disc so they read at a glance, and each
+                        carries its own mark on top of the shared colour:
+                        locked = amber padlock with a keyhole, sealed =
+                        violet diamond with a warded inner diamond, iron =
+                        slate leaf with rivets, illusionary = dashed
+                        violet leaf slashed through, trapped = amber
+                        warning triangle with a bold mark, lever = brass
+                        lever on a base plate. Shape, colour, and stroke
+                        all differ — what each state MEANS is unchanged. */}
                     {t.exits.map((e) => {
                       const state = doorState(e)
                       const { x, y } = edgeMidpoint(e.cell, e.edge)
                       const horiz = e.edge === 'N' || e.edge === 'S'
+                      const isRolled =
+                        state === 'locked' ||
+                        state === 'sealed' ||
+                        state === 'iron' ||
+                        state === 'illusionary' ||
+                        state === 'trapped' ||
+                        state === 'lever'
                       return (
                         <g key={e.id}>
+                          {isRolled && (
+                            <circle cx={x} cy={y} r={0.24} fill="#14100c" opacity={0.65} />
+                          )}
                           {state === 'closed' && (
                             <>
                               <rect
@@ -675,6 +875,7 @@ export default function DungeonScreen() {
                                 className="fill-ember stroke-parchment"
                                 strokeWidth={0.02}
                               />
+                              <circle cx={x} cy={y} r={0.03} className="fill-parchment" />
                               <path
                                 d={
                                   horiz
@@ -724,49 +925,90 @@ export default function DungeonScreen() {
                                 fill="none"
                                 strokeWidth={0.03}
                               />
+                              <circle cx={x} cy={y} r={0.032} fill="#2b241f" />
+                              <line
+                                x1={x}
+                                y1={y + 0.02}
+                                x2={x}
+                                y2={y + 0.09}
+                                stroke="#2b241f"
+                                strokeWidth={0.025}
+                              />
                             </>
                           )}
                           {state === 'sealed' && (
-                            <polygon
-                              points={`${x},${y - 0.18} ${x + 0.16},${y} ${x},${y + 0.18} ${x - 0.16},${y}`}
-                              className="fill-violet-500 stroke-parchment"
-                              strokeWidth={0.02}
-                            />
+                            <>
+                              <polygon
+                                points={`${x},${y - 0.18} ${x + 0.16},${y} ${x},${y + 0.18} ${x - 0.16},${y}`}
+                                className="fill-violet-500 stroke-parchment"
+                                strokeWidth={0.02}
+                              />
+                              <polygon
+                                points={`${x},${y - 0.1} ${x + 0.08},${y} ${x},${y + 0.1} ${x - 0.08},${y}`}
+                                className="fill-none stroke-parchment"
+                                strokeWidth={0.02}
+                              />
+                            </>
                           )}
                           {state === 'iron' && (
-                            <rect
-                              x={x - (horiz ? 0.16 : 0.04)}
-                              y={y - (horiz ? 0.04 : 0.16)}
-                              width={horiz ? 0.32 : 0.08}
-                              height={horiz ? 0.08 : 0.32}
-                              className="fill-slate-500 stroke-parchment"
-                              strokeWidth={0.02}
-                            />
+                            <>
+                              <rect
+                                x={x - (horiz ? 0.16 : 0.04)}
+                                y={y - (horiz ? 0.04 : 0.16)}
+                                width={horiz ? 0.32 : 0.08}
+                                height={horiz ? 0.08 : 0.32}
+                                className="fill-slate-500 stroke-parchment"
+                                strokeWidth={0.03}
+                              />
+                              <circle
+                                cx={horiz ? x - 0.1 : x}
+                                cy={horiz ? y : y - 0.1}
+                                r={0.025}
+                                className="fill-parchment"
+                              />
+                              <circle
+                                cx={horiz ? x + 0.1 : x}
+                                cy={horiz ? y : y + 0.1}
+                                r={0.025}
+                                className="fill-parchment"
+                              />
+                            </>
                           )}
                           {state === 'illusionary' && (
-                            <rect
-                              x={x - (horiz ? 0.16 : 0.04)}
-                              y={y - (horiz ? 0.04 : 0.16)}
-                              width={horiz ? 0.32 : 0.08}
-                              height={horiz ? 0.08 : 0.32}
-                              className="fill-none stroke-violet-400"
-                              strokeWidth={0.03}
-                              strokeDasharray="0.06 0.04"
-                            />
+                            <>
+                              <rect
+                                x={x - (horiz ? 0.16 : 0.04)}
+                                y={y - (horiz ? 0.04 : 0.16)}
+                                width={horiz ? 0.32 : 0.08}
+                                height={horiz ? 0.08 : 0.32}
+                                className="fill-none stroke-violet-400"
+                                strokeWidth={0.03}
+                                strokeDasharray="0.06 0.04"
+                              />
+                              <line
+                                x1={x - 0.14}
+                                y1={y + 0.14}
+                                x2={x + 0.14}
+                                y2={y - 0.14}
+                                className="stroke-violet-400"
+                                strokeWidth={0.025}
+                                strokeDasharray="0.05 0.04"
+                              />
+                            </>
                           )}
                           {state === 'trapped' && (
                             <>
                               <polygon
                                 points={`${x},${y - 0.18} ${x + 0.18},${y + 0.14} ${x - 0.18},${y + 0.14}`}
                                 className="fill-amber-500 stroke-parchment"
-                                strokeWidth={0.02}
+                                strokeWidth={0.03}
                               />
                               <text
                                 x={x}
                                 y={y + 0.1}
                                 textAnchor="middle"
                                 dominantBaseline="central"
-                                fontSize={0.16}
+                                fontSize={0.18}
                                 fill="#2b241f"
                                 fontWeight="bold"
                               >
@@ -776,6 +1018,14 @@ export default function DungeonScreen() {
                           )}
                           {state === 'lever' && (
                             <>
+                              <rect
+                                x={x - 0.06}
+                                y={y + 0.1}
+                                width={0.12}
+                                height={0.06}
+                                className="fill-amber-400 stroke-parchment"
+                                strokeWidth={0.015}
+                              />
                               <line
                                 x1={x}
                                 y1={y + 0.14}
@@ -857,13 +1107,32 @@ export default function DungeonScreen() {
                   </g>
                 )
               })}
-              {/* torch falloff over the tiles only — tokens and exits stay bright */}
+              {/* torch falloff over the tiles only — tokens and exits stay bright.
+                  The warm glows sit on top of the dark falloff: a bright
+                  heart on the party's tile, and a faint wash that keeps
+                  explored stone warm as the light falls away (Stream 2) */}
               <rect
                 x={bounds.minCol - 1}
                 y={bounds.minRow - 1}
                 width={bounds.maxCol - bounds.minCol + 3}
                 height={bounds.maxRow - bounds.minRow + 3}
                 fill="url(#torchFalloff)"
+                pointerEvents="none"
+              />
+              <rect
+                x={bounds.minCol - 1}
+                y={bounds.minRow - 1}
+                width={bounds.maxCol - bounds.minCol + 3}
+                height={bounds.maxRow - bounds.minRow + 3}
+                fill="url(#torchGlowWide)"
+                pointerEvents="none"
+              />
+              <rect
+                x={bounds.minCol - 1}
+                y={bounds.minRow - 1}
+                width={bounds.maxCol - bounds.minCol + 3}
+                height={bounds.maxRow - bounds.minRow + 3}
+                fill="url(#torchGlow)"
                 pointerEvents="none"
               />
               {/* exit tap targets: glowing = unexplored (generate), dim = move through.
@@ -930,6 +1199,18 @@ export default function DungeonScreen() {
                   (C4). The pulse ring is the "you are here" (C5). */}
               {tile.cells.length > 0 && (
                 <g>
+                  {/* warm disc under the token (Stream 2): the torch's
+                      heart, breathing almost imperceptibly — instant
+                      under reduced motion (see the gate in index.css) */}
+                  <circle
+                    cx={partyX}
+                    cy={partyY}
+                    r={0.52}
+                    fill="#d9a441"
+                    opacity={0.22}
+                    className="torch-flicker"
+                    aria-hidden="true"
+                  />
                   <circle
                     cx={partyX}
                     cy={partyY}

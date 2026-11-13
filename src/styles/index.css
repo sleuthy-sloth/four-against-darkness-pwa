@@ -461,6 +461,19 @@ h1, h2, h3, h4, .font-headline {
   transform: translateY(-1px);
 }
 
+/* --- Stream 2 (2026-11-13): richer dungeon map visuals ---
+   Torch flicker on the party token's warm disc — a slow, subtle
+   breathing of the light (3.5s, opacity only). Gated by the
+   consolidated prefers-reduced-motion block at the end of this file
+   (listed there, so it is instant under reduced motion). */
+@keyframes torch-flicker {
+  0%, 100% { opacity: 0.16; }
+  50% { opacity: 0.28; }
+}
+.torch-flicker {
+  animation: torch-flicker 3.5s ease-in-out infinite;
+}
+
 /* Reduced-motion gate, consolidated (polish pass): this block MUST stay
    last in the file — it overrides every animation/transition above, so
    under prefers-reduced-motion each one becomes an instant state change.
@@ -480,6 +493,7 @@ h1, h2, h3, h4, .font-headline {
   .encounter-fade,
   .foe-hit-flash,
   .fade-in,
+  .torch-flicker,
   .card-folio,
   .card-interactive {
     animation: none;

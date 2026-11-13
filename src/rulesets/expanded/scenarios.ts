@@ -57,6 +57,15 @@ export const ScenarioDef = z.object({
   party: z.array(ScenarioPartyMember).length(4),
   /** The "Learn to play" scenario — runs the tutorial step machine. */
   tutorial: z.boolean().optional(),
+  /**
+   * Clues in the party pool at the start of the delve (FADEE p.108).
+   * The tutorial party starts with 3: a door that answers only to a
+   * Clue (lever 1, illusionary 3) would otherwise strand a new party
+   * on a tile whose exits it cannot open — and Clues are only earned by
+   * searching, which is the lesson the party is trying to reach. Three
+   * opens any single Clue-door.
+   */
+  startingClues: z.number().int().min(0).optional(),
 })
 
 export type ScenarioDef = z.infer<typeof ScenarioDef>
@@ -68,12 +77,13 @@ export const SCENARIOS: ScenarioDef[] = [
     id: TUTORIAL_SCENARIO_ID,
     name: 'Learn to play — The First Delve',
     backstory:
-      'Every delver remembers their first descent: four adventurers, one torch, and a dungeon that does not care that you are new. This is a guided first delve — the dungeon is real, the dice are real, and a patient voice will walk you through it, one step at a time.',
+      'Every delver remembers their first descent: four adventurers, one torch, three leads worth following, and a dungeon that does not care that you are new. This is a guided first delve — the dungeon is real, the dice are real, and a patient voice will walk you through it, one step at a time.',
     goal: 'Learn the delve — explore, fight, search, and rest — then slay the Final Boss and leave alive. When the last lesson lands, the training wheels come off and the campaign is yours.',
     seed: 1481,
     tutorial: true,
+    startingClues: 3,
     party: [
-      { classId: 'warrior', name: 'Torsten', extraEquipment: ['bag of nails', 'bag of nails', 'bag of nails', 'bag of nails'] },
+      { classId: 'warrior', name: 'Torsten', extraEquipment: ['bag of nails', 'bag of nails', 'bag of nails', 'bag of nails', 'torch'] },
       { classId: 'cleric', name: 'Anya' },
       { classId: 'wizard', name: 'Fen' },
       { classId: 'rogue', name: 'Joss' },
