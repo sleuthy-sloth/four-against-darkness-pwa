@@ -74,7 +74,7 @@ h1, h2, h3, h4, .font-headline {
 
 /* Primary action — dried-oxblood wax stamp */
 .btn-wax {
-  @apply bg-torch text-stone-800 font-display font-semibold shadow-folio active:translate-y-0.5;
+  @apply bg-torch text-stone-800 font-display font-semibold shadow-folio;
   border: 1px solid #1f1a16;
   border-radius: 2px;
 }
@@ -84,7 +84,7 @@ h1, h2, h3, h4, .font-headline {
 
 /* Secondary action — inked cartouche */
 .btn-cartouche {
-  @apply bg-stone-900 text-parchment border border-parchment shadow-folio active:translate-y-0.5;
+  @apply bg-stone-900 text-parchment border border-parchment shadow-folio;
   border-radius: 2px;
 }
 .btn-cartouche:hover {
@@ -264,6 +264,7 @@ h1, h2, h3, h4, .font-headline {
 }
 @keyframes stamp-in {
   0% { opacity: 0; transform: rotate(-4deg) scale(1.4); }
+  70% { opacity: 1; transform: rotate(-4deg) scale(1.02); }
   100% { opacity: 1; transform: rotate(-4deg) scale(1); }
 }
 
@@ -287,7 +288,12 @@ h1, h2, h3, h4, .font-headline {
 
 /* Reduced motion (E): every animation above becomes an instant state
    change. The stamp keeps its styling; the pulse ring stays as a static
-   ring around the party token. */
+   ring around the party token.
+   NOTE: this block must stay AFTER every rule that sets an animation or
+   transition — including the polish-pass section at the end of this file
+   — or the later rules win the cascade and reduced motion breaks. The
+   consolidated gate lives at the end of the file; this block covers only
+   the M5 classes defined above it. */
 @media (prefers-reduced-motion: reduce) {
   .tile-reveal,
   .party-pulse,
@@ -298,5 +304,185 @@ h1, h2, h3, h4, .font-headline {
   .panel-in,
   .tab-fade {
     animation: none;
+  }
+}
+
+/* --- Polish pass (2026-11-12): fluidity, micro-interactions, depth ---
+   Every animation here is ≤300ms, ease-out, and gated by the
+   prefers-reduced-motion block above (instant state change instead).
+   Shadows stay warm brown-tinted, never grey (DESIGN.md §4). */
+
+/* P0-1: map zoom/pan animates (~200ms ease-out) — but never while the
+   pointer is dragging or pinching, or every move would lag. DungeonScreen
+   applies .map-smooth only when no pointer is down. */
+.map-smooth {
+  transition: transform 0.2s ease-out;
+}
+
+/* P0-2: the bottom-panel peek expands/collapses instead of snapping.
+   The panel stays mounted for the 200ms close, then unmounts
+   (DungeonScreen holds it mounted for 210ms). On desktop the open panel
+   is unbounded, as before; the closed panel is still 0. */
+.panel-peek {
+  transition: max-height 0.2s ease-out, opacity 0.2s ease-out;
+  overflow-y: auto;
+}
+.panel-peek-open {
+  max-height: 36vh;
+  opacity: 1;
+}
+.panel-peek-closed {
+  max-height: 0;
+  opacity: 0;
+}
+@media (min-width: 1024px) {
+  .panel-peek-open {
+    max-height: none;
+  }
+}
+
+/* P0-3: button press states — subtle scale + deeper shadow, 120ms. */
+.btn-wax,
+.btn-cartouche {
+  transition: transform 0.12s ease-out, box-shadow 0.12s ease-out, background-color 0.12s ease-out;
+}
+.btn-wax:active,
+.btn-cartouche:active {
+  transform: scale(0.98);
+  box-shadow: 2px 4px 10px -2px rgba(31, 26, 22, 0.3), 0 1px 2px rgba(31, 26, 22, 0.22);
+}
+
+/* P0-3: the sliding active-tab indicator (TabBar measures the active
+   link's left/width and moves this bar, 200ms). Brass is decorative
+   here, never text (DESIGN.md §3). */
+.tab-indicator {
+  transition: transform 0.2s ease-out, width 0.2s ease-out, opacity 0.2s ease-out;
+}
+
+/* P0-3: dialog backdrops fade in to match the panel-in (200ms). */
+@keyframes dialog-fade {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+.dialog-backdrop {
+  animation: dialog-fade 0.2s ease-out 1;
+}
+
+/* P0-4: Life bars ease to their new width (300ms). Gold numerals get a
+   brief brass-tinted background flash on change — background only, so
+   brass never becomes text (DESIGN.md §3). */
+.life-bar-fill {
+  transition: width 0.3s ease-out;
+}
+@keyframes gold-flash {
+  0% { background-color: rgba(156, 116, 40, 0.28); }
+  100% { background-color: transparent; }
+}
+.gold-flash {
+  animation: gold-flash 0.3s ease-out 1;
+  border-radius: 2px;
+}
+
+/* P0-5: dice settle — a gentle scale/rotate settle, ≤300ms, never a
+   theatrical tumble. An exploding die gets a brass-accent pulse on its
+   wrapper span (the oxblood ring is already drawn on the face). */
+@keyframes die-settle {
+  0% { transform: scale(1.12) rotate(-6deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+.die-settle {
+  animation: die-settle 0.3s ease-out 1;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes die-explode {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+.die-explode {
+  display: inline-block;
+  animation: die-explode 0.3s ease-out 1;
+}
+
+/* P0-6: log lines fade/slide in (150ms) as they are appended. Lines are
+   keyed stably (ts + text) so only the new line plays, never the whole
+   visible list. */
+@keyframes log-line-in {
+  0% { opacity: 0; transform: translateY(2px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.log-line {
+  animation: log-line-in 0.15s ease-out 1;
+}
+
+/* P1-9: the encounter card crossfades (200ms) when a new encounter
+   appears — the card remounts on a new tile/encounter (keyed). */
+@keyframes encounter-fade {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+.encounter-fade {
+  animation: encounter-fade 0.2s ease-out 1;
+}
+
+/* P1-9: foe-token hit flash on the map — an oxblood disc that blooms
+   over the struck tile and fades (300ms), tied to the combat log. */
+@keyframes foe-hit-flash {
+  0% { opacity: 0.45; }
+  100% { opacity: 0; }
+}
+.foe-hit-flash {
+  animation: foe-hit-flash 0.3s ease-out 1;
+  pointer-events: none;
+}
+
+/* P1-10: gentle fade-in for the campaign list and the dungeon mount —
+   parchment-toned by construction (opacity only, no spinner). */
+@keyframes fade-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+.fade-in {
+  animation: fade-in 0.2s ease-out 1;
+}
+
+/* P0-8: shadow depth — folio → raised on hover for interactive cards,
+   with a 150ms shadow transition and a 1px lift; .card-raised is the
+   static raised state for the hero card (encounter). */
+.card-folio {
+  transition: box-shadow 0.15s ease-out, transform 0.15s ease-out;
+}
+.card-raised {
+  box-shadow: 3px 6px 14px -3px rgba(31, 26, 22, 0.22), 0 1px 3px rgba(31, 26, 22, 0.18);
+}
+.card-interactive:hover {
+  box-shadow: 3px 6px 14px -3px rgba(31, 26, 22, 0.22), 0 1px 3px rgba(31, 26, 22, 0.18);
+  transform: translateY(-1px);
+}
+
+/* Reduced-motion gate, consolidated (polish pass): this block MUST stay
+   last in the file — it overrides every animation/transition above, so
+   under prefers-reduced-motion each one becomes an instant state change.
+   If you add a new animated class, list it here too. */
+@media (prefers-reduced-motion: reduce) {
+  .map-smooth,
+  .panel-peek,
+  .btn-wax,
+  .btn-cartouche,
+  .tab-indicator,
+  .dialog-backdrop,
+  .life-bar-fill,
+  .gold-flash,
+  .die-settle,
+  .die-explode,
+  .log-line,
+  .encounter-fade,
+  .foe-hit-flash,
+  .fade-in,
+  .card-folio,
+  .card-interactive {
+    animation: none;
+    transition: none;
   }
 }

@@ -17,14 +17,18 @@ function DieFace({
   exploding?: boolean
   label?: string
 }) {
-  return (
+  // Polish pass (P0-5): a short settle on mount (≤300ms, gentle
+  // scale/rotate — never a tumble); an exploding die gets a brass-accent
+  // pulse on a wrapper span. The die remounts with each new log line
+  // (stable keys), so only the fresh roll settles.
+  const face = (
     <svg
       viewBox="0 0 100 100"
       width={size}
       height={size}
       role="img"
       aria-label={label ?? `die showing ${value}`}
-      className="inline-block shrink-0 align-middle"
+      className="die-settle inline-block shrink-0 align-middle"
       style={{ marginTop: -2 }}
     >
       <rect x="6" y="6" width="88" height="88" rx="14" fill="#faf6ee" stroke="#2b241f" strokeWidth="5" />
@@ -36,6 +40,7 @@ function DieFace({
       ))}
     </svg>
   )
+  return exploding ? <span className="die-explode inline-block align-middle">{face}</span> : face
 }
 
 /** Two dice for a d66 readout: first die = tens, second = units. */

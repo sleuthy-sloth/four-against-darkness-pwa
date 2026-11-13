@@ -38,13 +38,13 @@ export function DoorDialog() {
   const note = 'mt-1 text-xs text-parchment/70'
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
+    <div className="dialog-backdrop fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={doorLabel(info)}
-        className="panel-in w-full rounded-lg border border-torch/40 bg-stone-900 p-4"
+        className="panel-in shadow-modal w-full rounded-lg border border-torch/40 bg-stone-900 p-4"
       >
         <p className="text-sm text-torch">{doorLabel(info)}</p>
         <p className="mt-1 text-xs text-parchment/70">

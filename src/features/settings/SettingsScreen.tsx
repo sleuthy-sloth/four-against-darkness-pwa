@@ -119,6 +119,7 @@ export default function SettingsScreen() {
     <div className="flex flex-1 flex-col overflow-y-auto p-4 pb-6">
       <h1 className="text-xl text-torch">Settings</h1>
       <p className="chapter-banner mt-4">About</p>
+      <ChapterOrnament />
       <section className="card-folio mt-2 flex flex-col items-center p-4 text-center">
         <img
           src={`${import.meta.env.BASE_URL}art/splash-torch.webp`}
@@ -325,13 +326,13 @@ export default function SettingsScreen() {
       </section>
 
       {confirmRestore && (
-        <div className="fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
+        <div className="dialog-backdrop fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
           <div
             ref={restoreRef}
             role="dialog"
             aria-modal="true"
             aria-label={`Restore ${confirmRestore.name}?`}
-            className="w-full rounded-lg border border-ember/50 bg-stone-900 p-4"
+            className="panel-in shadow-modal w-full rounded-lg border border-ember/50 bg-stone-900 p-4"
           >
             <p className="text-sm text-ember">
               Restore “{confirmRestore.name}”? The current campaign state is replaced by the checkpoint.

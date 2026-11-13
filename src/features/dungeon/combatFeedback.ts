@@ -53,3 +53,27 @@ export function feedbackTargetName(text: string, names: string[]): string | null
   }
   return null
 }
+
+/**
+ * Latest index of a line of the given feedback kind, scanning back from
+ * the newest line (bounded to the last 8 lines: a foes-turn block is at
+ * most a separator + 4 defense lines). Hit, defense-fail, and morale are
+ * separate channels with separate targets — a "Hit!" line is always
+ * followed in the same store update by the foes-turn block, so a
+ * last-line-only read (or a single most-recent-feedback slot) lets the
+ * foes' defense results swallow the hit flash (verified by probe,
+ * 2026-11-12: hits landed, no flash — the defense lines always won the
+ * slot). Each channel keeps its own most recent line; the index keys
+ * the animation, so a new event replays it.
+ */
+export function latestKindIndex(
+  lines: string[],
+  kind: CombatFeedbackKind,
+  window = 8,
+): number | null {
+  const start = Math.max(0, lines.length - window)
+  for (let i = lines.length - 1; i >= start; i--) {
+    if (feedbackForLogLine(lines[i]) === kind) return i
+  }
+  return null
+}

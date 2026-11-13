@@ -7,7 +7,7 @@ import { stripCitations } from '../common/stripCitations'
 import { LogDie } from '../common/Die'
 import FragIcon from '../common/FragIcon'
 import { familyFrag } from './foeIcons'
-import { feedbackForLogLine, feedbackTargetName } from './combatFeedback'
+import { feedbackTargetName, latestKindIndex } from './combatFeedback'
 import { hapticBuzz } from '../common/motion'
 
 /**
@@ -44,13 +44,19 @@ export default function CombatPanel() {
   const bribe = combat.pendingBribe
   const living = party.filter((p) => p.status !== 'dead')
 
-  // Feedback from the engine's latest log line (D3): which foe was hit,
-  // whether a defense failed, whether foes broke morale. The `fb-N` marker
-  // class changes with every log line, so a repeated hit replays its flash.
-  const lastLog = combat.log[combat.log.length - 1]?.text ?? ''
-  const fbKind = feedbackForLogLine(lastLog)
-  const fbTarget = feedbackTargetName(lastLog, combat.enemies.map((e) => e.profile.name))
-  const fbMark = `fb-${combat.log.length}`
+  // Feedback channels (D3, polish pass): hit, defense-fail, and morale
+  // are separate channels with separate targets — a hit must not be
+  // swallowed by the foes-turn block that follows it in the same update,
+  // nor by a defense result elsewhere on the screen. Each channel scans
+  // back (bounded, last 8 lines) for its most recent line.
+  const logTexts = combat.log.map((l) => l.text)
+  const hitIdx = latestKindIndex(logTexts, 'hit')
+  const defIdx = latestKindIndex(logTexts, 'defense-fail')
+  const moraleIdx = latestKindIndex(logTexts, 'morale')
+  const hitTarget =
+    hitIdx !== null
+      ? feedbackTargetName(combat.log[hitIdx].text, combat.enemies.map((e) => e.profile.name))
+      : null
 
   return (
     <div className="flex min-w-0 flex-1 flex-col overflow-y-auto p-3 pb-4">
@@ -87,22 +93,30 @@ export default function CombatPanel() {
       <div className="mb-2 space-y-1">
         {combat.enemies.map((e) => {
           const dead = e.fled || e.count === 0 || e.life === 0
-          const hitFlash = fbKind === 'hit' && fbTarget === e.profile.name
-          const moraleSlump = fbKind === 'morale' && e.fled
+          const hitFlash = hitIdx !== null && hitTarget === e.profile.name
+          const moraleSlump = moraleIdx !== null && e.fled
           return (
             <button
               key={e.id}
               disabled={dead || combat.phase !== 'pcTurn'}
               onClick={() => setTargetId(e.id)}
-              className={`block w-full rounded border px-2 py-1.5 text-left text-sm ${
+              className={`block w-full rounded border px-2 py-1.5 text-left text-sm transition-shadow duration-150 hover:shadow-raised ${
                 dead
                   ? 'border-stone-800 bg-stone-900 text-parchment/30'
                   : targetId === e.id || (!targetId && active?.id === e.id)
                     ? 'border-ember bg-ember/15 text-parchment'
                     : 'border-stone-700 bg-stone-800/60 text-parchment'
-              } ${hitFlash ? `combat-hit-flash ${fbMark}` : ''} ${moraleSlump ? `combat-morale-slump ${fbMark}` : ''}`}
+              } ${moraleSlump ? 'combat-morale-slump' : ''}`}
             >
-              <span className="flex items-center gap-2">
+              {/* The hit flash lives on this inner span (keyed by the hit
+                  line's index, so a new hit replays it) — not on the
+                  button, so remounting it never steals the button's focus. */}
+              <span
+                key={hitFlash ? `hit-${hitIdx}` : 'no-hit'}
+                className={`-mx-2 -my-1.5 flex items-center gap-2 rounded px-2 py-1.5 ${
+                  hitFlash ? 'combat-hit-flash' : ''
+                }`}
+              >
                 <FragIcon frag={familyFrag(e.profile.family)} size={20} label={e.profile.name} />
                 <span className="font-medium">{e.profile.name}</span>
                 <span className="num-tabular ml-1 font-mono text-xs text-parchment/70">
@@ -117,8 +131,13 @@ export default function CombatPanel() {
         })}
       </div>
 
-      {/* party: Life numerals tabular; the row shakes on a failed defense */}
-      <div className={`mb-2 grid grid-cols-4 gap-1 ${fbKind === 'defense-fail' ? `combat-defense-shake ${fbMark}` : ''}`}>
+      {/* party: Life numerals tabular; the row shakes on a failed defense.
+          The grid remounts (key) on a new defense-fail so the shake replays;
+          its cells hold no focus. */}
+      <div
+        key={`def-${defIdx ?? 'none'}`}
+        className={`mb-2 grid grid-cols-4 gap-1 ${defIdx !== null ? 'combat-defense-shake' : ''}`}
+      >
         {party.map((p) => (
           <div key={p.id} className="rounded bg-stone-800/60 px-1.5 py-1 text-center">
             <div className="truncate text-[11px] text-parchment">{p.name}</div>
@@ -464,8 +483,8 @@ export default function CombatPanel() {
       </button>
       {showLog && (
         <ul className="num-tabular space-y-0.5 text-[11px] leading-relaxed text-parchment/70">
-          {combat.log.slice(-14).map((l, i) => (
-            <li key={i}>
+          {combat.log.slice(-14).map((l) => (
+            <li key={`${l.ts}-${l.text}`} className="log-line">
               <LogDie text={l.text} />
               · {stripCitations(l.text)}
             </li>

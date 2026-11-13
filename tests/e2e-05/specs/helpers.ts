@@ -69,6 +69,62 @@ export async function exploreExit(page: Page) {
   await disc.dispatchEvent('pointerup')
 }
 
+/**
+ * Explore until the current tile holds an encounter — either the
+ * Engage! card (a tile encounter) or an open combat (wandering monsters
+ * on a retrace). Only taps glowing (unexplored) exits, rotating through
+ * them; dead-end rolls leave the exit unexplored, so it comes round again.
+ * Steps aside from door/choice dialogs, and retraces through the way back
+ * when a tile has no unexplored exit left. Returns true when a fight is up.
+ */
+export async function exploreUntilEncounter(page: Page, maxAttempts = 40): Promise<boolean> {
+  const fightUp = async () =>
+    (await page.getByRole('button', { name: 'Engage!' }).isVisible().catch(() => false)) ||
+    (await page.getByRole('button', { name: /^Attack / }).first().isVisible().catch(() => false))
+  const unexplored = () => page.locator('circle.cursor-pointer[class*="fill-torch"]')
+  let discIndex = 0
+  for (let i = 0; i < maxAttempts; i++) {
+    if (await fightUp()) return true
+    const leaveDoor = page.getByRole('button', { name: 'Leave the door for now' })
+    if (await leaveDoor.isVisible().catch(() => false)) {
+      await leaveDoor.click()
+      await page.waitForTimeout(300)
+      continue
+    }
+    const leaveAlone = page.getByRole('button', { name: 'Leave it alone' })
+    if (await leaveAlone.isVisible().catch(() => false)) {
+      await leaveAlone.click()
+      await page.waitForTimeout(300)
+      continue
+    }
+    const dialog = page.getByRole('dialog').first()
+    if (await dialog.isVisible().catch(() => false)) {
+      const first = dialog.getByRole('button').first()
+      if (await first.isVisible().catch(() => false)) {
+        await first.click()
+        await page.waitForTimeout(300)
+        continue
+      }
+    }
+    const count = await unexplored().count()
+    if (count === 0) {
+      // No unexplored exits here — retrace through the way back (the dim
+      // disc, never the first disc: that can be a locked door, which
+      // would just reopen its dialog and loop forever).
+      const back = page.locator('circle.cursor-pointer[class*="fill-parchment"]').first()
+      if ((await back.count()) === 0) return false
+      await back.dispatchEvent('pointerup')
+      await page.waitForTimeout(300)
+      continue
+    }
+    const disc = unexplored().nth(discIndex % count)
+    discIndex++
+    await disc.dispatchEvent('pointerup')
+    await page.waitForTimeout(300)
+  }
+  return fightUp()
+}
+
 /** Attack until the combat is won or the party falls; returns true on win. */
 export async function attackUntilWon(page: Page, maxRounds = 40): Promise<boolean> {
   for (let i = 0; i < maxRounds; i++) {

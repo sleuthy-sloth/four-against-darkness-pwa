@@ -24,14 +24,14 @@ export default function ShortcutsSheet({ onClose }: { onClose: () => void }) {
   return (
     <div
       ref={dialogRef}
-      className="fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16"
+      className="dialog-backdrop fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16"
       role="dialog"
       aria-modal="true"
       aria-label="Keyboard shortcuts"
       onClick={onClose}
     >
       <div
-        className="panel-in w-full rounded-lg border border-parchment bg-stone-900 p-4"
+        className="panel-in shadow-modal w-full rounded-lg border border-parchment bg-stone-900 p-4"
         onClick={(e) => e.stopPropagation()}
       >
         <p className="font-display text-sm text-torch">Keyboard shortcuts</p>

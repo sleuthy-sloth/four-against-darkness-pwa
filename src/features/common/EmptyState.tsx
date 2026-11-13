@@ -92,10 +92,10 @@ export default function EmptyState({
 }) {
   const Vignette = VIGNETTES[kind]
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 py-10 text-center">
       <Vignette />
       <p className="font-display text-base text-parchment">{title}</p>
-      <p className="max-w-xs text-sm text-parchment/70">{body}</p>
+      <p className="max-w-xs text-sm leading-relaxed text-parchment/70">{body}</p>
       {action}
     </div>
   )

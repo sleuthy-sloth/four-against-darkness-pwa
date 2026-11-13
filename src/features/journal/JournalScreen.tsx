@@ -41,7 +41,7 @@ function JournalEntry({ entry, dropCap }: { entry: EventRecord; dropCap: boolean
   const text = stripCitations(String(entry.payload))
   const long = text.length > CLAMP_AT
   return (
-    <li className="rounded bg-stone-800/60 px-3 py-2 text-sm">
+    <li className="rounded bg-stone-800/60 px-3 py-2 text-sm shadow-folio">
       <span
         className={`mr-2 rounded-sm border border-parchment/40 px-1.5 py-0.5 font-label text-[10px] uppercase ${CATEGORY_INK[entry.type as JournalCategory] ?? 'text-parchment'}`}
       >
@@ -116,7 +116,10 @@ export default function JournalScreen() {
         className="-mx-4 -mt-4 h-28 w-[calc(100%+2rem)] max-w-none object-cover"
       />
       <h1 className="mt-3 text-xl text-torch">Journal</h1>
-      <div className="mt-2 flex gap-1 overflow-x-auto pb-2">
+      {/* Polish pass (P0-7): the filter chips wrap instead of scrolling
+          off the right edge — on a 390px viewport "loot · 0" was cut off
+          with no affordance that more chips existed. */}
+      <div className="mt-2 flex flex-wrap gap-1 pb-2">
         {CATEGORIES.map((c) => {
           const count = c === 'all' ? entries.length : (counts.get(c) ?? 0)
           return (

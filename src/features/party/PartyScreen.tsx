@@ -93,7 +93,7 @@ export default function PartyScreen() {
               // when the player renamed the character.
               const classLine = c.name === def.name ? `L${c.level}` : `${def.name} · L${c.level}`
               return (
-                <div key={c.id} className="card-folio p-3">
+                <div key={c.id} className="card-folio card-interactive p-3">
                   {/* Phase G (WCAG 2.5.3): the card button holds only the
                       name — its visible text ("1. Warrior") is contained
                       in the accessible name. The class line and Life block
@@ -119,7 +119,7 @@ export default function PartyScreen() {
                       <div className="mt-2 flex items-center gap-2">
                         <span className="font-mono text-[11px] text-parchment/70">{c.currentLife}</span>
                         <div className="h-1.5 flex-1 rounded bg-stone-700">
-                          <div className="h-1.5 rounded bg-ember" style={{ width: `${hpPct}%` }} />
+                          <div className="life-bar-fill h-1.5 rounded bg-ember" style={{ width: `${hpPct}%` }} />
                         </div>
                         <span className="font-mono text-[11px] text-parchment/70">{c.maxLife}</span>
                       </div>
@@ -161,7 +161,9 @@ export default function PartyScreen() {
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <span className="flex items-center gap-1.5">
                 <CoinDevice size={14} />
-                <span className="font-mono text-sm font-bold text-brassInk">{totalGold}</span> gp pooled
+                {/* Polish pass (P0-4): the pooled-gold numeral remounts on
+                    change (key) so the brass flash replays once per change. */}
+                <span key={totalGold} className="gold-flash font-mono text-sm font-bold text-brassInk">{totalGold}</span> gp pooled
               </span>
               {xpBanked > 0 && <span>{xpBanked} XP roll{xpBanked === 1 ? '' : 's'} banked — spend in the combat panel</span>}
             </div>

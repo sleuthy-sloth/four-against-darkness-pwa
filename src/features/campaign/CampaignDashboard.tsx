@@ -84,7 +84,7 @@ export default function CampaignDashboard() {
   }
 
   return (
-    <div className="flex flex-1 flex-col items-center gap-6 overflow-y-auto p-6 text-center">
+    <div className="fade-in flex flex-1 flex-col items-center gap-6 overflow-y-auto p-6 text-center">
       {/* Delver artwork: torch-lit corridor banner, full-bleed at the top. */}
       <img
         src={`${import.meta.env.BASE_URL}art/dashboard-hero.webp`}
@@ -171,7 +171,7 @@ export default function CampaignDashboard() {
         </p>
         <ul className="space-y-3 text-left">
           {tales.map((tale) => (
-            <li key={tale.id} className="card-folio p-3">
+            <li key={tale.id} className="card-folio card-interactive p-3">
               <p className="font-display text-base text-torch">{tale.name}</p>
               <p className="mt-1 text-sm leading-snug text-parchment">{tale.backstory}</p>
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -256,13 +256,13 @@ export default function CampaignDashboard() {
       )}
 
       {confirmDelete && (
-        <div className="fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
+        <div className="dialog-backdrop fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
           <div
             ref={deleteRef}
             role="dialog"
             aria-modal="true"
             aria-label={`Delete ${confirmDelete.name}?`}
-            className="w-full rounded-lg border border-ember/50 bg-stone-900 p-4"
+            className="panel-in shadow-modal w-full rounded-lg border border-ember/50 bg-stone-900 p-4"
           >
             <p className="text-sm text-ember">
               Delete “{confirmDelete.name}” permanently — party, dungeon, journal and checkpoints?

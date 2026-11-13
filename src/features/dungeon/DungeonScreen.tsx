@@ -42,7 +42,9 @@ import { doorNeedsAction } from '../../engine/dungeon/doors'
 import { mapKeyAction, isTypingTarget } from './mapKeys'
 import { exitLabel, nextExitIndex } from './mapNav'
 import { useDialogFocus } from '../common/useDialogFocus'
-import { hapticBuzz } from '../common/motion'
+import { hapticBuzz, prefersReducedMotion } from '../common/motion'
+import { debounce } from '../common/debounce'
+import { feedbackTargetName, latestKindIndex } from './combatFeedback'
 
 /** Stone-floor tones per floor variant (C4): rotation is baked into the
     pattern defs below, so the same dungeon always draws the same floors. */
@@ -121,6 +123,36 @@ export default function DungeonScreen() {
     useDungeonStore()
   const { campaign, party, loadLastCampaign } = useCampaignStore()
   const [panelOpen, setPanelOpen] = useState(true)
+  // Polish pass (P0-2): the peek panel animates closed over 200ms, then
+  // unmounts; opening mounts it first, then expands on the next frame.
+  // Reduced motion skips the animation (instant mount/unmount).
+  const [panelMounted, setPanelMounted] = useState(true)
+  const panelTimer = useRef<number | null>(null)
+  const togglePanel = useCallback(() => {
+    if (prefersReducedMotion()) {
+      setPanelOpen((o) => !o)
+      setPanelMounted((m) => !m)
+      return
+    }
+    if (panelOpen) {
+      setPanelOpen(false)
+      panelTimer.current = window.setTimeout(() => setPanelMounted(false), 210)
+    } else {
+      if (panelTimer.current !== null) window.clearTimeout(panelTimer.current)
+      setPanelMounted(true)
+      requestAnimationFrame(() => requestAnimationFrame(() => setPanelOpen(true)))
+    }
+  }, [panelOpen])
+  useEffect(
+    () => () => {
+      if (panelTimer.current !== null) window.clearTimeout(panelTimer.current)
+    },
+    [],
+  )
+  // Polish pass (P0-1): the map's zoom/pan transform animates (200ms)
+  // except while a pointer is dragging or pinching, where it must track
+  // the finger 1:1. The svg gets .map-smooth only when not interacting.
+  const [interacting, setInteracting] = useState(false)
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [showShortcuts, setShowShortcuts] = useState(false)
@@ -172,6 +204,7 @@ export default function DungeonScreen() {
 
   // ----- pointer handlers: pan / pinch / tap -----
   const onPointerDown = (e: React.PointerEvent) => {
+    setInteracting(true)
     ;(e.target as Element).setPointerCapture?.(e.pointerId)
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
     if (pointers.current.size === 1) {
@@ -203,6 +236,7 @@ export default function DungeonScreen() {
     }
   }
   const onPointerUp = (e: React.PointerEvent) => {
+    setInteracting(false)
     pointers.current.delete(e.pointerId)
     if (pointers.current.size < 2) pinchRef.current = null
     dragRef.current = null
@@ -222,6 +256,29 @@ export default function DungeonScreen() {
     setPan({ x: 0, y: 0 })
   }, [bounds])
 
+  // Polish pass (P0-1): re-fit the dungeon smoothly when the viewport
+  // width changes (resize / orientationchange), debounced 200ms — the
+  // re-fit glides because the svg carries .map-smooth while no pointer
+  // is down. A height-only change (mobile browser chrome showing or
+  // hiding) leaves the player's zoom alone.
+  const lastWidthRef = useRef(typeof window === 'undefined' ? 0 : window.innerWidth)
+  useEffect(() => {
+    const onResize = debounce(() => {
+      if (typeof window === 'undefined') return
+      if (window.innerWidth !== lastWidthRef.current) {
+        lastWidthRef.current = window.innerWidth
+        fitDungeon()
+      }
+    }, 200)
+    window.addEventListener('resize', onResize)
+    window.addEventListener('orientationchange', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('orientationchange', onResize)
+      onResize.cancel()
+    }
+  }, [fitDungeon])
+
   const engage = useCallback(() => {
     // Haptics (E): a short buzz on engage, behind the Settings toggle.
     hapticBuzz(10)
@@ -238,6 +295,19 @@ export default function DungeonScreen() {
   // the render's `i === activeExit` tabIndex.
   const content = tile?.content ?? null
   const canEngage = !!content?.encounter && !content.cleared && !dungeon?.combat
+  // Polish pass (P1-9): the map's foe token flashes when the combat log
+  // says a hit landed on the current tile's encounter — the hit channel
+  // scans back past the foes-turn block (see latestKindIndex), since the
+  // last line alone almost never carries a hit.
+  const combatLog = dungeon?.combat?.log ?? []
+  const mapHitIdx = latestKindIndex(combatLog.map((l) => l.text), 'hit')
+  const mapHitTarget =
+    mapHitIdx !== null
+      ? feedbackTargetName(
+          combatLog[mapHitIdx].text,
+          content?.encounter ? [content.encounter.monster.name] : [],
+        )
+      : null
   useEffect(() => {
     const focusExit = (index: number) => {
       if (!dungeon || !tile) return
@@ -388,7 +458,7 @@ export default function DungeonScreen() {
   ]
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
+    <div className="fade-in flex flex-1 flex-col overflow-hidden lg:flex-row">
       {/* Phase G: the screen's heading for assistive tech (axe
           page-has-heading-one) — the visible room header is a collapse
           toggle, so it cannot be the h1. */}
@@ -401,7 +471,7 @@ export default function DungeonScreen() {
           tabIndex={0}
           role="application"
           aria-label="Dungeon map. Tab to the exits, arrow keys move between them, Enter explores. Plus and minus zoom, zero fits the dungeon, E engages foes, U undoes, question mark lists shortcuts."
-          className="relative min-h-0 flex-1 touch-none bg-stone-950"
+          className="relative min-h-0 flex-1 touch-none overflow-hidden bg-stone-950"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -409,7 +479,7 @@ export default function DungeonScreen() {
         >
           <svg
             viewBox={`0 0 ${bounds.maxCol - bounds.minCol + 4} ${bounds.maxRow - bounds.minRow + 4}`}
-            className="h-full w-full"
+            className={`h-full w-full ${interacting ? '' : 'map-smooth'}`}
             style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
             preserveAspectRatio="xMidYMid meet"
           >
@@ -444,8 +514,9 @@ export default function DungeonScreen() {
                   <path d="M0 0.5h1M0.5 0v1" className="stroke-parchment/30" strokeWidth={0.06} />
                 </pattern>
               ))}
-              {/* torch-lit gradient falloff (C4): bright at the party token,
-                  dimming with distance — no flat two-tone */}
+              {/* torch-lit gradient falloff (C4, deepened in the polish
+                  pass): bright at the party token, dimming with distance
+                  — no flat two-tone */}
               <radialGradient
                 id="torchFalloff"
                 gradientUnits="userSpaceOnUse"
@@ -454,8 +525,8 @@ export default function DungeonScreen() {
                 r={7}
               >
                 <stop offset="0%" stopColor="#2b241f" stopOpacity="0" />
-                <stop offset="55%" stopColor="#2b241f" stopOpacity="0.06" />
-                <stop offset="100%" stopColor="#2b241f" stopOpacity="0.3" />
+                <stop offset="55%" stopColor="#2b241f" stopOpacity="0.1" />
+                <stop offset="100%" stopColor="#2b241f" stopOpacity="0.38" />
               </radialGradient>
             </defs>
             <g transform={`translate(${2 - bounds.minCol}, ${2 - bounds.minRow})`}>
@@ -751,6 +822,20 @@ export default function DungeonScreen() {
                         </text>
                       </g>
                     )}
+                    {/* foe-token hit flash (P1-9): the current tile blooms
+                        oxblood when the combat log reports a hit on its
+                        encounter; the key is the hit line's index, so a
+                        new hit remounts and replays the flash */}
+                    {isCurrent && mapHitIdx !== null && mapHitTarget && (
+                      <circle
+                        key={`fb-hit-${mapHitIdx}`}
+                        cx={cx}
+                        cy={cy}
+                        r={0.55}
+                        className="foe-hit-flash"
+                        fill="#8c2626"
+                      />
+                    )}
                     {/* secret door found by searching (C4): a badge on the tile */}
                     {visible && t.secretDoorFound && (
                       <g>
@@ -894,7 +979,7 @@ export default function DungeonScreen() {
                 onClick={b.onClick}
                 title={b.title}
                 aria-label={b.label}
-                className="flex h-11 w-11 items-center justify-center rounded border border-parchment bg-stone-800 text-lg text-parchment shadow-folio"
+                className="flex h-11 w-11 items-center justify-center rounded border border-parchment bg-stone-800 text-lg text-parchment shadow-folio transition-shadow duration-150 hover:shadow-raised"
               >
                 <span className={b.glyph === 'Fit' ? 'font-label text-[10px] uppercase' : ''}>
                   {b.glyph}
@@ -928,7 +1013,8 @@ export default function DungeonScreen() {
         ) : (
           <div className="flex flex-col lg:min-h-0 lg:flex-1">
             <button
-              onClick={() => setPanelOpen((o) => !o)}
+              onClick={togglePanel}
+              aria-expanded={panelOpen}
               className="flex w-full items-center justify-between px-3 py-1.5 text-xs uppercase tracking-wide text-parchment/70"
             >
               <span className="font-label">
@@ -956,12 +1042,17 @@ export default function DungeonScreen() {
                 {dungeon.lanternDropped && ' · lantern dropped!'}
               </p>
             )}
-            {panelOpen && (
-              <div className="max-h-[36vh] overflow-y-auto px-3 pb-3 text-sm lg:max-h-none lg:min-h-0 lg:flex-1">
+            {panelMounted && (
+              <div
+                className={`panel-peek px-3 pb-3 text-sm lg:min-h-0 lg:flex-1 ${panelOpen ? 'panel-peek-open' : 'panel-peek-closed'}`}
+              >
                 {/* encounter folio card (D1): family icon, count, level, wax
                     Engage, and the reaction hint the engine already knows */}
                 {content?.encounter && !content.cleared && (
-                  <div className="card-folio mb-2 p-3">
+                  <div
+                    key={`${tile.id}-${content.encounter.monster.name}`}
+                    className="card-folio card-raised encounter-fade mb-2 p-3"
+                  >
                     <div className="flex items-start gap-2">
                       <FragIcon
                         frag={familyFrag(content.encounter.monster.family)}
@@ -1283,8 +1374,8 @@ export default function DungeonScreen() {
                     Rendered strings are citation-stripped (Release 0.5, Part B);
                     the store/journal keeps the internal record. */}
                 <ul className="log-fade num-tabular space-y-0.5 text-xs text-parchment/70">
-                  {log.slice(-6).map((l, i) => (
-                    <li key={i}>
+                  {log.slice(-6).map((l) => (
+                    <li key={`${l.ts}-${l.text}`} className="log-line">
                       <span className="mr-1 font-mono text-[10px] text-faint">
                         {new Date(l.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
@@ -1310,13 +1401,13 @@ export default function DungeonScreen() {
       </div>
       {/* undo (PROJECT_SPEC §19): confirm before reversing the last action */}
       {confirmUndo && (
-        <div className="fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
+        <div className="dialog-backdrop fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
           <div
             ref={undoRef}
             role="dialog"
             aria-modal="true"
             aria-label={`Undo ${confirmUndo.label}?`}
-            className="panel-in w-full rounded-lg border border-ember/50 bg-stone-900 p-4"
+            className="panel-in shadow-modal w-full rounded-lg border border-ember/50 bg-stone-900 p-4"
           >
             <p className="text-sm text-torch">Undo “{confirmUndo.label}”?</p>
             <p className="mt-1 text-[10px] text-parchment/70">

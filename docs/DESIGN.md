@@ -41,9 +41,23 @@ Three-font system with a real hierarchy. Keep it; extend it, don't replace it.
 - **EB Garamond** — body text, journal entries, descriptions.
 - **JetBrains Mono** — labels, numbers, dice/roll log, tile labels (mono caps).
 
-Type sizes today are ad hoc per screen (chapter banner, card titles, log,
-mono labels). When adding a size, pick from the sizes already in use; do not
-introduce one-off sizes. Line length for log/journal text: cap at ~65ch.
+Type scale (formalized in the 2026-11-12 polish pass from the sizes
+already in use — counted across `src/`; no new one-off sizes):
+
+| Size | Role | Where |
+|---|---|---|
+| 10px mono (`text-[10px]`) | Micro-labels, uppercase | Tab labels, log timestamps, card micro-copy |
+| 11px mono (`text-[11px]`) | Small numerals | Life numerals, date separators, combat grid |
+| 12px (`text-xs`) | Secondary text | Log lines, buttons, helper text (most-used size) |
+| 14px (`text-sm`) | Body / UI text | Card bodies, dialog text, journal entries |
+| 16px (`text-base`) | Card titles, names | Encounter titles, tale names, party names |
+| 18px (`text-lg`) | Section headings | Combat heading, About title |
+| 20px (`text-xl`) | Screen headings | Every screen `h1` (Party, Journal, Inventory, Settings) |
+| 24px (`text-2xl`) | Character-sheet display | Character name + big stat numerals only |
+
+Line length for log/journal text: cap at ~65ch. Numerals that change
+in place are tabular (`JetBrains Mono` + `.num-tabular`) so the log
+never jitters.
 
 ## 3. Contrast rules (measured, not vibes)
 
@@ -102,10 +116,19 @@ Rules:
 
 - **Radii:** squared. The manuscript look is sharp corners; do not round cards
   or buttons.
-- **Spacing:** 8px rhythm. Use the scale already in use; do not invent
-  one-off gaps.
+- **Spacing:** 8px rhythm, from the scale already in use (counted across
+  `src/`): screen padding `p-4 pb-6` (dashboard landing `p-6`); card
+  padding `p-3` (sections `p-4`); gaps `gap-1`/`gap-2` (lists `space-y-1`/
+  `space-y-2`, sections `mt-2`/`mt-3`, chapter banners `mt-4`); button
+  padding `px-3 py-1.5` (small) / `px-4 py-2` (standard) / `px-6 py-3`
+  (primary). Do not invent one-off gaps. Every Settings section follows
+  the same rhythm — chapter banner, ornament, `card-folio mt-2` — with no
+  section skipping its ornament.
 - **Shadows:** folio (resting card), raised (interactive / hover), modal.
-  Keep them warm brown-tinted, never grey.
+  Keep them warm brown-tinted, never grey. Interactive cards lift to
+  `raised` on hover with a 1px rise (`.card-interactive`, 150ms shadow
+  transition); the hero card (encounter) rests at `raised` (`.card-raised`);
+  dialogs sit at `modal` (`.shadow-modal`).
 
 ## 5. Component kit
 
@@ -154,12 +177,40 @@ Define for every kit component (buttons, tabs, tiles, cards):
 - Every animation has a `prefers-reduced-motion` off-ramp (instant state
   change instead). Nothing animates on a timer without a cause.
 
-## 9. Dark mode — UNDECIDED
+Motion inventory (all timings measured in `src/styles/index.css`;
+everything below is gated by the reduced-motion block there):
 
-**No dark theme.** The light parchment flip is a complete system; do not add
-a dark theme implicitly. Reason to record if light-only is confirmed:
-manuscript legibility, single-theme maintenance. This is a Steven taste call
-(plan item A6) — this draft records the question, not the answer.
+| Animation | Trigger | Timing |
+|---|---|---|
+| Tile reveal (`.tile-reveal`) | Newest tile generated | 150ms ease-out |
+| Tab crossfade (`.tab-fade`) | Tab switch | 120ms ease-out |
+| Panel/drawer in (`.panel-in`) | Dialog/panel mounts | 200ms ease-out |
+| Dialog backdrop fade (`.dialog-backdrop`) | Any dialog opens | 200ms ease-out |
+| Bottom-panel peek (`.panel-peek`) | Peek expand/collapse | 200ms ease-out (max-height + opacity) |
+| Map zoom/pan (`.map-smooth`) | Zoom buttons/keys/fit, resize re-fit | 200ms ease-out on the SVG transform — **never while dragging/pinching** (the transform tracks the pointer 1:1 then) |
+| Resize re-fit | Viewport width change (resize / orientationchange) | Debounced 200ms, then the smooth re-fit above; height-only changes (mobile browser chrome) do not re-fit |
+| Button press (`.btn-wax` / `.btn-cartouche`) | `:active` | 120ms, scale 0.98 + deeper shadow |
+| Tab indicator (`.tab-indicator`) | Active tab changes | 200ms ease-out (glides to the measured tab) |
+| Life bar (`.life-bar-fill`) | Life changes | 300ms ease-out on width |
+| Gold flash (`.gold-flash`) | Pooled gold changes | 300ms ease-out background flash (brass tint as background only — brass never becomes text, §3) |
+| Dice settle (`.die-settle`) | A new roll renders | 300ms ease-out, gentle scale/rotate — never a tumble |
+| Exploding die (`.die-explode`) | Exploding roll renders | 300ms ease-out brass-accent pulse |
+| Log line in (`.log-line`) | A log line is appended | 150ms ease-out fade/slide; lines are stably keyed so only the new line plays |
+| Encounter crossfade (`.encounter-fade`) | A new encounter appears | 200ms ease-out opacity |
+| Foe hit flash (`.foe-hit-flash`) | Combat log reports a hit | 300ms ease-out oxblood bloom on the map tile |
+| Combat hit flash / defense shake / morale slump | Engine log lines | 300ms / 300ms / 400ms (the shake is the one decided exception to subtle motion) |
+| Victory stamp (`.victory-stamp`) | Victory / Fallen | 200ms ease-out, with a tiny wax-seal press (scale 1.02 → 1) |
+| Mount fade-in (`.fade-in`) | Campaign list / dungeon mount | 200ms ease-out opacity |
+| Card hover (`.card-interactive`) | Pointer over an interactive card | 150ms shadow transition + 1px lift |
+| "You are here" pulse (`.party-pulse`) | Always, on the party token | 2s ease-out, infinite — the one ambient motion; a static ring under reduced motion |
+| Splash progress (`.splash-progress`) | First paint only | 1.4s linear, before the bundle loads |
+
+## 9. Dark mode — DECIDED: light-only
+
+**No dark theme.** Decided 2026-11-11 (plan item A6, per Steven's
+delegation to make judgement calls): Tome & Delve is a parchment
+identity; a dark theme means re-grading every token. Manuscript
+legibility, single-theme maintenance. Do not add a dark theme implicitly.
 
 ## 10. Do / Don't
 

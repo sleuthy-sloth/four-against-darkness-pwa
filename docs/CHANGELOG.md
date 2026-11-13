@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Visual polish pass: feel, fluidity, depth (2026-11-12)
+- Map zoom/pan fluidity (P0-1): zoom in/out, fit, recenter, and keyboard pan
+  animate the SVG viewport transform over 200ms ease-out (`.map-smooth`) —
+  except while a pointer is dragging or pinching, where the transform tracks
+  1:1. Viewport-width changes (resize / orientationchange) re-fit the dungeon
+  smoothly, debounced 200ms (`src/features/common/debounce.ts`); height-only
+  changes (mobile browser chrome showing/hiding) leave the player's zoom alone
+- Mobile bottom-panel peek (P0-2): expand/collapse animates (max-height +
+  opacity, 200ms ease-out) instead of snapping; the panel stays mounted for
+  the close, then unmounts. Instant under reduced motion
+- Micro-interactions (P0-3): `.btn-wax` / `.btn-cartouche` press states
+  (subtle scale 0.98 + deeper shadow, 120ms); the tab bar gains a sliding
+  brass active-tab indicator (measured off the active link, 200ms glide);
+  all nine dialog backdrops fade in (200ms) to match the existing panel-in,
+  and dialog panels sit at the modal shadow
+- Life bars ease to their new width (300ms); pooled gold gets a brief
+  brass-tinted background flash on change (background only — brass never
+  becomes text, DESIGN.md §3)
+- Dice settle (P0-5): drawn dice play a short gentle scale/rotate settle
+  (≤300ms, never a tumble) when a new roll renders; an exploding die gets a
+  brass-accent pulse
+- Log lines fade/slide in (150ms) as appended — dungeon and combat logs are
+  stably keyed (ts + text) so only the new line plays, never the whole list
+- Combat feedback on the map (P1-9): the current tile's foe token blooms
+  oxblood when the combat log reports a hit (tied to the existing
+  combatFeedback set); the encounter card crossfades (200ms) when a new
+  encounter appears. The feedback derivation itself was fixed to make this
+  real: the engine resolves the whole round in one store update, so a
+  "Hit!" line is always followed in the same update by the foes-turn block
+  — a last-line-only flash could never fire in live play (proven by probe:
+  8 attacks, hits landed, no flash). New `latestKindIndex` keeps the
+  hit, defense-fail, and morale channels separate, each scanning back
+  (bounded, last 8 lines) for its most recent line; the same fix repairs
+  the Milestone 5 combat-panel hit flash, which shared the masked
+  derivation, and each channel's line index keys its animation so a new
+  event replays it
+- Loading states (P1-10): gentle fade-in for the campaign list and the
+  dungeon mount (opacity only, no spinner)
+- Visual depth (P0-8): warm brown-tinted shadows deepened — encounter card
+  rests raised, party/tale cards lift to raised on hover (150ms shadow
+  transition + 1px rise), journal entries carry the folio shadow, dialogs
+  the modal shadow; zoom buttons lift on hover
+- Torch glow (P2): the static torch-light radial gradient deepened
+  (55% stop 0.06 → 0.10, edge 0.30 → 0.38); no pulse added — the party
+  token's slow pulse already marks the light. Victory stamp gains a tiny
+  wax-seal press (scale 1.02 → 1)
+- Type scale + spacing tokens (P1-11): formalized in DESIGN.md §2/§4 from
+  the sizes already in use (10px mono micro-labels → 24px character-sheet
+  display; `p-4 pb-6` screens, `p-3` cards, `px-3 py-1.5` small buttons);
+  normalized the one visible one-off — every Settings section now follows
+  banner → ornament → card, including About
+- DESIGN.md §8 now records the full motion inventory with timings; §9
+  records light-only as decided (2026-11-11, plan A6)
+- Tests: `debounce` unit suite (4 tests); new Playwright spec
+  `tests/e2e-05/specs/09-polish.spec.ts` (map zoom, panel peek, combat hit
+  feedback, dice render, dialog open/close, resize 390→820→1280, journal
+  chips at 390px) plus `10-polish-reduced-motion.spec.ts` (animations instant
+  under reduced motion)
+
+### Fixed — Visual polish pass (2026-11-12)
+- Journal filter chips overflowed the right edge on a 390px viewport
+  ("loot · 0" cut off with no affordance) — the chip row now wraps instead
+  of scrolling off-screen
+- The zoomed map SVG painted outside its viewport and covered the bottom
+  panel's toggle (at fit zoom the toggle was unclickable — found by the
+  polish spec's zoom-then-peek sequence) — the map viewport now clips its
+  content (`overflow-hidden`); zoom/pan still work inside it
+
 ### Added
 - GitHub repository initialized
 - Project documentation suite (11 files)

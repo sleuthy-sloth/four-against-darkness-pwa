@@ -147,12 +147,12 @@ export default function InstallPrompt() {
   return (
     <div
       ref={dialogRef}
-      className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 px-3 pb-16"
+      className="dialog-backdrop fixed inset-0 z-40 flex items-end justify-center bg-black/60 px-3 pb-16"
       role="dialog"
       aria-modal="true"
       aria-label="Install Four Against Darkness"
     >
-      <div className="card-folio w-full max-w-md p-4">
+      <div className="card-folio shadow-modal w-full max-w-md p-4">
         <div className="flex items-center gap-3">
           <img
             src={`${import.meta.env.BASE_URL}icons/icon-192.png`}

@@ -261,13 +261,13 @@ export default function InventoryScreen() {
         ))}
       </div>
       {moveItem && (
-        <div className="fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
+        <div className="dialog-backdrop fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
           <div
             ref={moveRef}
             role="dialog"
             aria-modal="true"
             aria-label={`Give ${moveItem.item} to whom?`}
-            className="w-full rounded-lg border border-torch/40 bg-stone-900 p-4"
+            className="panel-in shadow-modal w-full rounded-lg border border-torch/40 bg-stone-900 p-4"
           >
             <p className="text-sm text-torch">Give “{moveItem.item}” to whom?</p>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -297,13 +297,13 @@ export default function InventoryScreen() {
         </div>
       )}
       {buying && (
-        <div className="fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
+        <div className="dialog-backdrop fixed inset-0 z-40 flex items-end bg-black/60 px-3 pb-16">
           <div
             ref={buyRef}
             role="dialog"
             aria-modal="true"
             aria-label={`Who buys the ${buying}?`}
-            className="w-full rounded-lg border border-torch/40 bg-stone-900 p-4"
+            className="panel-in shadow-modal w-full rounded-lg border border-torch/40 bg-stone-900 p-4"
           >
             <p className="flex items-center gap-1.5 text-sm text-torch">
               Who buys the {buying} (<CoinDevice size={14} />
