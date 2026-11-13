@@ -3,7 +3,7 @@
 **Source of record:** Four Against Darkness Expanded Edition (Ganesha Games, Andrea Sfiligoi et al.), owner's legitimately purchased copy (PDF, 214 pp). Local working text: `~/inbox/4ad/fad-expanded.txt` (NOT in the repo; never commit it).
 **Page citation format:** `FADEE p.N`.
 **Method:** mechanics read directly from the local text, paraphrased here in original language. Table values (dice formulas, numbers, probabilities) are transcribed as data.
-**Last updated:** 2026-11-10 by Hermes (default profile).
+**Last updated:** 2026-11-13 by the rules verification pass (Phase I). See "Verification pass (2026-11-13)" below for the per-entry status.
 
 ## Status legend
 
@@ -13,7 +13,217 @@
 - IMPLEMENTED — code exists in the engine
 - TESTED — automated tests pass and match this document
 
-All entries below are RESEARCHED unless otherwise noted. Nothing is IMPLEMENTED/TESTED yet.
+All entries below were RESEARCHED when first written. The 2026-11-13 verification pass checked each entry against the implementation; per-entry status is in "Verification pass (2026-11-13)" below. Entries marked VERIFIED are implemented and confirmed; PARTIAL means the core is implemented but a sub-part is missing; UNVERIFIED means not implemented or not confirmable without the book.
+
+## Verification pass (2026-11-13)
+
+Three workers verified the ledger against `src/` (numbers checked, not vibes), fixed real discrepancies, and added tests. Full detail lives in `docs/RULES_VERIFICATION_SECTION_A.md` (Parts 1, 5, 6, 14), `docs/RULES_VERIFICATION_SECTION_B.md` (Parts 8, 9, 10, OQ-2, light), `docs/RULES_VERIFICATION_SECTION_C.md` (Parts 2, 3, 4, 7, 11, 12, 13, 15), and the consolidated `docs/RULES_VERIFICATION_REPORT.md`.
+
+**Counts (per-section, with overlap where an entry is both verified-core and flagged-sub-part):** Section A — 33 verified (31 full + 2 partial), 9 fixed, 28 flagged. Section B — 26 rule entries + 18 trap-table entries verified, 34 fixed, 22 flagged. Section C — 34 verified, 17 fix groups, 27 flagged. New tests: `tests/unit/rulesSectionA.test.ts` (22), `tests/unit/sectionB.test.ts` (38) + `tests/integration/sectionBStore.test.ts` (6), `tests/unit/sectionC.test.ts` (31). Full unit suite: **443 tests green**; `tsc --noEmit` clean. Full `vite build` could not complete in this sandbox (EPERM on file writes — environment fault, not a code error; the build transforms all 183 modules before failing on the service-worker write).
+
+**Headline fixes (60 total):** HCL no longer rescales as the party levels (R006); exploding-dice log records real dice (R009); natural-1 defense checks the die face, not the total (R076); surprise strips the shield bonus on turn 1 (R076); Major Foes weaken strictly below half Life (R081); situational attack/defense modifiers added — cleric +L vs Undead, dwarf +1 vs goblins, elf +1 vs orcs, 2H +1, dwarf/halfling vs giants/trolls/ogres (R075–R077); Reaction wins (Flee/Peaceful/Ignore) no longer award treasure (R100/R090); fled Final Boss earns no XP bonus (R171); no second XP roll to a just-levelled PC in the same batch (R170); treasure `++` shift is 2 not 1, `none`/`no-magic` modifiers now work, scrolls roll the correct list (druid bark / illusionist prism), fungal row-6 never yields a Fireball Staff (R150/R151/R049); memorized Blessing works, failed Fireball still slays 1 Minor, Sleep blocked on dragons/L11+ (R044); Weakness secret lasts one combat and targets dungeon Majors (R051); multi-roll treasure and Life floors wired (R150); free hand enforced for casting (R041); Final Boss treasure tripled-or-100gp + second magic item, +1 Life (R118); hidden-treasure complications resolved (R127); trap disarm flow via `answerTrapDisarm` (R132); treasure tiles claimable (R114); search-1 Wandering Monsters ambush consumed (R123); rest nails count doors only, rest WM rerolls and party strikes first behind nailed doors (R133); cavern openings have no doors (R141); trap tables corrected — dart vs HCL+1, spears vs HCL+4, shrieking mushroom inverted, sleep spores / spore cloud / cordyceps fixed (Part 10).
+
+**Per-entry status.** V = VERIFIED, P = PARTIAL (core implemented, sub-part missing), U = UNVERIFIED (not implemented / needs book). Confirming note = code location or test name; flagged reason = why not fixed.
+
+### Part 1 — Core resolution
+| ID | Status | Note |
+| --- | --- | --- |
+| R001 | V | `combat.ts` runFoesTurn — only PC rolls |
+| R002 | V | `rng.ts` d3/d6/d66; d100 is uniform 1–100 not 2×d10, no caller (flagged) |
+| R003 | V | Attack ≥ L, Defense > L |
+| R004 | V | `Math.floor(L/2)`; `rulesSectionA.test.ts` |
+| R005 | U | No Luck/reroll economy exists |
+| R006 | V | HCL stored by `newDungeon`, `dungeonHcl()`; fixed (was rescaling) |
+| R007 | V | `tierOf` in `xp.ts`; tier boundaries L5/L10/L15/L20 |
+| R008 | U | No tier dice — all rolls d6 regardless of level |
+| R009 | V | Explosion on max, cumulative; fixed (log recorded fabricated dice; `Rng.record()`) |
+| R010 | V | Saves ≥ target, only named modifiers; distinct from Defense |
+| R011 | U | Group worst-modifier roll not implemented |
+
+### Part 2 — Character creation & party
+| ID | Status | Note |
+| --- | --- | --- |
+| R020 | V | `create.ts` — exactly 4 PCs, distinct classes |
+| R021 | V | `Character` schema |
+| R022 | V | L1, starting wealth per class |
+| R023 | V | Traits; halfling 2, duplicates rerolled; fixed (single retry → loop) |
+| R024 | V | Race = class (data) |
+| R025 | V | Core 8 playable |
+| R026 | V | `savesAs` data matches; engine never reads it (flagged) |
+| R027 | U | Two-handed/shield strapping — no engine mechanic |
+| R028 | U | Weapon swap — no engine mechanic |
+
+### Part 3 — Classes
+| ID | Status | Note |
+| --- | --- | --- |
+| Class table (20) | V | All 20 verified — attack/defense/Life/saves/stealth/wealth/slots; `sectionC.test.ts` |
+| Core 8 playable | V | Full engine behavior |
+| Non-core 12 | P | Data only (`expandedClasses.ts`); no trait tables (book text unavailable), not wired into creation/UI/engine |
+| Per-class specials | P | Cleric prayers, wizard/elf slots, rogue/halfling stealth, dwarf/halfling defense work; Halfling Luck, Barbarian Rage are flags only; druid/illusionist casting data only; gnome/kukla/assassin lockpicking unexercisable |
+
+### Part 4 — Magic & spells
+| ID | Status | Note |
+| --- | --- | --- |
+| R040 | V | Casting d6+L vs L; fail wastes spell |
+| R041 | V | Free hand enforced for casting; fixed (was never enforced); 2H busy hand NOT enforced (flagged) |
+| R042 | U | Magic Resistance — no data/engine |
+| R043 | U | Preventive casting — no engine |
+| R044 | V | 6 basic spells; fixed (failed Fireball slays 1 Minor; Sleep blocked dragons/L11+; memorized Blessing works) |
+| R045 | V | Random spell table order |
+| R046 | V | Druid spells ×12 data (`extraSpells.ts`); casting has NO engine (flagged) |
+| R047 | V | Illusionist spells ×12 data; casting has NO engine (flagged) |
+| R048 | V | Scrolls; fixed (bark/prism roll correct lists); cleric non-Blessing +0 ambiguous (flagged) |
+| R049 | V | Scroll media; fixed with R048 |
+| R050 | V | Prayers — Healing d6+L, Blessing lifts curses, 3 each |
+| R051 | P | 4 of 10 Secrets exist; Weakness fixed (one combat, 11 dungeon Majors); 6 missing (flagged) |
+
+### Part 5 — Stealth
+| ID | Status | Note |
+| --- | --- | --- |
+| R060–R064 | U | Stealth entirely absent — `stealthBonus` data exists, no Stealth Save function, no group roll, no outcomes |
+
+### Part 6 — Combat
+| ID | Status | Note |
+| --- | --- | --- |
+| R070 | P | First decision implemented; turn structure flagged (one PC acts per round) |
+| R071 | V | Surprise forces Reactions / Foes strike first |
+| R072 | P | Per-Foe surprise only for Goblins 1-in-6; others text only |
+| R073 | P | Opening-choice structure exists; no ranged phase |
+| R074 | V | Attack roll — tier die + class + situational + weapon, ≥ L |
+| R075 | V | Attack modifiers; fixed (situational modifiers added) |
+| R076 | V | Defense; fixed (natural-1 face, surprise shield strip, situational modifiers) |
+| R077 | V | Defense modifier summary; fixed with R075/R076 |
+| R078 | V | Failed defense = 1 damage; per-Foe damage text only (flagged) |
+| R079 | V | Damage = floor(total ÷ L), min 1 |
+| R080 | V | Minor morale — below half, d6 1–3 flee, once per encounter |
+| R081 | V | Major weakens below half; fixed (was at exactly half) |
+| R082 | U | Bosses with Minions — no split-party sub-fights |
+| R083 | V | Fleeing-Foe treasure via normal loot; parting attack not offered (flagged) |
+| R084 | P | Marching order exists; corridor positional rules not enforced |
+| R085 | V | Assigning attacks — even split + hated-class extras; more-Foes branch dead code (flagged) |
+| R086 | U | Withdraw — no action at all |
+| R087 | V | Flee — each Foe attacks once, no shield; distribution order flagged |
+| R088 | V | Combat end phases |
+| R089 | V | Subdual — −1, subdued at 0 Life; immunity guarded |
+| R090 | V | Loot once per cleared encounter; fixed (Reaction wins no longer award treasure) |
+| R091 | U | Carrying limits not implemented |
+| R092 | U | Masterwork — no items exist |
+| R093 | V | Darkness −2 (see also Part 8 / Section B) |
+| R094 | V | Lantern/torch (see also Part 8 / Section B) |
+| R095 | U | Firearms — no items/rules |
+| R096 | V | Morale (see R080) |
+
+### Part 7 — Reactions
+| ID | Status | Note |
+| --- | --- | --- |
+| R100 | P | Fight, Fight to the death, Flee, Flee if outnumbered, Bribe, Ignore, Peaceful implemented; Quest, Blood Offering, Sleep, Food/rest, Magic Challenge, Trade Information, Capture, Trial of Champions, Puzzle NOT handled; Ignore steal step not implemented |
+
+### Part 8 — Dungeon generation
+| ID | Status | Note |
+| --- | --- | --- |
+| R110 | V | Grid 20×28, corridors 1-wide, rooms 2+ |
+| R111 | V | Starting room d6, no content |
+| R112 | P | Rotate/mirror/truncate implemented; corridor stretch 1–2 squares not implemented |
+| R113 | P | All 36 + 6 shapes exist; low-confidence 32/35 + starting 4/5 (see OQ-2) |
+| R114 | V | Tile Content Table; fixed (treasure tiles claimable; buyPassage gated to Content-9) |
+| R115 | V | Movement |
+| R116 | P | Retrace 1-in-6 WM implemented; bribed tiles safe / gifts reclaim not implemented |
+| R117 | V | Final Boss determination; fixed (WM false reveal; gremlin tally); base-count ambiguity flagged |
+| R118 | P | +1 Life, fight-to-death, treasure tripled-or-100gp + second magic item; "+1 attack" ambiguous (flagged) |
+| R119 | U | Exit adventure — no leave/complete flow |
+| R120 | U | Split party not implemented |
+| R121 | U | Fallen heroes — gear-grab, body-carrier, 5-in-6 stolen, Resurrection Ritual not implemented |
+| R122 | U | Petrification — Medusa gaze not in combat |
+| R123 | V | Search; fixed (4-counts-as-5 scoping; search-1 WM ambush consumed) |
+| R124 | V | WM table; fixed (rest WM rerolls; surprise no-shield) |
+| R125 | V | Secret doors; fixed (`viaSecretDoor` one-shot) |
+| R126 | V | Secret passages |
+| R127 | V | Hidden treasure; fixed (alarm/trap/ghost complications resolved) |
+| R128 | V | Clues pool/persist |
+| R129 | V | Door table; 600-seed proportions |
+| R130 | V | Bash |
+| R131 | V | Lockpick |
+| R132 | V | Trap disarm; fixed (disarm flow via `answerTrapDisarm`) |
+| R133 | V | Rest; fixed (nails count doors only; rest WM reroll + partyFirst) |
+| R134 | P | Madness tracked as condition; enforcement gaps (paranoid, >L leaves, ghost 2-damage option, exit heal, Blessing heal) |
+
+### Part 9 — Environments
+| ID | Status | Note |
+| --- | --- | --- |
+| R140 | V | Three environments |
+| R141 | V | Cavern features; fixed (cavern openings have no doors) |
+| R142 | P | Stalagmites no-explosions, echo WM 2-in-6, water pools dip implemented; stalactites/boulders not in combat |
+| R143 | V | Cavern search + Listen |
+| R144 | V | Fungal search + slippery flee; mushroom doors L1 bash not implemented |
+| R145 | U | Animal companions not implemented |
+
+### Part 10 — Traps (all 18 entries)
+| Table | Status | Note |
+| --- | --- | --- |
+| Dungeon (6) | V | Dart fixed vs HCL+1; spears fixed vs HCL+4; all verified numerically |
+| Caverns (6) | V | Halfling rerolls added; all verified numerically |
+| Fungal (6) | V | Sleep spores (cleric not immune, cloud stage), spore cloud (two saves), shrieking mushroom (inverted threshold fixed), cordyceps (bonus removed); all verified numerically |
+
+### Part 11 — Treasure & items
+| ID | Status | Note |
+| --- | --- | --- |
+| R150 | V | Treasure Table; fixed (`++` shift 2, `none` no treasure, `no-magic` d6×d6 gp, multi-roll) |
+| R151 | V | Dungeon Magic Treasure; fixed (fungal row-6 never Fireball Staff) |
+| R152 | V | Rare Mushroom (Purple Truffle fake/real) |
+| R153 | V | Caverns Special Item |
+| R154 | V | Fungal Rare Item |
+| R155 | V | Quest Table types 1–6 |
+| R156 | P | Epic Rewards; 4 rewards have no engine hook |
+| R157 | U | Fiendish treasure — absent |
+| R158 | U | Fiendish magic treasure — absent |
+| R159 | V | Special Feature Table |
+| R160 | V | Special Events |
+| R161 | U | Fiendish Foes usage — absent |
+
+### Part 12 — Monsters
+| Table | Status | Note |
+| --- | --- | --- |
+| Dungeon Boss (6/6) | V | All verified — L offsets, Life formulas, attack counts, treasure modifiers |
+| Dungeon Vermin/Minions/Weird | V | Sampled deeply (≥3 per table), matching |
+| Caverns / Fungal | V | L and Life formulas verified, incl. Life floors (fixed) |
+| Fiendish Foes | U | Entirely absent |
+
+### Part 13 — Equipment
+| ID | Status | Note |
+| --- | --- | --- |
+| Consumable prices (8) | V | Healing potion 100, bandage 5, bag of nails 4, rope 4, lantern 4, torch 1, rations 1, scroll of blessing 100 |
+| Weapon/armor/firearm prices | U | Absent — no shop for them; class kits only |
+| Torch "1/dozen" | U | Ambiguous — code charges 1 gp each; not changed |
+
+### Part 14 — Experience & advancement
+| ID | Status | Note |
+| --- | --- | --- |
+| R170 | V | XP roll; fixed (no second roll to just-levelled PC in same batch) |
+| R171 | V | Classical; fixed (fled Final Boss earns no bonus) |
+| R172 | V | Slow and Sure |
+| R173 | V | Old School; tier basis ambiguity flagged (current vs target tier) |
+| R174 | V | Slower Advancement; boosted-6 ambiguity flagged (natural 6 vs total ≥ 6) |
+| R175 | U | Expert skills not implemented (documented out of scope) |
+
+### Part 15 — Adventure structure
+| Item | Status | Note |
+| --- | --- | --- |
+| Goal | V | One dungeon = one adventure; Final Boss ends it |
+| Quests | V | See R155/R156 |
+| Secrets economy | P | Clues earned/spent on 4 implemented secrets; 6 missing |
+| Between-adventures | V | Four XP systems; no session-length cap (guidance, not mechanic) |
+
+### Part 16 — Open questions
+| ID | Status | Note |
+| --- | --- | --- |
+| OQ-1 | NEEDS BOOK | Search Table "0-1" on a d6 (p.107) — treated as 1 = Wandering Monsters; confirm against the printed page |
+| OQ-2 | NEEDS BOOK | Tile shapes from page images (pp.149-151); low-confidence d66 32/35 + starting 4/5; ledger says 23/33/35/62/63 art-covered but `tiles.ts` marks 23/33/62 high (63 medium) — unresolved either way |
+| OQ-3 | NOTED | "Backstabbing" rogue skill (p.147) — supplement content; ignore for core |
+| OQ-4 | NOTED | Fiendish flat Life (7/8/12) — deliberate for L3+ parties; treat as data |
+| OQ-5 | V | "Tier" = tier number (1-5); verified by p.94 ogre example |
+| Darkvision | NEEDS BOOK | `DARKVISION_CLASSES` in `src/engine/light.ts` is `[]` by design — no ledger entry or class data names which classes have darkvision; do not invent a list |
+
+
 
 ## Part 1 — Core resolution system
 

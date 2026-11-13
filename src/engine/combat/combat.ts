@@ -1,6 +1,7 @@
 import type { MonsterProfile, TableKind } from '../../rulesets/expanded/monsters'
 import type { Character } from '../../rulesets/schema/character'
 import type { Rng } from '../core/rng'
+import { hasFreeHand } from '../light'
 
 /**
  * Combat engine (FADEE pp.90-99, 146-148; PROJECT_SPEC Part V §13).
@@ -94,6 +95,9 @@ export interface CombatState {
   fungalSlippery?: boolean
   /** Morel Crusher (R154): next Morale test at -1 (consumed on use). */
   moraleMod?: number
+  /** Reaction win (Flee / Peaceful / Ignore, R100): no treasure is rolled
+   *  for the encounter — the Foes let the party pass or vanish. */
+  noLootWin?: boolean
   /** The lantern-bearer fell: the lantern dropped (R094). */
   lanternDropped?: boolean
   /** A torch attack rolled a natural 1: the torch went out (R094). */
@@ -106,23 +110,42 @@ export class CombatError extends Error {}
 
 // ---------- helpers ----------
 
-export function attackBonusFor(pc: Character): { bonus: number; note: string } {
+/** Foes a dwarf/halfling defends at a bonus against (R076/R077): giants,
+ *  trolls, ogres and half-giants. Word-boundary match so 'Giant Spider'
+ *  and 'Giant Centipedes' (Animals, not giants) do NOT match. */
+export function isGiantTrollOgre(name: string): boolean {
+  if (/\b(troll|ogre|half-giant)s?\b/i.test(name)) return true
+  // A bare 'Giant …' foe (e.g. a Giant), but not a Giant Spider /
+  // Centipede / Snake / Toad — those are Animals, not giants.
+  if (/^giant\b/i.test(name) && !/^giant (spider|centipede|snake|toad|rat|frog|bat)s?\b/i.test(name)) return true
+  return false
+}
+
+export function attackBonusFor(pc: Character, enemy?: EnemyInstance | null): { bonus: number; note: string } {
   // Class attack bonuses (FADEE pp.24-65; summary p.147).
   const L = pc.level
+  const twoHanded = /two-handed/.test(pc.equipment.join(' '))
+  const name = enemy?.profile.name ?? ''
+  const category = enemy?.profile.category ?? ''
   switch (pc.classId) {
     case 'warrior':
     case 'barbarian':
       return { bonus: L, note: `+${L} class` }
     case 'cleric':
+      // +½L, or +L vs undead (p.147) — the +L replaces the ½L, not adds.
+      if (category === 'Undead') return { bonus: L, note: `+${L} class (vs undead)` }
       return { bonus: Math.floor(L / 2), note: `+${Math.floor(L / 2)} class (½L)` }
     case 'rogue':
       return { bonus: 0, note: 'no class attack bonus' }
     case 'wizard':
       return { bonus: 0, note: 'no class attack bonus' }
     case 'elf':
-      return { bonus: L, note: `+${L} class` }
+      // +L except with a two-handed melee weapon (p.147); +1 vs orcs.
+      if (twoHanded) return { bonus: /orc/i.test(name) ? 1 : 0, note: `no class bonus (two-handed)${/orc/i.test(name) ? ' +1 vs orcs' : ''}` }
+      return { bonus: L + (/orc/i.test(name) ? 1 : 0), note: `+${L} class${/orc/i.test(name) ? ' +1 vs orcs' : ''}` }
     case 'dwarf':
-      return { bonus: L, note: `+${L} class (melee)` }
+      // +L melee, +1 vs goblins (p.147).
+      return { bonus: L + (/goblin/i.test(name) ? 1 : 0), note: `+${L} class (melee)${/goblin/i.test(name) ? ' +1 vs goblins' : ''}` }
     case 'halfling':
       return { bonus: 0, note: 'no class attack bonus (sling: +L)' }
     default:
@@ -130,7 +153,11 @@ export function attackBonusFor(pc: Character): { bonus: number; note: string } {
   }
 }
 
-export function defenseBonusFor(pc: Character): { bonus: number; note: string } {
+export function defenseBonusFor(
+  pc: Character,
+  enemy?: EnemyInstance | null,
+  opts: { noShield?: boolean } = {},
+): { bonus: number; note: string } {
   const eq = pc.equipment.join(' ')
   let bonus = 0
   const notes: string[] = []
@@ -144,7 +171,7 @@ export function defenseBonusFor(pc: Character): { bonus: number; note: string } 
     bonus += 1
     notes.push('+1 light armor')
   }
-  if (/shield/.test(eq)) {
+  if (/shield/.test(eq) && !opts.noShield) {
     bonus += 1
     notes.push('+1 shield')
   }
@@ -152,17 +179,28 @@ export function defenseBonusFor(pc: Character): { bonus: number; note: string } 
     bonus += pc.level
     notes.push(`+${pc.level} rogue`)
   }
-  if (pc.classId === 'halfling') notes.push('halfling: +L vs giant/troll/ogre only')
+  // Dwarf +1 and halfling +L vs giant/troll/ogre (pp.30, 40; summary p.148).
+  if (enemy && isGiantTrollOgre(enemy.profile.name)) {
+    if (pc.classId === 'dwarf') {
+      bonus += 1
+      notes.push('+1 dwarf vs giant/troll/ogre')
+    }
+    if (pc.classId === 'halfling') {
+      bonus += pc.level
+      notes.push(`+${pc.level} halfling vs giant/troll/ogre`)
+    }
+  }
   return { bonus, note: notes.join(', ') || 'no modifiers' }
 }
 
-/** Weapon modifier for the PC's default melee weapon (FADEE pp.81, 147). */
+/** Weapon modifier for the PC's default melee weapon (FADEE pp.81, 147):
+ *  light -1, two-handed +1 (any class that wields one), else hand +0. */
 export function meleeWeaponFor(pc: Character): { mod: number; name: string } {
   const lightClasses = ['rogue', 'wizard', 'halfling']
-  if (lightClasses.includes(pc.classId)) return { mod: -1, name: 'light weapon (-1)' }
-  if (pc.classId === 'barbarian' && /two-handed/.test(pc.equipment.join(' '))) {
+  if (/two-handed/.test(pc.equipment.join(' '))) {
     return { mod: 1, name: 'two-handed weapon (+1)' }
   }
+  if (lightClasses.includes(pc.classId)) return { mod: -1, name: 'light weapon (-1)' }
   return { mod: 0, name: 'hand weapon (+0)' }
 }
 
@@ -174,7 +212,13 @@ export function rollExplodingD6(rng: Rng, reason: string): { rolls: number[]; to
     if (rolls.length > 20) break // hard cap against pathological logs
   }
   const total = rolls.reduce((a, b) => a + b, 0)
-  rng.roll(rolls.length, 6, 0, reason) // log entry for the whole chain
+  // Log the dice actually rolled (R009): a fresh rng.roll() here would
+  // record different faces from the ones that decided the attack.
+  // Test stub RNGs lack `record` (they keep no roll log); guard so they
+  // don't crash — the real Rng always records.
+  if (typeof (rng as Rng).record === 'function') {
+    rng.record(rolls.length, 6, 0, rolls, reason)
+  }
   return { rolls, total }
 }
 
@@ -182,7 +226,13 @@ export function rollExplodingD6(rng: Rng, reason: string): { rolls: number[]; to
 export function rollCombatDie(state: CombatState, rng: Rng, reason: string): { rolls: number[]; total: number } {
   if (state.noExplosions) {
     const roll = rng.d(6)
-    rng.roll(1, 6, 0, reason)
+    // Log the die actually rolled (R009) — a fresh rng.roll() here would
+    // record a different face. Stub RNGs without `record` keep no log.
+    if (typeof (rng as Rng).record === 'function') {
+      rng.record(1, 6, 0, [roll], reason)
+    } else {
+      rng.roll(1, 6, 0, reason)
+    }
     return { rolls: [roll], total: roll }
   }
   return rollExplodingD6(rng, reason)
@@ -204,7 +254,17 @@ export function spendTurn(state: CombatState, rng: Rng): void {
 }
 
 /** Life from a FADEE formula: 'T+y' (tier number), 'HCL+y', 'L+y', 'N+L', flat. */
-export function lifeFromFormula(level: number, formula: string | undefined, flat: number | undefined): number {
+export function lifeFromFormula(
+  level: number,
+  formula: string | undefined,
+  flat: number | undefined,
+  minLife?: number,
+): number {
+  const result = lifeFromFormulaInner(level, formula, flat)
+  return minLife !== undefined ? Math.max(minLife, result) : result
+}
+
+function lifeFromFormulaInner(level: number, formula: string | undefined, flat: number | undefined): number {
   if (flat !== undefined) return flat
   if (!formula) return 1 // Minor Foes: 1 Life
   const tier = level >= 20 ? 5 : level >= 15 ? 4 : level >= 10 ? 3 : level >= 5 ? 2 : 1
@@ -240,16 +300,29 @@ export function makeEnemy(
   }
 }
 
+/**
+ * Final Boss buff, part 1 (R118, p.105): +1 Life. Applied at combat
+ * start by the store, wherever a Final Boss combat begins. (+1 attack is
+ * NOT applied here: the ledger does not say whether it raises the L PCs
+ * defend against, the L they attack against, or damage — needs the book.)
+ */
+export function applyFinalBossBuff(enemy: EnemyInstance): void {
+  enemy.life += 1
+  enemy.maxLife += 1
+}
+
 export function startCombat(
   tileId: string,
   participants: Character[],
   enemies: EnemyInstance[],
   rng: Rng,
-  opts: { partyWaits?: boolean; forceSurprise?: boolean; marchingOrder?: string[]; secrets?: string[]; darknessPenalty?: number; noExplosions?: boolean; foeLevelPenaltyTurn1?: number; fungalSlippery?: boolean; questTargetName?: string | null } = {},
+  opts: { partyWaits?: boolean; forceSurprise?: boolean; partyFirst?: boolean; marchingOrder?: string[]; secrets?: string[]; darknessPenalty?: number; noExplosions?: boolean; foeLevelPenaltyTurn1?: number; fungalSlippery?: boolean; questTargetName?: string | null } = {},
 ): CombatState {
   // FADEE p.90: surprise check (per-Foe X-in-6). Core dungeon set: goblins 1-in-6.
+  // partyFirst (resting behind nailed doors, FADEE p.114): the party
+  // strikes first EVEN vs natural surprise — no surprise roll at all.
   let surprised = opts.forceSurprise === true
-  if (!surprised && enemies.some((e) => e.profile.name === 'Goblins')) {
+  if (!surprised && !opts.partyFirst && enemies.some((e) => e.profile.name === 'Goblins')) {
     const roll = rng.d(6)
     surprised = roll === 1
   }
@@ -340,6 +413,12 @@ export function parseReaction(entry: string): ReactionOutcome {
 export function rollReactions(state: CombatState, rng: Rng): CombatState {
   for (const enemy of state.enemies) {
     if (enemy.fled || enemy.count === 0) continue
+    // R118: the Final Boss's Reaction is forced to Fight to the Death —
+    // no Reaction roll, no bribe, no fleeing.
+    if (enemy.isFinalBossFlag) {
+      log(state, `The Final Boss fights to the death! (FADEE p.105)`)
+      continue
+    }
     if (enemy.profile.reactions[0].startsWith('Always')) {
       log(state, `${enemy.profile.name}: ${enemy.profile.reactions[0]}.`)
       continue
@@ -389,7 +468,12 @@ export function rollReactions(state: CombatState, rng: Rng): CombatState {
   }
   if (state.enemies.every((e) => e.fled || e.count === 0)) {
     state.phase = 'won'
+    // Reaction wins (Flee / Peaceful / Ignore, R100) roll no treasure:
+    // the Foes let the party pass or vanish before any fight. A bribe win
+    // does not pass through here (pendingBribe returns early above).
+    state.noLootWin = true
     log(state, 'No fight: the encounter resolves without combat.')
+    consumeWeaknessSecret(state)
     return state
   }
   state.phase = state.surprised ? 'foesTurn' : 'pcTurn'
@@ -424,7 +508,7 @@ export function pcAttack(
   if (state.phase !== 'pcTurn') throw new CombatError('not the party\u2019s turn')
   const enemy = enemyId ? state.enemies.find((e) => e.id === enemyId && !e.fled && e.count > 0) : null
   if (!enemy) throw new CombatError('target not available')
-  const cls = attackBonusFor(pc)
+  const cls = attackBonusFor(pc, enemy)
   const weapon = meleeWeaponFor(pc)
   // Epic reward — Enchanted weapon (FADEE p.162): roll 2, keep the best.
   const enchanted = pc.conditions.includes('enchanted-weapon')
@@ -499,10 +583,11 @@ function livingPartySize(state: CombatState): number {
   return state.participants.filter((p) => p.status !== 'dead').length
 }
 
-function applyMajorDamage(state: CombatState, enemy: EnemyInstance, damage: number): void {
+export function applyMajorDamage(state: CombatState, enemy: EnemyInstance, damage: number): void {
   enemy.life = Math.max(0, enemy.life - damage)
   log(state, `${enemy.profile.name} takes ${damage} damage → ${enemy.life}/${enemy.maxLife} Life.`)
-  if (!enemy.weakened && enemy.life > 0 && enemy.life <= enemy.maxLife / 2) {
+  // Below half Life (strictly — exactly half is not below half, FADEE p.94).
+  if (!enemy.weakened && enemy.life > 0 && enemy.life * 2 < enemy.maxLife) {
     enemy.level = Math.max(1, enemy.level - 1)
     enemy.weakened = true
     log(state, `${enemy.profile.name} is below half Life: its L drops to ${enemy.level}!`)
@@ -589,32 +674,32 @@ function runFoesTurn(state: CombatState, rng: Rng): void {
     const assignments = assignTargets(state, enemy, attackers, targets)
     for (const [pcIdx, attackerLabel] of assignments) {
       const pc = targets[pcIdx]
-      const def = defenseBonusFor(pc)
+      // Surprise (R076/R124): on the first turn the party loses its shield
+      // bonus on Defense rolls.
+      const shieldStripped = state.surprised && state.round === 1 && /shield/.test(pc.equipment.join(' '))
+      const def = defenseBonusFor(pc, enemy, { noShield: shieldStripped })
       const protection = state.protections?.[pc.id] ?? 0
       if (protection > 0) def.bonus += protection
       def.bonus += state.darknessPenalty ?? 0
+      // Minotaur Charge (FADEE p.169): the first Defense roll against its
+      // attack is at -1. Round 1 is the first foes' turn, and a Major Foe
+      // makes one attack per round, so this is that first roll.
+      const minotaurCharge = enemy.profile.name === 'Minotaur' && state.round === 1
+      if (minotaurCharge) def.bonus -= 1
       const effLevel = effectiveLevel(state, enemy)
       const { rolls, total } = rollCombatDie(state, rng, `defense roll (${pc.name})`)
       const finalTotal = total + def.bonus
+      // A natural 1 always fails (R076) — the die face, not the total:
+      // a 1 with +2 of bonuses is still a failure even if the total beats L.
+      const naturalOne = rolls[0] === 1
       log(
         state,
-        `${attackerLabel} attacks ${pc.name}: defense d6[${rolls.join('+')}] ${def.bonus >= 0 ? '+' : ''}${def.bonus} (${def.note}${protection ? `, +${protection} Protection` : ''}${(state.darknessPenalty ?? 0) < 0 ? ', darkness -2' : ''}) = ${finalTotal}; needs > L${effLevel}`,
+        `${attackerLabel} attacks ${pc.name}: defense d6[${rolls.join('+')}] ${def.bonus >= 0 ? '+' : ''}${def.bonus} (${def.note}${protection ? `, +${protection} Protection` : ''}${(state.darknessPenalty ?? 0) < 0 ? ', darkness -2' : ''}${shieldStripped ? ', no shield — surprised' : ''}${minotaurCharge ? ', Minotaur charge -1' : ''}) = ${finalTotal}; needs > L${effLevel}`,
       )
-      if (finalTotal <= effLevel && finalTotal !== 1) {
+      if (finalTotal <= effLevel || naturalOne) {
         // hit — failed defense
         pc.currentLife = Math.max(0, pc.currentLife - 1)
-        log(state, `${pc.name} fails the defense: 1 damage → ${pc.currentLife}/${pc.maxLife} Life.`)
-        if (pc.currentLife === 0) {
-          pc.status = 'dead'
-          log(state, `${pc.name} has fallen!`)
-          if (pc.equipment.includes('lantern')) {
-            state.lanternDropped = true
-            log(state, `${pc.name}'s lantern drops to the floor.`)
-          }
-        }
-      } else if (finalTotal === 1) {
-        log(state, 'A natural 1 always fails: 1 damage.')
-        pc.currentLife = Math.max(0, pc.currentLife - 1)
+        log(state, naturalOne && finalTotal > effLevel ? `${pc.name} rolled a natural 1: it always fails. 1 damage → ${pc.currentLife}/${pc.maxLife} Life.` : `${pc.name} fails the defense: 1 damage → ${pc.currentLife}/${pc.maxLife} Life.`)
         if (pc.currentLife === 0) {
           pc.status = 'dead'
           log(state, `${pc.name} has fallen!`)
@@ -691,6 +776,20 @@ export function combatOver(state: CombatState): boolean {
   return !foesLeft || !partyAlive
 }
 
+/**
+ * Weakness of a Foe (R051, FADEE p.122) lasts ONE combat: when the combat
+ * it activated in ends — won, lost, fled, or escaped — the secret is spent.
+ * (Before this fix it stayed in the campaign secrets forever and re-applied
+ * to every later combat against that species.)
+ */
+export function consumeWeaknessSecret(state: CombatState): void {
+  if (!state.weaknessActive) return
+  const idx = (state.secrets ?? []).findIndex((s) => s.startsWith('weakness:'))
+  if (idx >= 0) state.secrets!.splice(idx, 1)
+  state.weaknessActive = false
+  log(state, 'The known Weakness is spent — it applied to this one combat only.')
+}
+
 function finishCombat(state: CombatState, _rng: Rng): void {
   const foesLeft = state.enemies.some((e) => !e.fled && e.count > 0 && e.life > 0)
   const partyAlive = state.participants.some((p) => p.status !== 'dead')
@@ -707,6 +806,7 @@ function finishCombat(state: CombatState, _rng: Rng): void {
         : 'The way is clear.',
     )
   }
+  consumeWeaknessSecret(state)
 }
 
 /**
@@ -723,6 +823,7 @@ export function fleeCombat(state: CombatState, rng: Rng, opts: { unattacked?: bo
     log(state, 'A Puffball Smokebomb bursts — the party slips away unattacked.')
     state.phase = 'fled'
     log(state, 'The party escapes to a visited tile.')
+    consumeWeaknessSecret(state)
     return state
   }
   for (const enemy of state.enemies) {
@@ -730,18 +831,20 @@ export function fleeCombat(state: CombatState, rng: Rng, opts: { unattacked?: bo
     const attacks = enemy.profile.major ? 1 : Math.min(enemy.count, living.length)
     for (let i = 0; i < attacks; i++) {
       const pc = living[i % living.length]
-      const def = defenseBonusFor(pc)
+      const def = defenseBonusFor(pc, enemy)
       const shieldless = def.bonus - (/shield/.test(pc.equipment.join(' ')) ? 1 : 0)
       let fleeMod = shieldless + (state.darknessPenalty ?? 0)
       const slipperyExempt = ['ranger', 'rogue', 'acrobat', 'halfling', 'mushroomMonk', 'mushroom-monk']
       if (state.fungalSlippery && !slipperyExempt.includes(pc.classId)) fleeMod -= 1
       const { rolls, total } = rollCombatDie(state, rng, `defense while fleeing (${pc.name})`)
       const finalTotal = total + fleeMod
+      // A natural 1 always fails (R076) — the die face, not the total.
+      const naturalOne = rolls[0] === 1
       log(
         state,
-        `${enemy.profile.name} strikes at fleeing ${pc.name}: defense ${finalTotal} vs L${enemy.level} (no shield bonus${(state.darknessPenalty ?? 0) < 0 ? ', darkness -2' : ''}${state.fungalSlippery && !slipperyExempt.includes(pc.classId) ? ', slippery -1' : ''})`,
+        `${enemy.profile.name} strikes at fleeing ${pc.name}: defense ${finalTotal} vs L${enemy.level} (no shield bonus${(state.darknessPenalty ?? 0) < 0 ? ', darkness -2' : ''}${state.fungalSlippery && !slipperyExempt.includes(pc.classId) ? ', slippery -1' : ''}${naturalOne ? ', natural 1' : ''})`,
       )
-      if (finalTotal <= enemy.level) {
+      if (finalTotal <= enemy.level || naturalOne) {
         pc.currentLife = Math.max(0, pc.currentLife - 1)
         log(state, `${pc.name} takes 1 damage → ${pc.currentLife}/${pc.maxLife}.`)
         if (pc.currentLife === 0) {
@@ -757,6 +860,7 @@ export function fleeCombat(state: CombatState, rng: Rng, opts: { unattacked?: bo
   }
   state.phase = 'fled'
   log(state, 'The party escapes to a visited tile.')
+  consumeWeaknessSecret(state)
   return state
 }
 
@@ -796,16 +900,21 @@ export function xpDue(state: CombatState): { majorSlain: number; minorEncounter:
   const minorEncounter = state.enemies.some(
     (e) => !e.profile.major && (e.fled || e.count === 0),
   )
-  const finalBoss = state.enemies.some((e) => e.isFinalBossFlag)
+  // The Final Boss bonus (R171/R172) is for SLAIN Final Bosses: a Boss
+  // that flees (Reaction or otherwise) earns no bonus roll / level-up.
+  const finalBoss = state.enemies.some((e) => e.isFinalBossFlag && !e.fled && e.life === 0)
   return { majorSlain, minorEncounter, finalBoss }
 }
 
 // ---------- spells & prayers in combat (FADEE pp.28, 67-69, 146) ----------
 
-export type CastableSpell = 'sleep' | 'fireball' | 'lightning' | 'protection' | 'escape'
+export type CastableSpell = 'sleep' | 'fireball' | 'lightning' | 'protection' | 'escape' | 'blessing'
 
 export function canCast(pc: Character, spell: CastableSpell): boolean {
   if (pc.status === 'dead') return false
+  // R041: a spell is ready only with a free hand (lantern/torch/magic-item
+  // hands are not free; wand/holy-symbol hands count as free).
+  if (!hasFreeHand(pc)) return false
   if (pc.classId === 'wizard') return pc.spells.includes(spell)
   if (pc.classId === 'elf') return pc.spells.includes(spell) // no Blessing for elves
   return false
@@ -846,10 +955,23 @@ export function castSpell(
   enemyId: string | null,
 ): void {
   if (state.phase !== 'pcTurn') throw new CombatError('not the party\u2019s turn')
+  // R041: casting needs a free hand.
+  if (!hasFreeHand(pc)) {
+    throw new CombatError(`${pc.name} has no free hand to cast (a lantern, torch or magic item occupies it)`)
+  }
   const L = pc.level
   // Casting from memory spends the slot — success or waste (FADEE p.64).
   const slotIdx = pc.spells.indexOf(spell)
   if (slotIdx >= 0) pc.spells.splice(slotIdx, 1)
+  if (spell === 'blessing') {
+    // Blessing is automatic (FADEE p.68): no roll, no target Foe. Before
+    // this fix a memorized Blessing fell through castSpellEffect, consumed
+    // the slot, and did nothing.
+    const cursed = state.participants.find((p) => p.conditions.includes('cursed'))
+    castBlessing(state, pc, cursed ?? pc)
+    endPcTurn(state, rng)
+    return
+  }
   castSpellEffect(state, rng, pc, spell, enemyId, L)
 }
 
@@ -867,6 +989,7 @@ function castSpellEffect(
     log(state, `${pc.name} casts Escape! The party teleports to the dungeon entrance.`)
     for (const e of state.enemies) e.fled = true
     state.phase = 'fled'
+    consumeWeaknessSecret(state)
     return
   }
   if (spell === 'protection') {
@@ -884,13 +1007,23 @@ function castSpellEffect(
   const castTotal = total + bonus + (state.darknessPenalty ?? 0)
   log(state, `${pc.name} casts ${spell}: d6[${rolls.join('+')}] +${bonus}${(state.darknessPenalty ?? 0) < 0 ? ' -2 darkness' : ''} = ${castTotal} vs L${effectiveLevel(state, enemy)}`)
   if (castTotal < effectiveLevel(state, enemy)) {
-    log(state, 'The spell fails and is wasted.')
+    // Fireball (FADEE p.68): Minor Foes slain = total − L, minimum 1 EVEN
+    // on a failed roll — a fizzled Fireball still catches one.
+    if (spell === 'fireball' && !enemy.profile.major && enemy.count > (enemy.asleepCount ?? 0)) {
+      enemy.count -= 1
+      log(state, `The Fireball fizzles — but the blast still slays 1 ${enemy.profile.name} (minimum 1, even on a failed roll).`)
+      checkMorale(state, enemy, rng)
+    } else {
+      log(state, 'The spell fails and is wasted.')
+    }
     endPcTurn(state, rng)
     return
   }
   const undead = enemy.profile.category === 'Undead'
   if (spell === 'sleep') {
-    if (undead || /Artificial|Elemental/.test(enemy.profile.category)) {
+    // Sleep does not work on most dragons, the Unliving, or L11+ Foes
+    // (FADEE p.68). Young Dragons restate the immunity (p.170).
+    if (undead || /Artificial|Elemental/.test(enemy.profile.category) || enemy.profile.category === 'Dragon' || enemy.level >= 11) {
       log(state, `${enemy.profile.name} is immune to Sleep.`)
     } else if (enemy.profile.major) {
       enemy.asleep = true
@@ -944,7 +1077,7 @@ export function castHealing(state: CombatState, rng: Rng, pc: Character, target:
 }
 
 /** Blessing scroll slot name in equipment ('scroll of blessing', FADEE p.84). */
-export type ScrollSpell = CastableSpell | 'blessing'
+export type ScrollSpell = CastableSpell
 
 /**
  * Cast a spell from a scroll (FADEE p.75): any PC except barbarians may spend
@@ -962,6 +1095,10 @@ export function castScroll(
   if (state.phase !== 'pcTurn') throw new CombatError('not the party\u2019s turn')
   if (pc.classId === 'barbarian') {
     throw new CombatError('barbarians may not use scrolls')
+  }
+  // R041: reading a scroll is spellcasting — it needs a free hand.
+  if (!hasFreeHand(pc)) {
+    throw new CombatError(`${pc.name} has no free hand to read a scroll (a lantern, torch or magic item occupies it)`)
   }
   const idx = pc.equipment.indexOf(`scroll of ${spell}`)
   if (idx < 0) throw new CombatError(`no scroll of ${spell}`)
@@ -1027,6 +1164,7 @@ export function useTeleportRing(state: CombatState, pc: Character): void {
   if (!state.participants.some((p) => p.status !== 'dead')) {
     state.phase = 'fled'
     log(state, 'The whole party has left the fight.')
+    consumeWeaknessSecret(state)
   }
 }
 

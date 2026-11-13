@@ -130,7 +130,7 @@ export const CAVERN_TABLES: EnvTables = {
       source: 'FADEE p.173',
     }),
     prof(2, 'Cavern Wraith', 'undead', 'Undead', 3, '1', {
-      lifeFormula: 'HCL+2', attacks: 1, major: true,
+      lifeFormula: 'HCL+2', lifeFloor: 4, attacks: 1, major: true,
       special: ['If it ends a round unhurt, all PCs lose 1 Life. Holy water deals 2 damage to it.'],
       reactions: ['1-2 Bribe (50gp)', '3-5 Fight', '6 Fight to the death'],
       source: 'FADEE p.173',
@@ -186,7 +186,7 @@ export const CAVERN_TABLES: EnvTables = {
       source: 'FADEE p.174',
     }),
     prof(5, 'Land Siren', 'demon', '', 5, '1', {
-      lifeFormula: 'HCL+0', attacks: 1, major: true,
+      lifeFormula: 'HCL+0', lifeFloor: 3, attacks: 1, major: true,
       special: ['Save vs HCL+2 magic or fall asleep; she gains +1 attack per sleeper. Sleepers are auto-hit; waking one costs 1 turn and they fight at -1.'],
       reactions: ['1-2 Bribe (50gp)', '3-5 Fight', '6 Fight to the death'],
       source: 'FADEE p.174',

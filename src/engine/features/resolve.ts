@@ -21,6 +21,8 @@ import {
 } from '../../rulesets/expanded/environments'
 import { profileFor } from '../../rulesets/expanded/monsters'
 import { rollLoot } from '../treasure/loot'
+import { defenseBonusFor } from '../combat/combat'
+import { lockpickBonus } from '../dungeon/doors'
 
 /**
  * Resolution for dungeon special features, events and traps.
@@ -334,12 +336,18 @@ export function resolveTrap(
     case 'dart': {
       const victim = living[Math.floor((rng.d(1000) - 1) / 1000 * living.length)]
       if (!victim) break
-      const defense = rng.roll(1, 6, 0, `${victim.name} Defense vs. dart HCL+${hcl + 1} (FADEE p.163)`)
+      // Defense vs HCL+1 (not HCL): a Defense roll uses the full Defense
+      // bonus — armor, shield, rogue +L (R076/R077). The falling stone
+      // carves out "armor yes, shield no" precisely because other
+      // Defense-roll traps take the normal Defense.
+      const target = hcl + 1
+      const { bonus } = defenseBonusFor(victim)
+      const defense = rng.roll(1, 6, bonus, `${victim.name} Defense vs. dart L${target} (FADEE p.163)`)
       // Halflings reroll a failed Defense roll (FADEE p.163).
-      const rolled = defense <= hcl && victim.classId === 'halfling'
-        ? rng.roll(1, 6, 0, `${victim.name} halfling reroll (FADEE p.163)`)
+      const rolled = defense <= target && victim.classId === 'halfling'
+        ? rng.roll(1, 6, bonus, `${victim.name} halfling reroll (FADEE p.163)`)
         : defense
-      if (rolled > hcl) messages.push(`Dart! ${victim.name} dodges. (FADEE p.163)`)
+      if (rolled > target) messages.push(`Dart! ${victim.name} dodges. (FADEE p.163)`)
       else {
         hurt(victim, 1)
         messages.push(`Dart! ${victim.name} is hit for 1 Life (${victim.currentLife}/${victim.maxLife}). (FADEE p.163)`)
@@ -400,7 +408,10 @@ export function resolveTrap(
       }
       const hit: string[] = []
       for (const pc of targets) {
-        const defense = rng.roll(1, 6, 0, `${pc.name} Defense vs. spears HCL+${hcl + 4} (FADEE p.163)`)
+        // Defense vs HCL+4 with the full Defense bonus (R076/R077) —
+        // armor, shield, rogue +L — like the dart above.
+        const { bonus } = defenseBonusFor(pc)
+        const defense = rng.roll(1, 6, bonus, `${pc.name} Defense vs. spears L${hcl + 4} (FADEE p.163)`)
         if (defense <= hcl + 4) {
           hurt(pc, 1)
           hit.push(pc.name)
@@ -432,6 +443,71 @@ export function resolveTrap(
     }
   }
   return { messages }
+}
+
+/**
+ * Trap level (the Save/Defense target) per trap, for the R132 disarm
+ * attempt ("Save vs trap L"). Each entry is the L of the trap's own
+ * effect roll; where a trap has two saves (spore cloud) the first is
+ * used. The shrieking mushroom has no Save target in the book — HCL is
+ * the judgment call (disarm it before it shrieks).
+ */
+export function trapLevelFor(
+  trap: DungeonTrap | CavernTrap | FungalTrap,
+  hcl: number,
+): number {
+  switch (trap) {
+    case 'dart': return hcl + 1
+    case 'poisonGas': return hcl + 2
+    case 'trapdoor': return hcl + 3
+    case 'bearTrap': return hcl + 3
+    case 'spears': return hcl + 4
+    case 'fallingStone': return hcl + 4
+    case 'stalactite': return hcl + 2
+    case 'rockslide': return hcl + 2
+    case 'hiddenPit': return hcl + 1
+    case 'swingingLog': return hcl
+    case 'toxicSpores': return hcl + 1
+    case 'rollingBoulder': return hcl + 1
+    case 'sleepSpores': return hcl
+    case 'sporeCloud': return hcl + 1
+    case 'slimePatch': return hcl
+    case 'myceliumSnare': return hcl + 3
+    case 'shriekingMushroom': return hcl
+    case 'cordyceps': return hcl + 3
+    default: return hcl
+  }
+}
+
+/**
+ * R132: a rogue in marching-order positions 1-2 may attempt to disarm a
+ * trap BEFORE it fires: Save vs trap L, +L (rogue traps bonus, +Tier
+ * with Delicate Touch via lockpickBonus). Success neutralizes it; on
+ * failure the trap fires and the rogue still gets its own Save/Defense
+ * vs the effect (the normal resolve path).
+ */
+export function attemptTrapDisarm(
+  rng: Rng,
+  rogue: Character,
+  trapLevel: number,
+): { success: boolean; messages: string[] } {
+  const bonus = lockpickBonus(rogue)
+  const die = rng.d(6)
+  const total = die + bonus
+  if (total >= trapLevel) {
+    return {
+      success: true,
+      messages: [
+        `${rogue.name} disarms the trap (d6 ${die} +${bonus} = ${total} vs L${trapLevel}) — neutralized before it fires.`,
+      ],
+    }
+  }
+  return {
+    success: false,
+    messages: [
+      `${rogue.name} fails to disarm the trap (d6 ${die} +${bonus} = ${total} vs L${trapLevel}) — it fires!`,
+    ],
+  }
 }
 
 function victimMax(pc: Character): number {
@@ -541,9 +617,12 @@ export interface EnvTrapResult {
 }
 
 /** Cavern (p.165) and fungal (p.166) traps, resolved with the same Save /
- * Defense shape as the dungeon traps. A few book effects have no engine
- * yet (cordyceps mind-control, mycelium item-snatch choice) — those are
- * logged as the trap's text with the mechanical part applied. */
+ * Defense shape as the dungeon traps. A few book effects have no full
+ * engine yet: cordyceps mind-control is tracked as a `cordyceps:6`
+ * condition (the next combat does not yet resolve the controlled attacks),
+ * the slimed PC's skipped turn and the spore-cough Save penalty are
+ * tracked as conditions nothing reads yet, and a rolling boulder does not
+ * yet block an opening. */
 export function resolveEnvTrap(
   rng: Rng,
   party: Character[],
@@ -562,13 +641,23 @@ export function resolveEnvTrap(
   const randomPc = (): Character | undefined =>
     living[Math.floor((rng.d(1000) - 1) / 1000 * living.length)]
   const halfL = (pc: Character) => Math.floor(pc.level / 2)
+  // Cavern traps grant halflings a reroll on a failed Save (p.165:
+  // "halfling +½L+reroll" on the stalactite, "same bonuses" on the
+  // rockslide and the swinging log).
+  const saveWithHalflingReroll = (pc: Character, bonus: number, target: number, reason: string): number => {
+    const first = rng.roll(1, 6, bonus, reason)
+    if (first < target && pc.classId === 'halfling') {
+      return rng.roll(1, 6, bonus, `${reason} (halfling reroll)`)
+    }
+    return first
+  }
 
   switch (trap) {
     case 'stalactite': {
       const v = randomPc()
       if (!v) break
       const bonus = halfL(v) + (v.classId === 'rogue' ? v.level : 0)
-      const roll = rng.roll(1, 6, bonus, `${v.name} Save vs stalactite HCL+${hcl + 2}`)
+      const roll = saveWithHalflingReroll(v, bonus, hcl + 2, `${v.name} Save vs stalactite HCL+${hcl + 2}`)
       if (roll >= hcl + 2) messages.push(`A stalactite crashes down — ${v.name} leaps clear.`)
       else {
         hurt(v, 1)
@@ -580,7 +669,7 @@ export function resolveEnvTrap(
       const hit: string[] = []
       for (const pc of living) {
         const bonus = halfL(pc) + (pc.classId === 'gnome' || pc.classId === 'dwarf' ? pc.level : 0)
-        if (rng.roll(1, 6, bonus, `${pc.name} Save vs rockslide HCL+${hcl + 2}`) < hcl + 2) {
+        if (saveWithHalflingReroll(pc, bonus, hcl + 2, `${pc.name} Save vs rockslide HCL+${hcl + 2}`) < hcl + 2) {
           hurt(pc, 1)
           hit.push(pc.name)
         }
@@ -603,7 +692,7 @@ export function resolveEnvTrap(
       for (const pc of living) {
         if (stopped) break
         const bonus = halfL(pc) + (pc.classId === 'rogue' ? pc.level : 0)
-        if (rng.roll(1, 6, bonus, `${pc.name} Save vs swinging log HCL+${hcl}`) < hcl) {
+        if (saveWithHalflingReroll(pc, bonus, hcl, `${pc.name} Save vs swinging log HCL+${hcl}`) < hcl) {
           hurt(pc, 2)
           messages.push(`The swinging log catches ${pc.name} for 2 Life (${pc.currentLife}/${pc.maxLife}).`)
           stopped = true
@@ -645,26 +734,61 @@ export function resolveEnvTrap(
     case 'sleepSpores': {
       const v = randomPc()
       if (!v) break
-      const immune = ['mushroomMonk', 'mushroom-monk', 'kukla'].includes(v.classId) || v.classId === 'cleric'
+      // Immune: mushroom, artificial, undead, elemental (p.166). A cleric
+      // is none of those — the old code wrongly listed clerics as immune.
+      const sporeImmune = (pc: Character) =>
+        ['mushroomMonk', 'mushroom-monk', 'kukla'].includes(pc.classId)
       const bonus = v.classId === 'halfling' ? v.level : halfL(v)
-      if (immune || rng.roll(1, 6, bonus, `${v.name} Save vs sleep spores`) >= hcl) {
+      if (sporeImmune(v) || rng.roll(1, 6, bonus, `${v.name} Save vs sleep spores`) >= hcl) {
         messages.push(`Sleep spores drift past — ${v.name} stays awake.`)
       } else {
         v.conditions.push('asleep-spores')
-        messages.push(`${v.name} falls asleep in a cloud of spores! (Wake them before the whole party sleeps.)`)
+        messages.push(`${v.name} falls asleep in a cloud of spores! The cloud spreads — everyone else must Save vs HCL poison or fall asleep too.`)
+        // Released cloud: all other living PCs Save vs HCL poison.
+        for (const pc of living) {
+          if (pc === v || pc.conditions.includes('asleep-spores') || sporeImmune(pc)) continue
+          const b = pc.classId === 'halfling' ? pc.level : halfL(pc)
+          if (rng.roll(1, 6, b, `${pc.name} Save vs sleep-spore cloud HCL`) < hcl) {
+            pc.conditions.push('asleep-spores')
+            messages.push(`${pc.name} falls asleep in the spore cloud.`)
+          }
+        }
+        // All asleep and the party dies (p.166).
+        if (living.every((pc) => pc.conditions.includes('asleep-spores'))) {
+          for (const pc of living) {
+            pc.currentLife = 0
+            pc.status = 'dead'
+          }
+          messages.push('The whole party sleeps — and never wakes. The adventure ends here.')
+        }
       }
       break
     }
     case 'sporeCloud': {
       const v = randomPc()
       if (!v) break
+      // Immune as for sleep spores (p.166): mushroom, artificial, undead,
+      // elemental — a mushroom monk or kukla breathes it in harmlessly.
+      if (['mushroomMonk', 'mushroom-monk', 'kukla'].includes(v.classId)) {
+        messages.push(`A spore cloud bursts over ${v.name} — harmless to them.`)
+        break
+      }
       const bonus = v.classId === 'halfling' || v.classId === 'barbarian' ? v.level : 0
-      if (rng.roll(1, 6, bonus, `${v.name} Save vs spore cloud HCL+${hcl + 1}`) < hcl + 1) {
-        hurt(v, 1)
-        v.conditions.push('coughing')
-        messages.push(`${v.name} chokes on a spore cloud: 1 Life, and coughing (1-in-6 Wandering Monsters).`)
-      } else {
+      // Two saves: first vs HCL+1 (avoid the cloud), then vs HCL+3 poison.
+      if (rng.roll(1, 6, bonus, `${v.name} Save vs spore cloud HCL+${hcl + 1}`) >= hcl + 1) {
         messages.push(`A spore cloud bursts — ${v.name} holds their breath.`)
+        break
+      }
+      if (rng.roll(1, 6, bonus, `${v.name} Save vs spore poison HCL+${hcl + 3}`) >= hcl + 3) {
+        messages.push(`${v.name} breathes in the spores and shrugs off the poison.`)
+        break
+      }
+      hurt(v, 1)
+      v.conditions.push('coughing')
+      messages.push(`${v.name} chokes on a spore cloud: 1 Life, and coughing (1-in-6 Wandering Monsters).`)
+      if (rng.d(6) === 1) {
+        messages.push('The coughing draws Wandering Monsters!')
+        return { messages, wanderingMonsters: true }
       }
       break
     }
@@ -675,6 +799,10 @@ export function resolveEnvTrap(
       } else {
         leader.conditions.push('slimed')
         messages.push(`${leader.name} slips in slime and falls! (1-in-6 Wandering Monsters; if they come, the fallen PC skips a turn.)`)
+        if (rng.d(6) === 1) {
+          messages.push('The fall draws Wandering Monsters!')
+          return { messages, wanderingMonsters: true }
+        }
       }
       break
     }
@@ -693,8 +821,13 @@ export function resolveEnvTrap(
     case 'shriekingMushroom': {
       if (!leader) break
       const mod = leader.classId === 'halfling' || ['ranger', 'druid'].includes(leader.classId) ? -2 : leader.classId === 'rogue' ? -1 : 0
+      // 4-in-6 Wandering Monsters, with the modifiers REDUCING the chance:
+      // the roll is d6+mod and the mushrooms call on 3+ — base d6>=3 is
+      // 4-in-6, a halfling/forester at -2 needs 5+ (2-in-6), a rogue at -1
+      // needs 4+ (3-in-6). The old `<= 4` test had the modifiers backwards
+      // (a -2 made the call MORE likely).
       const roll = rng.d(6) + mod
-      if (roll <= 4) {
+      if (roll >= 3) {
         messages.push('A shrieking mushroom screams — Wandering Monsters are coming!')
         return { messages, wanderingMonsters: true }
       }
@@ -704,8 +837,9 @@ export function resolveEnvTrap(
     case 'cordyceps': {
       const v = randomPc()
       if (!v) break
-      const bonus = v.classId === 'halfling' || v.classId === 'barbarian' ? v.level : 0
-      if (rng.roll(1, 6, bonus, `${v.name} Save vs cordyceps HCL+${hcl + 3}`) >= hcl + 3) {
+      // No class bonus is named for cordyceps (p.166) — the old
+      // halfling/barbarian +L was borrowed from the spore cloud.
+      if (rng.roll(1, 6, 0, `${v.name} Save vs cordyceps HCL+${hcl + 3}`) >= hcl + 3) {
         messages.push(`${v.name} shakes off the cordyceps spores.`)
       } else {
         v.conditions.push('cordyceps:6')

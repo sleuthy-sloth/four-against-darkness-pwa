@@ -3,6 +3,7 @@ import { useDungeonStore } from '../../state/dungeonStore'
 import { useCampaignStore } from '../../state/campaignStore'
 import { canLeaveCombat, describeEnemies, clericPrayersLeft, attackBonusFor } from '../../engine/combat/combat'
 import { canUseWand, canUseStaff, hasRing, hasFoolsGold } from '../../engine/items/magicItems'
+import { hasFreeHand } from '../../engine/light'
 import { stripCitations } from '../common/stripCitations'
 import { LogDie } from '../common/Die'
 import { parseDamageFromText, parseHealFromText, parseAttackerForStrike } from '../common/dice'
@@ -381,12 +382,12 @@ export default function CombatPanel() {
                   p.spells.map((s) => (
                     <button
                       key={`${p.id}-${s}`}
-                      disabled={s === 'protection' || s === 'escape' ? false : !targetId && !active}
+                      disabled={!hasFreeHand(p) || (['blessing', 'protection', 'escape'].includes(s) ? false : !targetId && !active)}
                       onClick={() => {
                         void combatCast(
                           p.id,
-                          s as 'sleep' | 'fireball' | 'lightning' | 'protection' | 'escape',
-                          s === 'protection' || s === 'escape' ? null : (targetId ?? active!.id),
+                          s as 'sleep' | 'fireball' | 'lightning' | 'protection' | 'escape' | 'blessing',
+                          ['blessing', 'protection', 'escape'].includes(s) ? null : (targetId ?? active!.id),
                         )
                       }}
                       className="rounded bg-stone-800 px-2 py-1 text-xs text-parchment"
@@ -414,7 +415,7 @@ export default function CombatPanel() {
                   .map(({ p, spell }) => (
                     <button
                       key={`${p.id}-${spell}`}
-                      disabled={spell !== 'blessing' && spell !== 'escape' && spell !== 'protection' ? !targetId && !active : false}
+                      disabled={!hasFreeHand(p) || (spell !== 'blessing' && spell !== 'escape' && spell !== 'protection' ? !targetId && !active : false)}
                       onClick={() => {
                         void combatCastScroll(
                           p.id,

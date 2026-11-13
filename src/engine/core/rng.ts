@@ -53,6 +53,23 @@ export class Rng {
     return total
   }
 
+  /** Record a roll whose dice are already known (e.g. an exploding chain
+   *  rolled die-by-die): the log must show the dice actually rolled, never
+   *  a fresh re-roll. */
+  record(count: number, sides: number, modifier: number, rolls: number[], reason = ''): number {
+    const total = rolls.reduce((a, b) => a + b, 0) + modifier
+    this.rollLog.push({
+      id: this.nextId++,
+      dice: sides,
+      count,
+      modifier,
+      rolls: [...rolls],
+      total,
+      reason,
+    })
+    return total
+  }
+
   /** FADEE d3: roll d6, 1-2=1, 3-4=2, 5-6=3 (FADEE p.2). */
   d3(): number {
     return Math.ceil(this.d(6) / 2)

@@ -28,6 +28,7 @@ import {
   rollReactions,
   startCombat,
   xpDue,
+  applyFinalBossBuff,
   canCast,
   castSpell,
   castHealing,
@@ -79,10 +80,11 @@ import {
 import { useSettingsStore } from './settingsStore'
 import { getCampaign, touchCampaign } from '../database/repositories/campaignRepo'
 import { loadDungeon, saveDungeon } from '../database/repositories/dungeonRepo'
-import { rollLoot, rollSpecialItem } from '../engine/treasure/loot'
+import { rollLoot, rollMagicTreasure, rollSpecialItem, scrollEquipmentName, type LootResult } from '../engine/treasure/loot'
 import {
   DUNGEON_EVENTS,
   DUNGEON_FEATURES,
+  DUNGEON_TRAPS,
   type DungeonTrap,
   TRAP_INFO,
   FEATURE_INFO,
@@ -98,6 +100,10 @@ import {
   FUNGAL_EVENT_INFO,
   CAVERN_TRAP_INFO,
   FUNGAL_TRAP_INFO,
+  CAVERN_TRAPS,
+  FUNGAL_TRAPS,
+  type CavernTrap,
+  type FungalTrap,
   QUEST_RETRIEVAL_ITEMS,
   cavernFeatureForRoll,
   type EnvironmentId,
@@ -111,6 +117,8 @@ import {
 } from '../rulesets/expanded/monsters'
 import {
   attemptPuzzle,
+  attemptTrapDisarm,
+  trapLevelFor,
   resolveEvent,
   resolveFeature,
   resolveTrap,
@@ -154,6 +162,10 @@ interface DungeonStoreState {
   explore: (exitId: string) => Promise<void>
   search: () => Promise<void>
   claimFind: (choice: 'hidden-treasure' | 'secret-door' | 'secret-passage' | 'listen' | 'rare-mushroom' | 'clue') => Promise<void>
+  /** Take the treasure on the current tile (R114 rolls 2–3). */
+  claimTileTreasure: () => Promise<void>
+  /** Answer a pending trap-disarm choice (R132): rogue id, or null to let it fire. */
+  answerTrapDisarm: (pcId: string | null) => Promise<void>
   /** Begin combat from the current tile's encounter (FADEE p.90). */
   beginCombat: () => Promise<void>
   combatAttack: (pcId: string, enemyId: string) => Promise<void>
@@ -282,7 +294,7 @@ function rollEncounterSimple(
   hcl: number,
 ): EncounterRoll {
   const events: string[] = []
-  const enc = rollEncounter(state, rng, profile, hcl, events)
+  const enc = rollEncounter(state, rng, profile, hcl, events, { canBeFinalBoss: false })
   if (profile.major) enc.isFinalBoss = false // WM Majors never Final Boss (p.104)
   return enc
 }
@@ -305,9 +317,14 @@ async function beginAmbushCombat(
       enc.table,
       enc.level,
       enc.count,
-      lifeFromFormula(enc.level, enc.monster.lifeFormula, enc.monster.flatLife),
+      lifeFromFormula(enc.level, enc.monster.lifeFormula, enc.monster.flatLife, enc.monster.lifeFloor),
     ),
   ]
+  // R125/F20: the secret-door surprise (−1 Foe L, turn 1) belongs to the
+  // foes beyond the secret door, not to Wandering Monsters arriving
+  // later in the same tile — consume the flag before the ambush starts.
+  const ambushTile = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
+  if (ambushTile?.viaSecretDoor) ambushTile.viaSecretDoor = false
   const combat = startCombat(dungeon.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng, {
     ...combatOpts(dungeon, party),
     forceSurprise: true,
@@ -335,6 +352,16 @@ function rollWanderingEncounter(state: DungeonState, rng: Rng, hcl: number): Enc
   const enc = rollEncounterSimple(state, rng, profile, hcl)
   enc.isFinalBoss = false
   return enc
+}
+
+/**
+ * R006: the HCL is fixed when the party first enters the dungeon
+ * (newDungeon stores it). Later encounters use the stored value so the
+ * dungeon does not get harder as the party levels; older saves without a
+ * stored HCL fall back to the current party max.
+ */
+export function dungeonHcl(dungeon: DungeonState, party: Character[]): number {
+  return dungeon.hcl ?? Math.max(1, ...party.map((p) => p.level))
 }
 
 /** Combat options derived from the dungeon's light, terrain and quest state. */
@@ -424,12 +451,47 @@ async function awardVictory(
   }
   // Loot: once per cleared encounter (FADEE p.99), Foe's treasure modifier,
   // environment table (R150). Treasure behind a secret door is doubled (R125).
+  // Bosses with several treasure rolls (R150: Chaos Lord 2, Young Dragon 3)
+  // roll once per roll, combining gold and granting each roll's item.
   const mod = combat.enemies[0]?.profile.treasure ?? '0'
-  const loot = rollLoot(rng, mod, env)
+  const treasureRolls = combat.enemies[0]?.profile.treasureRolls ?? 1
+  const carrier = party.find((p) => p.status !== 'dead')
+  // Reaction wins (R100: Flee / Peaceful / Ignore) roll no treasure — the
+  // Foes let the party pass or vanish before any fight. A bribe win does
+  // not set noLootWin, so it still rolls loot; the ledger is silent there.
+  const loot: LootResult = combat.noLootWin
+    ? { text: 'No treasure — the Foes let the party pass without a fight.', gold: 0 }
+    : rollLoot(rng, mod, env)
+  for (let i = 1; i < treasureRolls && !combat.noLootWin; i++) {
+    const more = rollLoot(rng, mod, env)
+    loot.gold += more.gold
+    loot.text += ` ${more.text}`
+    if (carrier && more.scroll) carrier.equipment.push(scrollEquipmentName(more.scroll))
+    if (carrier && more.item) carrier.equipment.push(more.item)
+    if (carrier && more.rations) {
+      for (let j = 0; j < more.rations; j++) carrier.equipment.push('rations')
+    }
+  }
   if (tile?.viaSecretDoor && loot.gold > 0) {
     loot.gold *= 2
     loot.text += ' (Doubled — treasure behind a secret door!)'
   }
+  // Final Boss (R118): treasure tripled, or raised to 100gp, whichever is
+  // better — plus a second Magic Treasure item when the loot includes one.
+  // (A fled Boss earns nothing: due.finalBoss requires it slain.)
+  if (due.finalBoss && !combat.noLootWin) {
+    loot.gold = Math.max(loot.gold * 3, 100)
+    loot.text += ' (Final Boss — treasure tripled, or raised to 100gp.)'
+    if (loot.magic) {
+      const second = rollMagicTreasure(rng)
+      if (carrier) carrier.equipment.push(second.item)
+      loot.text += ` ${second.text} (Final Boss — a second magic treasure!)`
+    }
+  }
+  // The secret-door bonus is one-shot: the first victory in the tile
+  // consumes it (R125/F20), so a later Wandering Monsters victory here
+  // does not double its loot.
+  if (tile?.viaSecretDoor) tile.viaSecretDoor = false
   if (loot.gold > 0) {
     const living = party.filter((p) => p.status !== 'dead')
     if (living.length) {
@@ -437,10 +499,9 @@ async function awardVictory(
       living.forEach((p) => (p.gold += each))
     }
   }
-  const carrier = party.find((p) => p.status !== 'dead')
   // +1 treasure behind a sealed or iron door (R129): one extra loot roll
   // on the encounter beyond such a door.
-  if (tile?.bonusTreasure) {
+  if (tile?.bonusTreasure && !combat.noLootWin) {
     const extra = rollLoot(rng, mod, env)
     if (extra.gold > 0) {
       const living = party.filter((p) => p.status !== 'dead')
@@ -449,7 +510,7 @@ async function awardVictory(
         living.forEach((p) => (p.gold += each))
       }
     }
-    if (carrier && extra.scroll) carrier.equipment.push(`scroll of ${extra.scroll.spell}`)
+    if (carrier && extra.scroll) carrier.equipment.push(scrollEquipmentName(extra.scroll))
     if (carrier && extra.item) carrier.equipment.push(extra.item)
     if (carrier && extra.rations) {
       for (let i = 0; i < extra.rations; i++) carrier.equipment.push('rations')
@@ -460,7 +521,7 @@ async function awardVictory(
     // Monsters ambush while passing through).
     tile.bonusTreasure = undefined
   }
-  if (carrier && loot.scroll) carrier.equipment.push(`scroll of ${loot.scroll.spell}`)
+  if (carrier && loot.scroll) carrier.equipment.push(scrollEquipmentName(loot.scroll))
   if (carrier && loot.item) carrier.equipment.push(loot.item)
   if (carrier && loot.rations) {
     for (let i = 0; i < loot.rations; i++) carrier.equipment.push('rations')
@@ -491,6 +552,9 @@ async function awardVictory(
   }
   if (system === 'classical') {
     const xp = rolls > 0 ? { major: rolls, minor: due.minorEncounter, boss: due.finalBoss } : null
+    // A fresh batch resets the no-repeat marker (R170): the restriction
+    // covers rolls from one victory, not the next one.
+    if (xp) dungeon.lastXpLevelUpPcId = null
     setPendingXp(dungeon, xp)
   } else if (system === 'slow') {
     if (due.finalBoss) {
@@ -530,16 +594,16 @@ async function rollWanderingAfterRest(
     appendLog([`Rest complete — no Wandering Monsters (rolled ${roll}). (FADEE p.114)`])
     return
   }
-  const tableRoll = rng.d(6)
-  const table = tableRoll <= 2 ? 'vermin' : tableRoll <= 4 ? 'minions' : tableRoll === 5 ? 'weird' : 'boss'
-  const env = dungeon.environment ?? 'dungeon'
-  const enc = rollEncounterSimple(dungeon, rng, profileForTable(env, table, tableRoll), Math.max(1, ...party.map((p) => p.level)))
-  enc.isFinalBoss = false
+  // R124/R133: the Wandering Monsters table rerolls event-Foes and
+  // dragons (rollWanderingEncounter), and the nailed doors mean the party
+  // attacks first even against natural surprise (partyFirst).
+  const enc = rollWanderingEncounter(dungeon, rng, dungeonHcl(dungeon, party))
   const enemies = [
-    makeEnemy(enc.monster, enc.table, enc.level, enc.count, lifeFromFormula(enc.level, enc.monster.lifeFormula, enc.monster.flatLife)),
+    makeEnemy(enc.monster, enc.table, enc.level, enc.count, lifeFromFormula(enc.level, enc.monster.lifeFormula, enc.monster.flatLife, enc.monster.lifeFloor)),
   ]
   const combat = startCombat(dungeon.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng, {
     ...combatOpts(dungeon, party),
+    partyFirst: true,
     secrets: campaign.secrets,
   })
   dungeon.combat = combat
@@ -577,6 +641,7 @@ async function finishEvent(
   ladyRefused = false,
 ): Promise<void> {
   const messages = [...er.messages]
+  let trapChoice: PendingChoicePayload | null = null
   if (er.trap) {
     // Miners' Amulet (R153): the position-1 wearer ignores 1 trap once/adventure.
     const leader = party.filter((p) => p.status !== 'dead')[leaderIndex] ?? party[0]
@@ -586,12 +651,30 @@ async function finishEvent(
     } else {
       const info = TRAP_INFO[er.trap]
       messages.push(`${info.text} (${info.source})`)
-      const tr = resolveTrap(rng, party, er.trap, hcl, leaderIndex)
-      messages.push(...tr.messages)
-      await appendEvents(campaignId, 'event', tr.messages.map((text) => ({ ts: Date.now(), text })))
+      // R132: a rogue in marching-order positions 1–2 may try to disarm
+      // the trap before it fires; with no such rogue it fires at once.
+      const living = party.filter((p) => p.status !== 'dead')
+      const disarmer = living.find((p, i) => p.classId === 'rogue' && i <= 1)
+      if (disarmer) {
+        trapChoice = {
+          kind: 'trap',
+          source: info.source,
+          trap: er.trap,
+          env: 'dungeon',
+          hcl,
+          leaderIndex,
+          origin: 'event',
+          prompt: `A trap! ${disarmer.name} (front rank) may try to disarm it — or let it fire.`,
+        }
+      } else {
+        const tr = resolveTrap(rng, party, er.trap, hcl, leaderIndex)
+        messages.push(...tr.messages)
+        await appendEvents(campaignId, 'event', tr.messages.map((text) => ({ ts: Date.now(), text })))
+      }
     }
   }
   state.pendingChoice = er.choice ? { ...er.choice, prompt: promptFor(er.choice as PendingChoicePayload, party) } : null
+  if (trapChoice && !state.pendingChoice) state.pendingChoice = trapChoice
   void questActive
   void ladyRefused
   await persist(state, rng, campaignId)
@@ -607,7 +690,7 @@ async function finishEvent(
         enc.table,
         enc.level,
         enc.count,
-        lifeFromFormula(enc.level, enc.monster.lifeFormula, enc.monster.flatLife),
+        lifeFromFormula(enc.level, enc.monster.lifeFormula, enc.monster.flatLife, enc.monster.lifeFloor),
       ),
     ]
     const combat = startCombat(state.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng, {
@@ -713,6 +796,8 @@ function promptFor(choice: NonNullable<PendingChoicePayload>, party: Character[]
       return 'Buy a healing potion (50gp, heals all) or blade poison (30gp, +1 vs. first Foe)?'
     case 'passage':
       return 'A secret passage! Which environment does it lead to?'
+    case 'trap':
+      return 'A trap! A rogue in the front rank may try to disarm it — or let it fire.'
     default:
       return 'Choose.'
   }
@@ -795,7 +880,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       ])
       return
     }
-    const hcl = Math.max(1, ...party.map((p) => p.level))
+    const hcl = dungeonHcl(dungeon, party)
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     dungeon.combat = null // leaving any concluded fight behind
     // A door that still needs an action (R129-R131) blocks the way: open
@@ -916,19 +1001,36 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
               spendAmulet(leader)
               messages.push(`The trap fires — but ${leader.name}'s Miners' Amulet turns it aside (once per adventure).`)
             } else {
-              const tr = resolveEnvTrap(rng, party, er.trap, env, hcl, 0)
-              messages.push(...tr.messages)
-              if (tr.wanderingMonsters) {
-                const tableRoll = rng.d(6)
-                const table = tableRoll <= 2 ? 'vermin' : tableRoll <= 4 ? 'minions' : tableRoll === 5 ? 'weird' : 'boss'
-                const enc = rollEncounterSimple(result.state, rng, profileForTable(env, table, tableRoll), hcl)
-                const enemies = [makeEnemy(enc.monster, enc.table, enc.level, enc.count, lifeFromFormula(enc.level, enc.monster.lifeFormula, enc.monster.flatLife))]
-                const combat = startCombat(result.state.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng, {
-                  ...combatOpts(result.state, party),
-                  forceSurprise: true,
-                })
-                result.state.combat = combat
-                messages.push(...combat.log.map((l) => l.text))
+              // R132: a rogue in marching-order positions 1–2 may try to
+              // disarm the trap before it fires; with no such rogue it
+              // fires at once.
+              const living = party.filter((p) => p.status !== 'dead')
+              const disarmer = living.find((p, i) => p.classId === 'rogue' && i <= 1)
+              if (disarmer) {
+                result.state.pendingChoice = {
+                  kind: 'trap',
+                  source: trapInfo ? trapInfo.source ?? 'FADEE pp.155-156' : 'FADEE pp.155-156',
+                  trap: er.trap,
+                  env,
+                  hcl,
+                  leaderIndex: 0,
+                  origin: 'event',
+                  prompt: `A trap! ${disarmer.name} (front rank) may try to disarm it — or let it fire.`,
+                }
+              } else {
+                const tr = resolveEnvTrap(rng, party, er.trap, env, hcl, 0)
+                messages.push(...tr.messages)
+                if (tr.wanderingMonsters) {
+                  // R124: reroll event-Foes and dragons off the table.
+                  const enc = rollWanderingEncounter(result.state, rng, hcl)
+                  const enemies = [makeEnemy(enc.monster, enc.table, enc.level, enc.count, lifeFromFormula(enc.level, enc.monster.lifeFormula, enc.monster.flatLife, enc.monster.lifeFloor))]
+                  const combat = startCombat(result.state.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng, {
+                    ...combatOpts(result.state, party),
+                    forceSurprise: true,
+                  })
+                  result.state.combat = combat
+                  messages.push(...combat.log.map((l) => l.text))
+                }
               }
             }
           }
@@ -954,10 +1056,12 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
         enc.table,
         enc.level,
         enc.count,
-        lifeFromFormula(enc.level, enc.monster.lifeFormula, enc.monster.flatLife),
+        lifeFromFormula(enc.level, enc.monster.lifeFormula, enc.monster.flatLife, enc.monster.lifeFloor),
       ),
     ]
     enemies[0].isFinalBossFlag = !!enc.isFinalBoss
+    // R118: the Final Boss fights with +1 Life.
+    if (enemies[0].isFinalBossFlag) applyFinalBossBuff(enemies[0])
     const opts = combatOpts(dungeon, party)
     const combat = startCombat(
       dungeon.currentTileId,
@@ -1494,6 +1598,14 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     if (!dungeon || !campaign) return
     const pc = party.find((p) => p.id === pcId)
     if (!pc || pc.status === 'dead') return
+    // R170: no XP roll to a PC that just levelled in this batch — the roll
+    // goes to another survivor instead (unless the PC is the sole survivor).
+    const living = party.filter((p) => p.status !== 'dead')
+    const pending = get().pendingXp ?? dungeon.pendingXp
+    if (dungeon.lastXpLevelUpPcId === pcId && pending && pending.major > 0 && living.some((p) => p.id !== pcId)) {
+      set({ error: `${pc.name} just levelled — no second XP roll in this batch (unless sole survivor).` })
+      return
+    }
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     // FADEE p.117: XP roll = d6 > current L (6 always succeeds); level-up is
     // immediate: +1 current and max Life, bonuses scale with L.
@@ -1506,6 +1618,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       pc.level += 1
       pc.maxLife += 1
       pc.currentLife += 1
+      dungeon.lastXpLevelUpPcId = pcId
       entries.push({ ts: Date.now(), text: `${pc.name} reaches L${pc.level}: +1 max and current Life, bonuses increase.` })
     }
     // Consume one available roll (Major/boss rolls are per-kill; minors accrue).
@@ -1515,6 +1628,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     if (pendingXp) {
       const remaining = pendingXp.major > 0 ? pendingXp.major - 1 : 0
       dungeon.pendingXp = remaining > 0 ? { ...pendingXp, major: remaining } : null
+      if (!dungeon.pendingXp) dungeon.lastXpLevelUpPcId = null
       set({ pendingXp: dungeon.pendingXp })
     }
     const { saveParty } = await import('../database/repositories/campaignRepo')
@@ -1641,6 +1755,17 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     const result = searchTile(dungeon, rng, dungeon.currentTileId, party.map((p) => p.classId))
     await persist(result.state, rng, campaign.id)
     const log = [...get().log, { ts: Date.now(), text: `Search: ${result.result}` }]
+    // R123: a Search roll of 1 brings Wandering Monsters at once — the
+    // flag searchTile sets is consumed here with a surprise ambush, not
+    // left dangling.
+    if (result.state.pendingWanderingMonsters) {
+      result.state.pendingWanderingMonsters = null
+      const enc = rollWanderingEncounter(result.state, rng, dungeonHcl(result.state, party))
+      set({ dungeon: result.state, log })
+      appendLog(['Wandering Monsters attack! They strike first.'])
+      await beginAmbushCombat(result.state, rng, party, campaign, enc)
+      return
+    }
     if (result.result === 'find') {
       set({ dungeon: result.state, log, pendingFind: { tileId: dungeon.currentTileId } })
     } else {
@@ -1656,8 +1781,10 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     const entries: LogEntry[] = []
     if (choice === 'hidden-treasure') {
-      const hcl = Math.max(1, ...party.map((p) => p.level))
-      const result = rollHiddenTreasure(dungeon, rng, hcl)
+      const hcl = dungeonHcl(dungeon, party)
+      // R127: pass the party so a trap complication can target a living
+      // rogue (disarm) or a random PC (Save) instead of describing one.
+      const result = rollHiddenTreasure(dungeon, rng, hcl, party)
       const living = party.filter((p) => p.status !== 'dead')
       const each = Math.floor(result.gold / Math.max(1, living.length))
       living.forEach((p) => (p.gold += each))
@@ -1670,7 +1797,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     } else if (choice === 'secret-door') {
       // Release 0.5 (R125): the door connects to a real tile the party can
       // peek at and enter through — not just a badge.
-      const hcl = Math.max(1, ...party.map((p) => p.level))
+      const hcl = dungeonHcl(dungeon, party)
       const gen = generateSecretDoorTile(dungeon, rng, hcl)
       entries.push(...gen.events.map((text) => ({ ts: Date.now(), text })))
       const foundTile = dungeon.tiles.find((t) => t.id === pendingFind.tileId)
@@ -1719,6 +1846,131 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     if (choice !== 'clue') {
       await persist(dungeon, rng, campaign.id)
     }
+    // R127: an alarm complication on hidden treasure brings Wandering
+    // Monsters at once — consume the flag with a surprise ambush.
+    if (choice === 'hidden-treasure' && dungeon.pendingWanderingMonsters) {
+      dungeon.pendingWanderingMonsters = null
+      const enc = rollWanderingEncounter(dungeon, rng, dungeonHcl(dungeon, party))
+      appendLog(['The alarm brings Wandering Monsters — they strike first!'])
+      await beginAmbushCombat(dungeon, rng, party, campaign, enc)
+    }
+  },
+
+  /** Take the treasure on the current tile (R114 rolls 2–3). */
+  claimTileTreasure: async () => {
+    await snap('claimTileTreasure', useCampaignStore.getState().campaign?.id ?? '')
+    const { dungeon } = get()
+    const { campaign, party } = useCampaignStore.getState()
+    if (!dungeon || !campaign) return
+    const tile = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
+    const content = tile?.content
+    if (!content || (content.kind !== 'treasure' && content.kind !== 'treasureTrapped')) return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    const env = tile.environment ?? dungeon.environment ?? 'dungeon'
+    const hcl = dungeonHcl(dungeon, party)
+    if (content.kind === 'treasureTrapped' && !content.trapDisarmed) {
+      // Roll the guarding trap once (environment table, pp.164-166) and
+      // keep it on the tile, so disarm and firing resolve the same trap.
+      if (!content.trap) {
+        const table = env === 'caverns' ? CAVERN_TRAPS : env === 'fungal' ? FUNGAL_TRAPS : DUNGEON_TRAPS
+        content.trap = table[rng.d(6) - 1]
+      }
+      const trap = content.trap
+      const living = party.filter((p) => p.status !== 'dead')
+      const disarmer = living.find((p, i) => p.classId === 'rogue' && i <= 1)
+      const info =
+        env === 'dungeon'
+          ? TRAP_INFO[trap as DungeonTrap]
+          : env === 'caverns'
+            ? CAVERN_TRAP_INFO[trap as CavernTrap]
+            : FUNGAL_TRAP_INFO[trap as FungalTrap]
+      dungeon.pendingChoice = {
+        kind: 'trap',
+        source: info?.source ?? 'FADEE pp.164-166',
+        trap,
+        env,
+        hcl,
+        leaderIndex: 0,
+        origin: 'treasure',
+        prompt: disarmer
+          ? `Treasure behind a trap! ${disarmer.name} (front rank) may try to disarm it — or let it fire.`
+          : 'Treasure behind a trap! No rogue in the front rank can disarm it — let it fire.',
+      }
+      await persist(dungeon, rng, campaign.id)
+      appendLog([`Treasure behind a trap (${info?.text ?? trap}) — disarm it first, or take the hit.`])
+      set({ dungeon: { ...dungeon } })
+      return
+    }
+    // Plain treasure (roll 2), or a disarmed trapped treasure (roll 3):
+    // one loot roll on the environment table, then the tile is spent.
+    const loot = rollLoot(rng, '0', env)
+    const carrier = party.find((p) => p.status !== 'dead')
+    if (loot.gold > 0) {
+      const living = party.filter((p) => p.status !== 'dead')
+      const each = Math.floor(loot.gold / living.length)
+      living.forEach((p) => (p.gold += each))
+    }
+    if (carrier && loot.scroll) carrier.equipment.push(scrollEquipmentName(loot.scroll))
+    if (carrier && loot.item) carrier.equipment.push(loot.item)
+    if (carrier && loot.rations) {
+      for (let i = 0; i < loot.rations; i++) carrier.equipment.push('rations')
+    }
+    content.kind = 'empty'
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    await persist(dungeon, rng, campaign.id)
+    appendLog([`Treasure taken: ${loot.text}`])
+    await appendEvents(campaign.id, 'loot', [{ ts: Date.now(), text: loot.text }])
+    set({ dungeon: { ...dungeon } })
+  },
+
+  /** Answer a pending trap-disarm choice (R132). */
+  answerTrapDisarm: async (pcId) => {
+    await snap('answerTrapDisarm', useCampaignStore.getState().campaign?.id ?? '')
+    const { dungeon } = get()
+    const { campaign, party } = useCampaignStore.getState()
+    if (!dungeon || !campaign || dungeon.pendingChoice?.kind !== 'trap') return
+    const choice = dungeon.pendingChoice
+    const trap = choice.trap
+    if (!trap) return
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    const env = choice.env ?? 'dungeon'
+    const hcl = choice.hcl ?? 1
+    const leaderIndex = choice.leaderIndex ?? 0
+    dungeon.pendingChoice = null
+    const living = party.filter((p) => p.status !== 'dead')
+    const rogue = pcId ? living.find((p) => p.id === pcId && p.classId === 'rogue') : undefined
+    const pos = rogue ? living.indexOf(rogue) : -1
+    if (rogue && pos >= 0 && pos <= 1) {
+      const r = attemptTrapDisarm(rng, rogue, trapLevelFor(trap, hcl))
+      appendLog(r.messages)
+      if (r.success) {
+        // A disarmed treasure trap leaves the loot claimable.
+        if (choice.origin === 'treasure') {
+          const tile = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
+          if (tile?.content?.kind === 'treasureTrapped') tile.content.trapDisarmed = true
+        }
+        await persist(dungeon, rng, campaign.id)
+        set({ dungeon: { ...dungeon } })
+        return
+      }
+      // A failed disarm lets the trap fire (below).
+    }
+    const tr =
+      env === 'dungeon'
+        ? resolveTrap(rng, party, trap as DungeonTrap, hcl, leaderIndex)
+        : resolveEnvTrap(rng, party, trap as CavernTrap | FungalTrap, env, hcl, leaderIndex)
+    appendLog(tr.messages)
+    await appendEvents(campaign.id, 'event', tr.messages.map((text) => ({ ts: Date.now(), text })))
+    await persist(dungeon, rng, campaign.id)
+    const { saveParty } = await import('../database/repositories/campaignRepo')
+    await saveParty(campaign.id, party)
+    set({ dungeon: { ...dungeon } })
+    if (env !== 'dungeon' && 'wanderingMonsters' in tr && tr.wanderingMonsters) {
+      const enc = rollWanderingEncounter(dungeon, rng, dungeonHcl(dungeon, party))
+      appendLog(['The trap’s noise brings Wandering Monsters — they strike first!'])
+      await beginAmbushCombat(dungeon, rng, party, campaign, enc)
+    }
   },
 
   /** Choose the environment a secret passage leads to (R126). */
@@ -1758,6 +2010,13 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     }
     if (env === (dungeon.environment ?? 'dungeon')) {
       set({ error: 'The passage leads to a *different* environment.' })
+      return
+    }
+    // R114 roll 9 / R126: the 2-Clue passage is specifically a Tile
+    // Content 9 option — not a standing offer on every tile.
+    const here = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
+    if (here?.contentRoll !== 9) {
+      set({ error: 'A secret passage can only be bought from a Tile Content 9 tile.' })
       return
     }
     await touchCampaign(campaign.id, { clues: (cs.campaign?.clues ?? 0) - 2 })
@@ -1968,7 +2227,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     // they attack at once, striking first.
     if (wandering) {
       dungeon.pendingWanderingMonsters = null
-      const hcl = Math.max(1, ...party.map((p) => p.level))
+      const hcl = dungeonHcl(dungeon, party)
       const enc = rollWanderingEncounter(dungeon, rng, hcl)
       appendLog(['Wandering Monsters attack! They strike first.'])
       await beginAmbushCombat(dungeon, rng, party, campaign, enc)
@@ -2175,6 +2434,8 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
         ),
       )
       enemies[0].isFinalBossFlag = !!sr.combat.isFinalBoss
+      // R118: a Final Boss statue fights with +1 Life.
+      if (enemies[0].isFinalBossFlag) applyFinalBossBuff(enemies[0])
       const combat = startCombat(dungeon.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng, {
         ...combatOpts(dungeon, party),
         forceSurprise: false,
@@ -2483,6 +2744,9 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       return
     }
     const nails = party.reduce((n, p) => n + p.equipment.filter((e) => e === 'bag of nails').length, 0)
+    // R133: only DOOR exits need nailing — open exits (and cavern
+    // openings, which have no doors at all) take no nails.
+    const doorCount = tile.exits.filter((e) => e.door).length
     // Neighbors: every linked exit's target must be explored and cleared.
     const neighborsCleared = tile.exits
       .filter((e) => e.toTileId)
@@ -2491,7 +2755,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
         return !!t && (!t.content?.encounter || t.content.cleared === true)
       })
     const check = canRest({
-      doorCount: tile.exits.length,
+      doorCount,
       neighborsCleared,
       tileCleared: !tile.content?.encounter || tile.content.cleared === true,
       nailsHeld: nails,
@@ -2502,7 +2766,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
       return
     }
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
-    const outcome = beginRest(party, tile.exits.length)
+    const outcome = beginRest(party, doorCount)
     dungeon.rested = true
     // If nobody has anything to recover, there is no pick to make — opening
     // the rest dialog with an empty list would leave an undismissable

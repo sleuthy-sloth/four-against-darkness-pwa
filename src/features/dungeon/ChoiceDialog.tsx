@@ -30,6 +30,7 @@ export function ChoiceDialog() {
     questDecline,
     questPcPick,
     claimPassage,
+    answerTrapDisarm,
   } = useDungeonStore()
   const { party } = useCampaignStore()
   const choice = dungeon?.pendingChoice
@@ -65,6 +66,29 @@ export function ChoiceDialog() {
               </button>
               <button onClick={() => void claimPassage('fungal')} className="btn-wax px-4 py-2">
                 Fungal grottoes
+              </button>
+            </div>
+          )}
+          {choice.kind === 'trap' && (
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
+                {living
+                  .filter((p, i) => p.classId === 'rogue' && i <= 1)
+                  .map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => void answerTrapDisarm(p.id)}
+                      className="rounded border border-torch/40 bg-torch/10 px-3 py-2 text-sm text-torch"
+                    >
+                      {p.name} disarms it
+                    </button>
+                  ))}
+              </div>
+              <button
+                onClick={() => void answerTrapDisarm(null)}
+                className="rounded border border-stone-600 bg-stone-800 px-3 py-2 text-sm text-parchment"
+              >
+                Let it fire
               </button>
             </div>
           )}

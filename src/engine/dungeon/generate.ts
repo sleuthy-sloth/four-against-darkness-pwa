@@ -12,15 +12,20 @@ import {
   RARE_MUSHROOMS,
   cavernFeatureForRoll,
   type CavernFeature,
+  type CavernTrap,
   type EnvironmentId,
+  type FungalTrap,
 } from '../../rulesets/expanded/environments'
+import type { DungeonTrap } from '../../rulesets/expanded/features'
 import type { Rng } from '../core/rng'
 import type { CombatState } from '../combat/combat'
 import {
   doorGrantsBonusTreasure,
+  lockpickBonus,
   rollDoorsForTile,
   type DoorInfo,
 } from './doors'
+import type { Character } from '../../rulesets/schema/character'
 
 /**
  * Dungeon generation engine (FADEE pp.104, 149-152; PROJECT_SPEC Part V §10).
@@ -82,6 +87,12 @@ export interface TileContent {
   eventRoll?: number
   /** Encounter defeated here (Resting prerequisite, FADEE p.114). */
   cleared?: boolean
+  /** Trap guarding a treasureTrapped tile (R114 roll 3): rolled when the
+   * treasure is first taken, then kept so disarm/firing resolve the
+   * same trap. */
+  trap?: DungeonTrap | CavernTrap | FungalTrap
+  /** The tile's trap was disarmed (R132) — the treasure is free to take. */
+  trapDisarmed?: boolean
 }
 
 export interface PlacedTile {
@@ -130,6 +141,11 @@ export interface DungeonState {
   combat?: CombatState | null
   /** Wandering Monster ambush rolled while retracing (resolves as combat). */
   pendingAmbush?: EncounterRoll | null
+  /** HCL for this adventure (FADEE p.3, R006): the highest PC level when
+      the party first entered the dungeon. Fixed for the whole adventure —
+      it does NOT rescale if the party levels up mid-delve. Older saves
+      without it fall back to the current party max. */
+  hcl?: number
   /** Minor encounters defeated toward the next XP roll (FADEE p.117). */
   minorEncountersTally?: number
   /** XP rolls earned by the current victory, awaiting assignment (FADEE
@@ -168,6 +184,10 @@ export interface DungeonState {
   oldSchoolXp?: number
   /** Slower Advancement stored XP points (R174). */
   storedXp?: number
+  /** Last PC levelled by a Classical XP roll in the current pending batch
+      (R170): no XP roll goes to a PC that just levelled, unless they are
+      the only survivor. Cleared when the batch is spent / a new one starts. */
+  lastXpLevelUpPcId?: string | null
   /** Last PC levelled under Old School (no same PC twice in a row, R173). */
   lastLevelUpPcId?: string | null
   /** Slow and Sure level-ups awaiting assignment (R172). */
@@ -203,7 +223,7 @@ export interface PendingChoicePayload {
   kind:
     | 'temple' | 'statue' | 'puzzle' | 'ghost' | 'healer' | 'alchemist'
     | 'secret' | 'secretPc' | 'secretWeakness' | 'secretItem' | 'rest'
-    | 'quest' | 'questPc' | 'passage'
+    | 'quest' | 'questPc' | 'passage' | 'trap'
   source: string
   /** Statue: difficulty info. */
   hcl?: number
@@ -214,6 +234,14 @@ export interface PendingChoicePayload {
   pcIds?: string[]
   /** Temple: PCs eligible for the undead bonus. */
   eligible?: string[]
+  /** Trap disarm (R132): the trap that fired, its environment, the
+   * leader index for its Save, and where it came from — 'treasure' traps
+   * leave the loot claimable after a successful disarm, 'event' traps do
+   * not. */
+  trap?: DungeonTrap | CavernTrap | FungalTrap
+  env?: EnvironmentId
+  leaderIndex?: number
+  origin?: 'treasure' | 'event'
   /** Statement shown in the dialog. */
   prompt: string
 }
@@ -301,6 +329,7 @@ export function newDungeon(campaignId: string, rng: Rng, hcl = 1): DungeonState 
   rollDoorsForTile(tile, rng, hcl)
   return {
     campaignId,
+    hcl,
     gridW: GRID_W,
     gridH: GRID_H,
     tiles: [tile],
@@ -426,6 +455,21 @@ export function exploreThrough(
     // The back exit is the same physical door as the one just crossed.
     if (exit.doorInfo) back.doorInfo = { ...exit.doorInfo }
   }
+  // R141: cavern openings have NO doors — a cavern tile's exits are plain
+  // openings (which is also why resting is impossible there). Strip the
+  // printed-door flags before rolling doors, so no door table is rolled
+  // for them; the back exit keeps its (already opened) shared door state
+  // but reads as an opening from the cavern side.
+  if (newTile.environment === 'caverns') {
+    for (const e of newTile.exits) {
+      if (e !== back) {
+        e.door = false
+        delete e.doorInfo
+      } else {
+        e.door = false
+      }
+    }
+  }
   // Roll the door table (R129) for the new tile's other door exits.
   rollDoorsForTile(newTile, rng, hcl, back?.id)
 
@@ -490,8 +534,7 @@ function moveThroughExplored(
       while (profile.category === 'Event' || profile.category === 'Dragon') {
         profile = profileForTable(env, table, rng.d(6))
       }
-      const enc = rollEncounter(state, rng, profile, hcl, events)
-      if (profile.major) enc.isFinalBoss = false // WM Majors can never be the Final Boss
+      const enc = rollEncounter(state, rng, profile, hcl, events, { canBeFinalBoss: false })
       state.pendingAmbush = enc
       events.push('Retracing: 1-in-6 → Wandering Monsters attack! They strike first. (FADEE pp.104, 107)')
     }
@@ -674,7 +717,9 @@ export function rollEncounter(
   profile: MonsterProfile,
   hcl: number,
   events: string[],
+  opts: { canBeFinalBoss?: boolean } = {},
 ): EncounterRoll {
+  const canBeFinalBoss = opts.canBeFinalBoss ?? true
   // Quantity (FADEE profile count formulas; 'alt:a|b' = d6 1-3/4-6 alternates).
   let count: number
   if (profile.countFormula.startsWith('alt:')) {
@@ -694,12 +739,23 @@ export function rollEncounter(
 
   if (profile.major && !isEventProfile(profile)) {
     // FADEE p.105: Final Boss check — d6 + Major Foes met so far.
-    const bossRoll = rng.d(6) + state.majorFoesMet
+    // Wandering Monsters can never BE the Final Boss (R160 event raid;
+    // p.104 for retracing WM): they still count toward the tally, but no
+    // boss roll is made for them — otherwise a WM Major could log a false
+    // "FINAL BOSS revealed" while isFinalBoss is cleared afterwards.
     state.majorFoesMet += 1
-    enc.isFinalBoss = bossRoll >= 6
-    if (enc.isFinalBoss) {
-      events.push('THE FINAL BOSS has been revealed! (FADEE p.105)')
+    if (canBeFinalBoss) {
+      const bossRoll = rng.d(6) + (state.majorFoesMet - 1)
+      enc.isFinalBoss = bossRoll >= 6
+      if (enc.isFinalBoss) {
+        events.push('THE FINAL BOSS has been revealed! (FADEE p.105)')
+      }
     }
+  } else if (profile.name === 'Invisible Gremlins') {
+    // R117 "(incl. gremlins)": a gremlin meeting counts toward the Final
+    // Boss tally even though gremlins are an event, not a fight.
+    state.majorFoesMet += 1
+    events.push('Invisible Gremlins! They count toward the Final Boss tally. (FADEE p.105)')
   }
   events.push(`Encounter: ${count}× ${profile.name} (L${level}) — ${profile.source}`)
   return enc
@@ -731,8 +787,16 @@ export function searchTile(
   const env = tile.environment ?? state.environment ?? 'dungeon'
   const roll = rng.roll(1, 6, env === 'dungeon' && isCorridor ? -1 : 0, `search roll (FADEE p.107)`)
   tile.searchRoll = roll
+  // 4 counts as 5 — but ONLY outside the dungeon (R123's dungeon table
+  // has no such rule): caverns grant it to rogue-type classes and
+  // halflings (R143), fungal grottoes to mushroom monks and halflings
+  // (R144). A rogue searching a dungeon tile with a 4 finds nothing.
   const countsFourAsFive =
-    partyClassIds.some((c) => ['rogue', 'assassin', 'halfling'].includes(c))
+    env === 'caverns'
+      ? partyClassIds.some((c) => ['rogue', 'assassin', 'halfling'].includes(c))
+      : env === 'fungal'
+        ? partyClassIds.some((c) => ['halfling', 'mushroomMonk', 'mushroom-monk'].includes(c))
+        : false
   if (roll <= 1) {
     tile.searchResult = 'wandering-monsters'
     state.pendingWanderingMonsters = Date.now()
@@ -813,26 +877,110 @@ export function generateSecretDoorTile(
   return { state: result.state, toTileId: newTile?.id ?? null, events: [...safe, ...events] }
 }
 
+/**
+ * Hidden treasure complication (R127, p.108): resolve the d6 complication
+ * mechanically instead of leaving it as pending log text.
+ * - 1-2 alarm: Wandering Monsters (the caller starts the ambush).
+ * - 3-5 trap: a living rogue disarms with a Save vs HCL+1 (+L, R131);
+ *   if there is no rogue — or the disarm fails — a random PC Saves vs
+ *   HCL+1: fail = 1 Life, natural 1 = 2 Life.
+ * - 6 ghost: a living cleric Saves vs HCL to banish it; fail, or no
+ *   cleric, and every living PC loses 1 Life and the ghost leaves.
+ * No bonus is named for the random-PC trap Save or the cleric's ghost
+ * Save, so both are plain d6.
+ */
+export function resolveHiddenTreasureComplication(
+  rng: Rng,
+  party: Character[],
+  hcl: number,
+  comp: number,
+): { text: string; wanderingMonsters: boolean } {
+  const living = party.filter((p) => p.status !== 'dead')
+  const hurt = (pc: Character, dmg: number) => {
+    pc.currentLife = Math.max(0, pc.currentLife - dmg)
+    if (pc.currentLife === 0) pc.status = 'dead'
+  }
+  if (comp <= 2) {
+    return { text: 'An alarm attracts Wandering Monsters!', wanderingMonsters: true }
+  }
+  if (comp <= 5) {
+    const rogue = living.find((p) => p.classId === 'rogue')
+    let disarmNote = ''
+    if (rogue) {
+      const bonus = lockpickBonus(rogue)
+      const die = rng.d(6)
+      if (die + bonus >= hcl + 1) {
+        return {
+          text: `${rogue.name} disarms the trap guarding the loot (d6 ${die} +${bonus} = ${die + bonus} vs L${hcl + 1}).`,
+          wanderingMonsters: false,
+        }
+      }
+      // Disarm failed: the trap fires on a random PC (see below).
+      disarmNote = `${rogue.name} fails to disarm the trap (d6 ${die} +${bonus} = ${die + bonus} vs L${hcl + 1}). `
+    }
+    const victim = living[Math.floor(((rng.d(1000) - 1) / 1000) * living.length)]
+    if (!victim) return { text: 'The trap guarding the loot finds no one.', wanderingMonsters: false }
+    const die = rng.d(6)
+    if (die >= hcl + 1) {
+      return {
+        text: `${disarmNote}The loot is trapped — ${victim.name} Saves (d6 ${die} vs L${hcl + 1}) and avoids it.`,
+        wanderingMonsters: false,
+      }
+    }
+    const dmg = die === 1 ? 2 : 1
+    hurt(victim, dmg)
+    return {
+      text: `${disarmNote}The loot is trapped — ${victim.name} fails the Save (d6 ${die} vs L${hcl + 1}) and loses ${dmg} Life (${victim.currentLife}/${victim.maxLife}).`,
+      wanderingMonsters: false,
+    }
+  }
+  const cleric = living.find((p) => p.classId === 'cleric')
+  if (cleric) {
+    const die = rng.d(6)
+    if (die >= hcl) {
+      return {
+        text: `A ghost guards the loot — ${cleric.name} Saves (d6 ${die} vs L${hcl}) and banishes it.`,
+        wanderingMonsters: false,
+      }
+    }
+  }
+  for (const pc of living) hurt(pc, 1)
+  return {
+    text: cleric
+      ? `A ghost guards the loot — ${cleric.name} fails to banish it, and every PC loses 1 Life.`
+      : 'A ghost guards the loot — with no cleric to banish it, every PC loses 1 Life.',
+    wanderingMonsters: false,
+  }
+}
+
 /** Hidden treasure (FADEE p.108): (2d6+HCL)² gp + complication d6. */
 export function rollHiddenTreasure(
   state: DungeonState,
   rng: Rng,
   hcl: number,
-): { gold: number; complication: string } {
+  party?: Character[],
+): { gold: number; complication: string; wanderingMonsters?: boolean } {
   const a = rng.roll(2, 6, hcl, 'hidden treasure (FADEE p.108)')
   const b = rng.roll(2, 6, hcl, 'hidden treasure (FADEE p.108)')
   const gold = a * b
   const comp = rng.d(6)
-  let complication: string
-  if (comp <= 2) {
-    state.pendingWanderingMonsters = Date.now()
-    complication = 'An alarm attracts Wandering Monsters! (combat engine pending)'
-  } else if (comp <= 5) {
-    complication = 'The loot is protected by a Trap: a rogue may disarm with a Save vs HCL+1, otherwise a random PC Saves (fail = 1 Life, natural 1 = 2 Life). (trap engine pending)'
-  } else {
-    complication = 'A ghost guards it: a cleric Saves vs HCL to banish it, else all PCs lose 1 Life and it fades. (pending)'
+  if (!party) {
+    // Legacy callers without a party (simulation tests) get the old
+    // descriptive text; the store always passes the party.
+    let complication: string
+    if (comp <= 2) {
+      state.pendingWanderingMonsters = Date.now()
+      complication = 'An alarm attracts Wandering Monsters! (combat engine pending)'
+    } else if (comp <= 5) {
+      complication = 'The loot is protected by a Trap: a rogue may disarm with a Save vs HCL+1, otherwise a random PC Saves (fail = 1 Life, natural 1 = 2 Life). (trap engine pending)'
+    } else {
+      complication = 'A ghost guards it: a cleric Saves vs HCL to banish it, else all PCs lose 1 Life and it fades. (pending)'
+    }
+    return { gold, complication }
   }
-  return { gold, complication }
+  const resolved = resolveHiddenTreasureComplication(rng, party, hcl, comp)
+  if (resolved.wanderingMonsters) state.pendingWanderingMonsters = Date.now()
+  return { gold, complication: resolved.text, wanderingMonsters: resolved.wanderingMonsters || undefined }
 }
 
 /** Secret door (FADEE p.108): d6 after finding — 6 = safe shortcut exit. */

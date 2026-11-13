@@ -74,8 +74,11 @@ export function hasSpentAbility(pc: Character): boolean {
     const def = CORE_CLASSES.find((d) => d.id === pc.classId)
     const slots = (def?.spellSlots ?? 1) + (pc.level - 1)
     if (pc.classId === 'cleric') {
+      // Clerics recover prayers, not wizard spell slots: their spells array
+      // is always empty, so the slot check below would wrongly flag every
+      // L2+ cleric as having a spent ability even at full prayers.
       const { healing, blessing } = clericPrayersLeft(pc)
-      return pc.spells.length < slots || healing < 3 || blessing < 3
+      return healing < 3 || blessing < 3
     }
     return pc.spells.length < slots
   }

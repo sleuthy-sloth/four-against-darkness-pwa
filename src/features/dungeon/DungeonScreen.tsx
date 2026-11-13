@@ -191,7 +191,7 @@ function FloorPatternInner({ variant }: { variant: 0 | 1 | 2 | 3 }) {
  */
 export default function DungeonScreen() {
   const navigate = useNavigate()
-  const { dungeon, log, busy, error, ensureDungeon, explore, search, pendingFind, claimFind, clearError, beginCombat, beginSecretReveal, beginSecretItem, useTreasureLocation, rest, claimQuest, requestUndo, cancelUndo, performUndo, confirmUndo, pendingXp, pendingDoor, lightTorch, extinguishTorch, pickupLantern, peekSecretDoor, enterSecretDoor, dipPool, buyPassage, spendLevelUp, spendStoredXp, spendOldSchoolXp, openDoorDialog } =
+  const { dungeon, log, busy, error, ensureDungeon, explore, search, pendingFind, claimFind, claimTileTreasure, clearError, beginCombat, beginSecretReveal, beginSecretItem, useTreasureLocation, rest, claimQuest, requestUndo, cancelUndo, performUndo, confirmUndo, pendingXp, pendingDoor, lightTorch, extinguishTorch, pickupLantern, peekSecretDoor, enterSecretDoor, dipPool, buyPassage, spendLevelUp, spendStoredXp, spendOldSchoolXp, openDoorDialog } =
     useDungeonStore()
   const { campaign, party, loadLastCampaign } = useCampaignStore()
   const [panelOpen, setPanelOpen] = useState(true)
@@ -1440,10 +1440,20 @@ export default function DungeonScreen() {
                   </div>
                 )}
                 {content?.kind === 'treasure' && (
-                  <p className="mb-2 text-parchment/80">Treasure here! (loot tables land in Phase 5)</p>
+                  <button
+                    onClick={() => void claimTileTreasure()}
+                    className="mb-2 rounded border border-torch/40 bg-torch/10 px-3 py-1.5 text-torch"
+                  >
+                    Take the treasure
+                  </button>
                 )}
                 {content?.kind === 'treasureTrapped' && (
-                  <p className="mb-2 text-parchment/80">Treasure behind a trap. (Phase 5)</p>
+                  <button
+                    onClick={() => void claimTileTreasure()}
+                    className="mb-2 rounded border border-torch/40 bg-torch/10 px-3 py-1.5 text-torch"
+                  >
+                    Take the treasure (trapped!)
+                  </button>
                 )}
                 {content?.kind === 'specialEvents' && (
                   <p className="mb-2 text-parchment/80">Special event! (event tables land in Phase 5)</p>
@@ -1657,8 +1667,8 @@ export default function DungeonScreen() {
                   </div>
                 )}
                 {/* Secret passage for 2 Clues (R126, Tile Content 9): buy the
-                    way to another environment from an empty tile. */}
-                {(campaign.clues ?? 0) >= 2 && !dungeon.combat && !dungeon.pendingChoice && (
+                    way to another environment from a Tile Content 9 tile. */}
+                {(campaign.clues ?? 0) >= 2 && tile.contentRoll === 9 && !dungeon.combat && !dungeon.pendingChoice && (
                   <div className="mb-2">
                     <p className="text-xs text-parchment/70">
                       Spend 2 Clues ({campaign.clues} in pool) to open a secret passage:

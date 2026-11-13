@@ -26,11 +26,17 @@ export interface MonsterProfile {
   countFormula: string
   /** Life formula (Tier+y) for Major Foes; undefined = Minor (1 Life). */
   lifeFormula?: string
+  /** Minimum Life for the formula result (Land Siren: min 3; Cavern
+   * Wraith: min 4 — FADEE pp.173-174). */
+  lifeFloor?: number
   /** Flat Life (Fiendish-style entries). */
   flatLife?: number
   attacks: number
   /** Treasure-table roll modifier ('+', '++', '-', number, or 'none'). */
   treasure: string
+  /** Some Bosses roll treasure more than once (Chaos Lord 2, Giant Spider
+   * 2, Young Dragon 3 — FADEE pp.169-170). Default 1. */
+  treasureRolls?: number
   /** Never tests Morale (FADEE p.94). */
   neverMorale?: boolean
   /** Major Foe = Weird Monster or Boss (FADEE p.94). */
@@ -164,7 +170,7 @@ export const DUNGEON_TABLES: Record<'vermin' | 'minions' | 'weird' | 'boss', Mon
     },
     {
       roll: 5, name: 'Giant Spider', family: 'vermin', category: 'Animal', levelOffset: 4,
-      countFormula: '1', lifeFormula: 'T+2', attacks: 2, treasure: '++', major: true,
+      countFormula: '1', lifeFormula: 'T+2', attacks: 2, treasure: '0', treasureRolls: 2, major: true,
       special: [
         'A living PC hit must Save vs L3 poison or lose 1 Life. Webbed area: no fleeing until a Fireball or torch burns the web.',
       ],
@@ -211,7 +217,7 @@ export const DUNGEON_TABLES: Record<'vermin' | 'minions' | 'weird' | 'boss', Mon
     },
     {
       roll: 5, name: 'Chaos Lord', family: 'demon', category: 'Chaos', levelOffset: 5,
-      countFormula: '1', lifeFormula: 'T+3', attacks: 3, treasure: '++', major: true,
+      countFormula: '1', lifeFormula: 'T+3', attacks: 3, treasure: '+', treasureRolls: 2, major: true,
       special: [
         '2 treasure rolls at +1 and a 2-in-6 chance of 1 Clue. Powers (d6): 1-3 none; 4 evil eye (all Save vs L4 magic or -1 Defense until slain); 5 energy drain (hit PCs Save vs L4 magic or lose 1 Level; Blessing restores); 6 hellfire blast (Save vs L6 magic or 2 Life; clerics +½L).',
       ],
@@ -220,7 +226,7 @@ export const DUNGEON_TABLES: Record<'vermin' | 'minions' | 'weird' | 'boss', Mon
     },
     {
       roll: 6, name: 'Young Dragon', family: 'boss', category: 'Dragon', levelOffset: 5,
-      countFormula: '1', lifeFormula: 'T+4', attacks: 2, treasure: '++', major: true,
+      countFormula: '1', lifeFormula: 'T+4', attacks: 2, treasure: '+', treasureRolls: 3, major: true,
       special: [
         'Immune to Sleep. Each turn d6: 1-2 fire breath (all Save vs L6 breath, +½L each, or 2 Life); 3-6 two random-target attacks. Never met as Wandering Monsters. Reactions include Sleep (party +2 first attack), Bribe (all party gp, min 100, or a magic item), Quest.',
       ],

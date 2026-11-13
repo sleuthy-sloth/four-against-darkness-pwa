@@ -19,7 +19,7 @@ export interface CampaignMeta {
   rngState: string
   /** Party clue pool — 3 spent reveal a Secret (FADEE pp.108, 122). */
   clues?: number
-  /** Revealed Secrets, encoded ('weakness:Orcs', 'terrifying:1', …). */
+  /** Revealed Secrets, encoded ('weakness:Ogre', 'terrifying:1', …). */
   secrets?: string[]
   /** Epic reward rolls earned from completed Quests (FADEE p.162). */
   epic?: number[]

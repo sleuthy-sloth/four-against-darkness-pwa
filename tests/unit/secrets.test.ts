@@ -51,15 +51,46 @@ function orcCombat(order: string[], secrets: string[]): ReturnType<typeof startC
   )
 }
 
+/** Ogre Boss combat (dungeon Boss table, FADEE p.170) for the Weakness test. */
+function ogreCombat(order: string[], secrets: string[]): ReturnType<typeof startCombat> {
+  return startCombat(
+    't',
+    order.map((id) => pc(id, 'warrior')),
+    [makeEnemy(
+      {
+        roll: 3,
+        name: 'Ogre',
+        family: 'goblinoid',
+        category: '',
+        levelOffset: 4,
+        countFormula: '1',
+        lifeFormula: 'T+4',
+        attacks: 1,
+        treasure: '0',
+        major: true,
+        special: ['Its attacks inflict Tier+1 damage.'],
+        reactions: ['1 Bribe (30gp)', '2-3 Fight', '4-6 Fight to the death'],
+        source: 'FADEE p.170',
+      },
+      'boss',
+      4,
+      1,
+      5,
+    )],
+    new Rng(9),
+    { forceSurprise: true, marchingOrder: order, secrets },
+  )
+}
+
 describe('Secrets (FADEE pp.122-123)', () => {
   it('Weakness of a Foe gives every PC +2 attack vs the named species', () => {
-    const base = orcCombat(['a', 'b', 'c', 'd'], [])
+    const base = ogreCombat(['a', 'b', 'c', 'd'], [])
     base.phase = 'pcTurn'
-    const withSecret = orcCombat(['a', 'b', 'c', 'd'], [encodeSecret('weakness', 'Orcs')])
+    const withSecret = ogreCombat(['a', 'b', 'c', 'd'], [encodeSecret('weakness', 'Ogre')])
     withSecret.phase = 'pcTurn'
     expect(withSecret.weaknessActive).toBe(true)
     expect(base.weaknessActive ?? false).toBe(false)
-    expect(parseSecret(encodeSecret('weakness', 'Orcs'))).toEqual({ id: 'weakness', arg: 'Orcs' })
+    expect(parseSecret(encodeSecret('weakness', 'Ogre'))).toEqual({ id: 'weakness', arg: 'Ogre' })
   })
 
   it('Terrifying Secret auto-fails Minor-Foe Morale and is consumed once', () => {
@@ -122,7 +153,7 @@ describe('Secrets (FADEE pp.122-123)', () => {
         1,
       )],
       new Rng(9),
-      { forceSurprise: true, marchingOrder: ['a'], secrets: [encodeSecret('weakness', 'Orcs')] },
+      { forceSurprise: true, marchingOrder: ['a'], secrets: [encodeSecret('weakness', 'Ogre')] },
     )
     expect(goblinCombat.weaknessActive ?? false).toBe(false)
   })

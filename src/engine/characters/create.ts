@@ -69,7 +69,10 @@ function pickTraits(
   } else {
     rolls = Array.from({ length: count }, () => rng.d(6))
     if (count === 2 && rolls[0] === rolls[1]) {
-      rolls[1] = rng.d(6) // halflings reroll duplicates (FADEE p.40)
+      // halflings reroll duplicates until distinct (FADEE p.40)
+      do {
+        rolls[1] = rng.d(6)
+      } while (rolls[1] === rolls[0])
     }
   }
   return rolls.map((roll) => {

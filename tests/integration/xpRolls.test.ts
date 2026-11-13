@@ -143,11 +143,13 @@ describe('XP rolls are assigned before leaving a victory (FADEE p.117)', () => {
     expect(useDungeonStore.getState().pendingXp).toEqual({ major: 1, minor: false, boss: false })
   })
 
-  it('a reaction win (foes flee) awards loot + the minor tally (Release 0.5, A6)', async () => {
+  it('a reaction win (foes flee) awards NO loot but still counts the minor tally (R100/R171)', async () => {
     // Vermin roll 1 flees on 1-3: brute-force seeds until the reaction roll
     // flees. A single minor win earns no immediate roll in the Classical
     // system (1 roll per 10 minor encounters) — its award is the tally
-    // increment plus the loot roll, both of which only awardVictory does.
+    // increment. Loot is NOT rolled: a Reaction Flee is "vanish, no
+    // treasure" (FADEE p.101); treasure on fleeing Foes (p.99) is for
+    // Foes that break off mid-combat (Morale), not for a Reaction win.
     let won = false
     for (let seed = 200; seed < 240 && !won; seed++) {
       const { dungeon } = await setupWorld(seed)
@@ -171,7 +173,9 @@ describe('XP rolls are assigned before leaving a victory (FADEE p.117)', () => {
       if (st.dungeon?.combat?.phase === 'won') {
         won = true
         expect(st.dungeon.minorEncountersTally).toBe(1)
-        expect(st.log.some((l) => l.text.includes('Treasure:') || l.text.includes('No treasure'))).toBe(true)
+        // No treasure roll on a Reaction win (R100); the log says so.
+        expect(st.log.some((l) => l.text.includes('No treasure'))).toBe(true)
+        expect(st.log.some((l) => l.text.includes('Treasure:'))).toBe(false)
         // No roll is due yet, so leaving is allowed.
         await useDungeonStore.getState().leaveCombat()
         expect(useDungeonStore.getState().dungeon?.combat).toBeNull()

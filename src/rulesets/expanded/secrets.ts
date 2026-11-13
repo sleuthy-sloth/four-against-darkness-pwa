@@ -34,14 +34,19 @@ export const SECRET_INFO: Record<SecretId, { text: string; source: string }> = {
   },
 }
 
-/** Major Foe species available for Weakness of a Foe (Dungeon Boss Table, p.170). */
+/** Major Foe species available for Weakness of a Foe (R051, FADEE p.122: a Major Foe species, not Minors). */
 export const WEAKNESS_TARGETS = [
-  'Orcs',
-  'Trolls',
-  'Goblins',
-  'Hobgoblins',
-  'Mushroom Men',
-  'Skeletons or Zombies',
+  'Mummy',
+  'Orc Brute',
+  'Ogre',
+  'Medusa',
+  'Chaos Lord',
+  'Young Dragon',
+  'Minotaur',
+  'Iron Eater',
+  'Chimera',
+  'Catoblepas',
+  'Giant Spider',
 ] as const
 
 export function encodeSecret(id: SecretId, arg?: string): string {
