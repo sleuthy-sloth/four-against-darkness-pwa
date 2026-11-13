@@ -7,45 +7,85 @@ import type { PlacedExit, PlacedTile } from '../../engine/dungeon/generate'
  * agree on what a door, a tile, and a floor look like. No engine state is
  * invented here: every state maps to a field the engine already carries.
  *
- * Honest gaps, recorded so the legend never promises what the map cannot
- * show:
- * - Locked doors: the book has lockpicking rules (FADEE p.110) but the
- *   engine carries no locked-door state and no door ever locks, so there is
- *   no `locked` state to render. The three states below are all the engine
- *   supports: open / closed / plain opening.
- * - Secret doors: a search find (FADEE p.108) records nothing on the tile
- *   until Milestone 5 added `secretDoorFound` (see claimFind). A tile with
- *   that flag shows a secret-door corner badge; it is not a door state,
- *   because the found door has no edge in the engine.
- * - Fog of war: every placed tile is `explored: true` the moment it is
- *   generated, so there is no placed-but-unexplored tile to render. The
- *   three visible states are current (torch-lit), explored (dim stone), and
- *   the unmapped directions — the glowing exit discs. The map background
- *   beyond placed tiles is unmapped parchment.
+ * Locked doors (R129-R131) are rendered from the exit's rolled `doorInfo`;
+ * exits on older saves carry no `doorInfo` and render as plain closed
+ * doors (unlocked by default). Fog of war: `explored` now means ENTERED —
+ * a tile placed beyond a secret door stays unexplored until the party
+ * steps through it, and renders dark with no content until then. A
+ * peeked secret-door tile shows its contents (the peek already told the
+ * player what is there) while staying unexplored until entered.
  */
 
 /** Door states the engine can express, from a placed exit alone. */
-export type DoorState = 'open' | 'closed' | 'opening'
+export type DoorState =
+  | 'open'
+  | 'closed'
+  | 'opening'
+  | 'locked'
+  | 'sealed'
+  | 'iron'
+  | 'illusionary'
+  | 'trapped'
+  | 'lever'
 
 /** Every door state the map renders — the legend renders exactly this set. */
-export const DOOR_STATES: DoorState[] = ['open', 'closed', 'opening']
+export const DOOR_STATES: DoorState[] = [
+  'open',
+  'closed',
+  'opening',
+  'locked',
+  'sealed',
+  'iron',
+  'illusionary',
+  'trapped',
+  'lever',
+]
 
 /**
  * Map an exit to its door state:
  * - `open` — a way already generated beyond it (the party has passed through).
- * - `closed` — a printed door (FADEE pp.109, 150) with nothing generated yet.
+ * - `closed` — a printed door with nothing generated yet, unlocked (or an
+ *   older save's door, which carries no rolled state and defaults unlocked).
  * - `opening` — a plain opening with nothing generated yet.
+ * - `locked` / `sealed` / `iron` / `illusionary` / `trapped` / `lever` —
+ *   the rolled door table result (R129) for an ungenerated door exit.
  */
 export function doorState(exit: PlacedExit): DoorState {
   if (exit.toTileId) return 'open'
-  return exit.door ? 'closed' : 'opening'
+  if (!exit.door) return 'opening'
+  return exit.doorInfo?.kind === 'unlocked' || !exit.doorInfo ? 'closed' : exit.doorInfo.kind
 }
 
 /** Fog-of-war state for a placed tile, relative to the current tile. */
-export type FogState = 'current' | 'explored'
+export type FogState = 'current' | 'explored' | 'unexplored' | 'peeked'
 
-export function fogState(tile: PlacedTile, currentTileId: string): FogState {
-  return tile.id === currentTileId ? 'current' : 'explored'
+/**
+ * - `current` — the party's tile (torch-lit).
+ * - `explored` — entered before (dim stone, contents shown).
+ * - `unexplored` — placed but never entered (secret-door tile before
+ *   entry): dark, no contents.
+ * - `peeked` — an unexplored secret-door tile the party has peeked at:
+ *   contents shown (the peek already told the player), still unexplored
+ *   until entered.
+ */
+export function fogState(tile: PlacedTile, currentTileId: string, peeked = false): FogState {
+  if (tile.id === currentTileId) return 'current'
+  if (!tile.explored) return peeked ? 'peeked' : 'unexplored'
+  return 'explored'
+}
+
+/**
+ * Whether a tile's contents may be shown on the map (icons, foe counts,
+ * feature glyphs, treasure markers, tooltip text). Explored tiles always
+ * show; an unexplored tile shows only if it is the secret-door tile and
+ * the party has peeked at it.
+ */
+export function tileContentVisible(
+  tile: PlacedTile,
+  secretDoor?: { toTileId: string; peeked?: boolean } | null,
+): boolean {
+  if (tile.explored) return true
+  return secretDoor?.toTileId === tile.id && secretDoor.peeked === true
 }
 
 /** FNV-1a hash of a string — deterministic, no seed needed beyond the input. */
@@ -89,9 +129,12 @@ export function fitScale(
 /**
  * Human-readable one-line summary of a tile, for the hover tooltip (F).
  * Names what is there without inventing anything the engine does not know.
+ * Unexplored tiles say so and name nothing — their contents are hidden
+ * until entered (or peeked, for a secret-door tile).
  */
-export function tileSummary(tile: PlacedTile): string {
+export function tileSummary(tile: PlacedTile, contentVisible = true): string {
   const shape = tile.shapeId
+  if (!contentVisible) return `Tile ${shape} · unexplored`
   const c = tile.content
   if (!c) return `Tile ${shape} · entrance`
   switch (c.kind) {

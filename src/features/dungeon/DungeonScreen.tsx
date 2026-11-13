@@ -10,6 +10,7 @@ import { useCampaignStore } from '../../state/campaignStore'
 import { D66_TILES } from '../../rulesets/expanded/tiles'
 import CombatPanel from './CombatPanel'
 import { ChoiceDialog } from './ChoiceDialog'
+import { DoorDialog } from './DoorDialog'
 import { DUNGEON_FEATURES, FEATURE_INFO } from '../../rulesets/expanded/features'
 import { QUEST_TABLE } from '../../rulesets/expanded/quests'
 import { ENVIRONMENT_LABELS, CAVERN_FEATURE_INFO, cavernFeatureForRoll, type EnvironmentId } from '../../rulesets/expanded/environments'
@@ -36,7 +37,8 @@ import FragIcon from '../common/FragIcon'
 import { familyFrag } from './foeIcons'
 import MapLegend from './MapLegend'
 import ShortcutsSheet from './ShortcutsSheet'
-import { doorState, floorVariant, fitScale, tileSummary } from './mapStyle'
+import { doorState, floorVariant, fitScale, tileSummary, tileContentVisible, fogState } from './mapStyle'
+import { doorNeedsAction } from '../../engine/dungeon/doors'
 import { mapKeyAction, isTypingTarget } from './mapKeys'
 import { hapticBuzz } from '../common/motion'
 
@@ -110,7 +112,7 @@ function MapIcon({ frag, x, y, size = 0.62, className = 'map-icon' }: { frag: st
  */
 export default function DungeonScreen() {
   const navigate = useNavigate()
-  const { dungeon, log, busy, error, ensureDungeon, explore, search, pendingFind, claimFind, clearError, beginCombat, beginSecretReveal, beginSecretItem, useTreasureLocation, rest, claimQuest, requestUndo, cancelUndo, performUndo, confirmUndo, pendingXp, lightTorch, extinguishTorch, pickupLantern, peekSecretDoor, enterSecretDoor, dipPool, buyPassage, spendLevelUp, spendStoredXp, spendOldSchoolXp } =
+  const { dungeon, log, busy, error, ensureDungeon, explore, search, pendingFind, claimFind, clearError, beginCombat, beginSecretReveal, beginSecretItem, useTreasureLocation, rest, claimQuest, requestUndo, cancelUndo, performUndo, confirmUndo, pendingXp, lightTorch, extinguishTorch, pickupLantern, peekSecretDoor, enterSecretDoor, dipPool, buyPassage, spendLevelUp, spendStoredXp, spendOldSchoolXp, openDoorDialog } =
     useDungeonStore()
   const { campaign, party, loadLastCampaign } = useCampaignStore()
   const [panelOpen, setPanelOpen] = useState(true)
@@ -399,7 +401,16 @@ export default function DungeonScreen() {
                 const isEntrance = t.id === dungeon.tiles[0].id
                 const isNewest = t.id === newestTileId
                 const variant = floorVariant(seed, t.id)
-                const icon = contentIcon(t.content, isEntrance)
+                // True fog of war: an unexplored tile shows no contents —
+                // no icon, foe count, or tooltip detail — until entered
+                // (or peeked, for a secret-door tile).
+                const visible = tileContentVisible(t, dungeon.secretDoor)
+                const fog = fogState(
+                  t,
+                  tile.id,
+                  dungeon.secretDoor?.toTileId === t.id && dungeon.secretDoor.peeked === true,
+                )
+                const icon = visible ? contentIcon(t.content, isEntrance) : null
                 const cx = t.cells.reduce((n, c) => n + c.col, 0) / Math.max(1, t.cells.length) + 0.5
                 const cy = t.cells.reduce((n, c) => n + c.row, 0) / Math.max(1, t.cells.length) + 0.5
                 const cols = t.cells.map((c) => c.col)
@@ -409,7 +420,7 @@ export default function DungeonScreen() {
                 const maxCol = Math.max(...cols)
                 const maxRow = Math.max(...rows)
                 const encounterCount =
-                  t.content?.encounter && !t.content.cleared ? t.content.encounter.count : 0
+                  visible && t.content?.encounter && !t.content.cleared ? t.content.encounter.count : 0
                 // Corridors read darker than rooms (each tile by its own shape).
                 const tIsCorridor = D66_TILES.find((s) => s.id === t.shapeId)?.corridor ?? false
                 const isHovered = hover?.tileId === t.id
@@ -421,7 +432,7 @@ export default function DungeonScreen() {
                       const r = mapRef.current?.getBoundingClientRect()
                       setHover({
                         tileId: t.id,
-                        text: tileSummary(t),
+                        text: tileSummary(t, visible),
                         x: e.clientX - (r?.left ?? 0),
                         y: e.clientY - (r?.top ?? 0),
                       })
@@ -436,9 +447,10 @@ export default function DungeonScreen() {
                     }}
                     onMouseLeave={() => setHover((h) => (h?.tileId === t.id ? null : h))}
                   >
-                    <title>{tileSummary(t)}</title>
+                    <title>{tileSummary(t, visible)}</title>
                     {/* floor: patterned stone; the current tile is torch-lit,
-                        explored tiles dim stone (C4 fog of war) */}
+                        explored tiles dim stone, unexplored tiles dark and
+                        blank (fog of war) */}
                     {t.cells.map((c, i) => (
                       <rect
                         key={i}
@@ -446,8 +458,14 @@ export default function DungeonScreen() {
                         y={c.row}
                         width={1}
                         height={1}
-                        fill={isCurrent ? `url(#stoneFloorLit${variant})` : `url(#stoneFloor${variant})`}
-                        opacity={tIsCorridor ? 0.55 : 1}
+                        fill={
+                          fog === 'unexplored'
+                            ? '#14100c'
+                            : isCurrent
+                              ? `url(#stoneFloorLit${variant})`
+                              : `url(#stoneFloor${variant})`
+                        }
+                        opacity={fog === 'unexplored' ? 1 : tIsCorridor ? 0.55 : 1}
                       />
                     ))}
                     {/* hover highlight (F): the tile under the pointer */}
@@ -498,9 +516,12 @@ export default function DungeonScreen() {
                       />
                     ))}
                     {/* doors (C4): open = bare threshold, closed = oxblood
-                        leaf + swing arc, plain opening = dashed gap. The
-                        engine carries no locked-door state (lockpicking,
-                        FADEE p.110, is unimplemented), so no locked state. */}
+                        leaf + swing arc, plain opening = dashed gap.
+                        Rolled doors (R129) get their own mark: locked =
+                        amber padlock, sealed = violet diamond, iron =
+                        slate leaf, illusionary = dashed violet leaf,
+                        trapped = amber warning triangle, lever = brass
+                        lever. */}
                     {t.exits.map((e) => {
                       const state = doorState(e)
                       const { x, y } = edgeMidpoint(e.cell, e.edge)
@@ -550,6 +571,85 @@ export default function DungeonScreen() {
                               strokeWidth={0.04}
                             />
                           )}
+                          {state === 'locked' && (
+                            <>
+                              <rect
+                                x={x - 0.14}
+                                y={y - 0.1}
+                                width={0.28}
+                                height={0.24}
+                                className="fill-amber-500 stroke-parchment"
+                                strokeWidth={0.02}
+                              />
+                              <path
+                                d={`M ${x - 0.09} ${y - 0.1} v -0.07 a 0.09 0.09 0 0 1 0.18 0 v 0.07`}
+                                className="stroke-amber-500"
+                                fill="none"
+                                strokeWidth={0.03}
+                              />
+                            </>
+                          )}
+                          {state === 'sealed' && (
+                            <polygon
+                              points={`${x},${y - 0.18} ${x + 0.16},${y} ${x},${y + 0.18} ${x - 0.16},${y}`}
+                              className="fill-violet-500 stroke-parchment"
+                              strokeWidth={0.02}
+                            />
+                          )}
+                          {state === 'iron' && (
+                            <rect
+                              x={x - (horiz ? 0.16 : 0.04)}
+                              y={y - (horiz ? 0.04 : 0.16)}
+                              width={horiz ? 0.32 : 0.08}
+                              height={horiz ? 0.08 : 0.32}
+                              className="fill-slate-500 stroke-parchment"
+                              strokeWidth={0.02}
+                            />
+                          )}
+                          {state === 'illusionary' && (
+                            <rect
+                              x={x - (horiz ? 0.16 : 0.04)}
+                              y={y - (horiz ? 0.04 : 0.16)}
+                              width={horiz ? 0.32 : 0.08}
+                              height={horiz ? 0.08 : 0.32}
+                              className="fill-none stroke-violet-400"
+                              strokeWidth={0.03}
+                              strokeDasharray="0.06 0.04"
+                            />
+                          )}
+                          {state === 'trapped' && (
+                            <>
+                              <polygon
+                                points={`${x},${y - 0.18} ${x + 0.18},${y + 0.14} ${x - 0.18},${y + 0.14}`}
+                                className="fill-amber-500 stroke-parchment"
+                                strokeWidth={0.02}
+                              />
+                              <text
+                                x={x}
+                                y={y + 0.1}
+                                textAnchor="middle"
+                                dominantBaseline="central"
+                                fontSize={0.16}
+                                fill="#2b241f"
+                                fontWeight="bold"
+                              >
+                                !
+                              </text>
+                            </>
+                          )}
+                          {state === 'lever' && (
+                            <>
+                              <line
+                                x1={x}
+                                y1={y + 0.14}
+                                x2={x + 0.12}
+                                y2={y - 0.14}
+                                className="stroke-amber-400"
+                                strokeWidth={0.05}
+                              />
+                              <circle cx={x + 0.12} cy={y - 0.14} r={0.06} className="fill-amber-400 stroke-parchment" strokeWidth={0.02} />
+                            </>
+                          )}
                         </g>
                       )
                     })}
@@ -586,7 +686,7 @@ export default function DungeonScreen() {
                       </g>
                     )}
                     {/* secret door found by searching (C4): a badge on the tile */}
-                    {t.secretDoorFound && (
+                    {visible && t.secretDoorFound && (
                       <g>
                         <circle
                           cx={minCol + 0.2}
@@ -624,6 +724,7 @@ export default function DungeonScreen() {
                 const x = e.cell.col + (e.edge === 'E' ? 1 : e.edge === 'W' ? 0 : 0.5)
                 const y = e.cell.row + (e.edge === 'S' ? 1 : e.edge === 'N' ? 0 : 0.5)
                 const unexplored = !e.toTileId
+                const needsDoor = doorNeedsAction(e)
                 return (
                   <circle
                     key={e.id}
@@ -631,14 +732,17 @@ export default function DungeonScreen() {
                     cy={y}
                     r={0.34}
                     className={`${pendingXp ? 'pointer-events-none opacity-40' : 'cursor-pointer'} stroke-parchment ${
-                      unexplored ? 'fill-torch/80' : 'fill-parchment/50'
+                      needsDoor ? 'fill-amber-500/80' : unexplored ? 'fill-torch/80' : 'fill-parchment/50'
                     }`}
                     strokeWidth={0.05}
                     onPointerUp={(ev) => {
                       if (pendingXp) return
                       if (!dragRef.current?.moved) {
                         ev.stopPropagation()
-                        void explore(e.id)
+                        // A door that still needs an action opens the door
+                        // dialog; anything else explores straight through.
+                        if (needsDoor) openDoorDialog(e.id)
+                        else void explore(e.id)
                       }
                     }}
                   />
@@ -1130,6 +1234,7 @@ export default function DungeonScreen() {
         </div>
       )}
       <ChoiceDialog />
+      <DoorDialog />
       {showShortcuts && <ShortcutsSheet onClose={() => setShowShortcuts(false)} />}
     </div>
   )

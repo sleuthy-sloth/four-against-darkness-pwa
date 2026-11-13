@@ -90,7 +90,10 @@ export default function InstallPrompt() {
 
   // Auto-show once, after the first delve, once the screen is quiet: the
   // 1.2s settle lets the new room render before the sheet slides up, and
-  // the timer restarts while the player keeps acting.
+  // the timer restarts while the player keeps acting. A door dialog
+  // (R129-R131) counts as busy — the sheet must never slide up over it
+  // and swallow the player's tap on a door option.
+  const pendingDoor = useDungeonStore((s) => s.pendingDoor)
   useEffect(() => {
     if (open) return
     const gate = {
@@ -100,7 +103,7 @@ export default function InstallPrompt() {
       installed: isInstalled(localStorage),
       standalone: isStandalone(),
       hasActiveCombat: dungeon?.combat != null,
-      hasPendingChoice: dungeon?.pendingChoice != null,
+      hasPendingChoice: dungeon?.pendingChoice != null || pendingDoor != null,
       tutorialActive,
     }
     if (!shouldShowPrompt(gate)) return
@@ -111,7 +114,7 @@ export default function InstallPrompt() {
     return () => {
       if (timerRef.current !== null) window.clearTimeout(timerRef.current)
     }
-  }, [dungeon, tutorialActive, open])
+  }, [dungeon, tutorialActive, open, pendingDoor])
 
   if (!open) return null
 

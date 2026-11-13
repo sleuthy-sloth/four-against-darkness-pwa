@@ -38,6 +38,12 @@ import {
   type PlacedTile,
 } from '../../src/engine/dungeon/generate'
 import { D66_TILES } from '../../src/rulesets/expanded/tiles'
+import {
+  attemptBash,
+  attemptDisarm,
+  attemptLockpick,
+  attemptSealed,
+} from '../../src/engine/dungeon/doors'
 import { DUNGEON_TABLES, type MonsterProfile, type TableKind } from '../../src/rulesets/expanded/monsters'
 import { createParty, lifeAt } from '../../src/engine/characters/create'
 import { CORE_CLASSES } from '../../src/rulesets/expanded/coreClasses'
@@ -125,10 +131,129 @@ function buildDungeon(campaignId: string, env: EnvironmentId): { dungeon: Dungeo
     // The secret-door test needs a wall left to draw a door on: the tile
     // must keep at least one open exit (a 1-exit room has none).
     if (!t2.exits.some((e) => !e.toTileId)) continue
+    // ... and the door beyond it must be able to lead somewhere: the
+    // first open exit's outward cell must admit at least one d66 shape
+    // (an exit facing off-grid can never place a tile, whatever is
+    // rolled). Probe the real generation call across seeds.
+    let doorLeadsSomewhere = false
+    for (let probeSeed = 1; probeSeed <= 200; probeSeed++) {
+      const probeRng = new Rng(probeSeed)
+      probeRng.d(6) // the Search roll that precedes the generation
+      const probe = structuredClone(dungeon)
+      if (generateSecretDoorTile(probe, probeRng, 1).toTileId !== null) {
+        doorLeadsSomewhere = true
+        break
+      }
+    }
+    if (!doorLeadsSomewhere) continue
     dungeon.currentTileId = t2.id
     return { dungeon, tile: t2 }
   }
   throw new Error(`no empty-room dungeon seed for env ${env}`)
+}
+
+/**
+ * Doors fixture dungeon: a chain of four pre-generated tiles. A tile has
+ * at most 2-3 open exits, so no single tile can host every door kind —
+ * each tile's onward link IS one of the test doors, plus one extra door:
+ * t2: link locked L2 (picked open, then travelled), extra locked L7
+ * (pick fails, then bashed); t3: link trapped L2 (disarmed), extra lever
+ * (1 Clue); t4: link sealed L2 (spellcaster roll), extra iron
+ * (Lightning); t5: extra illusionary (3 Clues). The way back on each
+ * tile is forced to a door kind that tile never tests, so the spec can
+ * tell it apart from the link and the extra by the dialog it opens —
+ * clicking it only ever opens the dialog, never walks the party back.
+ * New tiles are forced empty so stepping into them resolves no feature,
+ * event, or combat.
+ */
+function buildDoorsDungeon(
+  campaignId: string,
+): { dungeon: DungeonState; t2: PlacedTile; t3: PlacedTile; t4: PlacedTile; t5: PlacedTile } {
+  for (let seed = 1; seed <= 20000; seed++) {
+    const rng = new Rng(seed)
+    const dungeon = newDungeon(campaignId, rng)
+    dungeon.environment = 'dungeon'
+    const t1 = dungeon.tiles[0]
+    exploreThrough(dungeon, rng, t1.exits[0].id, 1)
+    if (dungeon.tiles.length < 2) continue
+    const t2 = dungeon.tiles[1]
+    // t2's content never resolves: the fixture loads with the party
+    // already standing on it, and resolution only runs on entry through
+    // explore(). Only the onward tiles (entered later, in play) are
+    // forced empty below.
+    if (t2.exits.filter((e) => !e.toTileId).length < 2) continue
+    const link2 = t2.exits.find((e) => !e.toTileId)!
+    exploreThrough(dungeon, rng, link2.id, 1)
+    if (dungeon.tiles.length < 3) continue
+    const t3 = dungeon.tiles[2]
+    if (t3.exits.filter((e) => !e.toTileId).length < 2) continue
+    const link3 = t3.exits.find((e) => !e.toTileId)!
+    exploreThrough(dungeon, rng, link3.id, 1)
+    if (dungeon.tiles.length < 4) continue
+    const t4 = dungeon.tiles[3]
+    if (t4.exits.filter((e) => !e.toTileId).length < 2) continue
+    const link4 = t4.exits.find((e) => !e.toTileId)!
+    exploreThrough(dungeon, rng, link4.id, 1)
+    if (dungeon.tiles.length < 5) continue
+    const t5 = dungeon.tiles[4]
+    if (t5.exits.filter((e) => !e.toTileId).length < 1) continue
+    for (const t of [t3, t4, t5]) {
+      t.contentRoll = 9
+      t.content = { roll: 9, kind: 'empty' }
+    }
+    dungeon.currentTileId = t2.id
+    return { dungeon, t2, t3, t4, t5 }
+  }
+  throw new Error('no doors dungeon seed')
+}
+
+/**
+ * Simulate the exact dice sequence the doors spec performs, and require
+ * every step to land as the spec asserts: the L2 pick succeeds, the L7
+ * pick fails, the bash succeeds within 12 attempts with no natural 1
+ * (which would draw Wandering Monsters), the L2 disarm succeeds, each
+ * retrace roll is not a 1 (no Wandering Monsters between tiles), and the
+ * L2 sealed roll succeeds. Iron, lever and illusionary spend no dice.
+ */
+function doorsSeedFor(
+  dungeon: DungeonState,
+  tiles: { t2: PlacedTile; t3: PlacedTile; t4: PlacedTile; t5: PlacedTile },
+  party: Character[],
+): number {
+  return findSeed((seed) => {
+    const rng = new Rng(seed)
+    const d = structuredClone(dungeon)
+    const p = structuredClone(party)
+    const rogue = byName(p, 'Joss')
+    const warrior = byName(p, 'Torsten')
+    const wizard = byName(p, 'Fen')
+    const cur = (t: PlacedTile) => d.tiles.find((x) => x.id === t.id)!
+    const t2 = cur(tiles.t2)
+    const t3 = cur(tiles.t3)
+    const t4 = cur(tiles.t4)
+    const link2 = t2.exits.find((e) => e.toTileId === tiles.t3.id)!
+    const locked7 = t2.exits.find((e) => e.doorInfo?.kind === 'locked' && e.doorInfo.level === 7)!
+    const link3 = t3.exits.find((e) => e.toTileId === tiles.t4.id)!
+    const link4 = t4.exits.find((e) => e.toTileId === tiles.t5.id)!
+    if (!attemptLockpick(rng, rogue, link2).success) return false
+    if (attemptLockpick(rng, rogue, locked7).success) return false
+    let bashed = false
+    for (let i = 0; i < 12; i++) {
+      const b = attemptBash(rng, warrior, locked7)
+      if (b.die === 1) return false
+      if (b.success) {
+        bashed = true
+        break
+      }
+    }
+    if (!bashed) return false
+    if (rng.d(6) === 1) return false // retrace t2 -> t3
+    if (!attemptDisarm(rng, rogue, link3).success) return false
+    if (rng.d(6) === 1) return false // retrace t3 -> t4
+    if (!attemptSealed(rng, wizard, link4).success) return false
+    if (rng.d(6) === 1) return false // retrace t4 -> t5
+    return true
+  })
 }
 
 function setEncounter(
@@ -157,6 +282,7 @@ function toArchive(
   seed: number,
   party: Character[],
   dungeon: DungeonState,
+  clues = 0,
 ): CampaignArchive {
   const now = Date.now()
   const campaign: CampaignMeta = {
@@ -165,7 +291,7 @@ function toArchive(
     ruleset: 'fadee-expanded',
     seed,
     rngState: JSON.stringify(new Rng(seed).serialize()),
-    clues: 0,
+    clues,
     createdAt: now,
     lastModified: now,
     saveVersion: 2,
@@ -350,7 +476,18 @@ describe('Release 0.5 e2e fixtures', () => {
     const party = buildParty(campaignId)
     give(party, 'Torsten', 'lantern')
     const { dungeon, tile } = buildDungeon(campaignId, 'dungeon')
-    const seed = searchSeedFor(dungeon, tile.id, party.map((p) => p.classId))
+    // The seed must satisfy BOTH halves of the spec's flow: the first
+    // Search finds something, AND the secret door beyond leads somewhere
+    // (simulated on clones with the exact engine call sequence the app
+    // runs after import — Search roll, then secret-door generation).
+    const classIds = party.map((p) => p.classId)
+    const seed = findSeed((s) => {
+      const rng = new Rng(s)
+      const searchClone = structuredClone(dungeon)
+      if (searchTile(searchClone, rng, tile.id, classIds).result !== 'find') return false
+      const probe = structuredClone(dungeon)
+      return generateSecretDoorTile(probe, rng, 1).toTileId !== null
+    })
     // The secret door beyond must lead somewhere (simulated on a clone).
     const rng = new Rng(seed)
     rng.d(6) // the Search roll itself
@@ -358,6 +495,61 @@ describe('Release 0.5 e2e fixtures', () => {
     const gen = generateSecretDoorTile(probe, rng, 1)
     expect(gen.toTileId).not.toBeNull()
     writeFixture('search', toArchive(campaignId, 'Search Find Fixture', seed, party, dungeon))
+  })
+
+  it('doors: every door kind forced on a four-tile chain, dice brute-forced', () => {
+    const campaignId = 'fixture-doors'
+    const party = buildParty(campaignId)
+    give(party, 'Torsten', 'lantern')
+    // Pin the rogue's lockpick bonus to exactly +L: no Delicate Touch, so
+    // the simulated pick/bash totals are level-only and deterministic.
+    byName(party, 'Joss').traits = []
+    const { dungeon, t2, t3, t4, t5 } = buildDoorsDungeon(campaignId)
+    const force = (
+      tile: PlacedTile,
+      toTileId: string | null,
+      kind: 'locked' | 'trapped' | 'lever' | 'sealed' | 'iron' | 'illusionary',
+      level: number,
+    ) => {
+      const e = tile.exits.find((x) => x.toTileId === toTileId)
+      if (!e) throw new Error(`no exit to ${toTileId} on ${tile.id}`)
+      e.door = true
+      e.doorInfo = { kind, level }
+    }
+    // t2: link locked L2, extra locked L7, way back trapped L9.
+    force(t2, t3.id, 'locked', 2)
+    const extra2 = t2.exits.find((x) => !x.toTileId)!
+    extra2.door = true
+    extra2.doorInfo = { kind: 'locked', level: 7 }
+    force(t2, dungeon.tiles[0].id, 'trapped', 9)
+    // t3: link trapped L2, extra lever, way back locked L9.
+    force(t3, t4.id, 'trapped', 2)
+    const extra3 = t3.exits.find((x) => !x.toTileId)!
+    extra3.door = true
+    extra3.doorInfo = { kind: 'lever', level: 0 }
+    force(t3, t2.id, 'locked', 9)
+    // t4: link sealed L2, extra iron, way back trapped L9.
+    force(t4, t5.id, 'sealed', 2)
+    const extra4 = t4.exits.find((x) => !x.toTileId)!
+    extra4.door = true
+    extra4.doorInfo = { kind: 'iron', level: 3 }
+    force(t4, t3.id, 'trapped', 9)
+    // t5: extra illusionary, way back locked L9.
+    const extra5 = t5.exits.find((x) => !x.toTileId)!
+    extra5.door = true
+    extra5.doorInfo = { kind: 'illusionary', level: 1 }
+    force(t5, t4.id, 'locked', 9)
+    // Any further open exit is a locked L9 decoy: the spec opens its
+    // dialog, sees it is not a door under test, and closes it — never a
+    // plain opening the spec could tap into by accident.
+    for (const t of [t2, t3, t4, t5]) {
+      for (const e of t.exits.filter((x) => !x.toTileId && !x.doorInfo)) {
+        e.door = true
+        e.doorInfo = { kind: 'locked', level: 9 }
+      }
+    }
+    const seed = doorsSeedFor(dungeon, { t2, t3, t4, t5 }, party)
+    writeFixture('doors', toArchive(campaignId, 'Doors & Fog Fixture', seed, party, dungeon, 4))
   })
 
   it('search-caverns: cavern room, Search offers Listen', () => {

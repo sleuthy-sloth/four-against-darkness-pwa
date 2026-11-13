@@ -16,6 +16,11 @@ import {
 } from '../../rulesets/expanded/environments'
 import type { Rng } from '../core/rng'
 import type { CombatState } from '../combat/combat'
+import {
+  doorGrantsBonusTreasure,
+  rollDoorsForTile,
+  type DoorInfo,
+} from './doors'
 
 /**
  * Dungeon generation engine (FADEE pp.104, 149-152; PROJECT_SPEC Part V §10).
@@ -38,6 +43,11 @@ export interface PlacedExit {
   door: boolean
   /** Tile beyond this exit, once generated. */
   toTileId: string | null
+  /**
+   * Rolled door state (R129-R131), set at tile generation for door
+   * exits. Absent on older saves — those exits default to unlocked.
+   */
+  doorInfo?: DoorInfo
 }
 
 export type ContentKind =
@@ -99,6 +109,11 @@ export interface PlacedTile {
   environment?: EnvironmentId
   /** Cavern terrain feature rolled on entry (R141/R142). */
   cavernFeature?: CavernFeature
+  /**
+   * Entered through a sealed or iron door (R129): encounters here grant
+   * +1 treasure. Set at generation from the traversed exit's door.
+   */
+  bonusTreasure?: boolean
 }
 
 export interface DungeonState {
@@ -263,7 +278,7 @@ function transformExitEdge(edge: Edge, transform: number): Edge {
 
 // ---------- state ----------
 
-export function newDungeon(campaignId: string, rng: Rng): DungeonState {
+export function newDungeon(campaignId: string, rng: Rng, hcl = 1): DungeonState {
   // FADEE p.104: roll d6 for the first room; do NOT roll content for it.
   const startRoll = rng.d(6)
   const shape = STARTING_TILES[startRoll - 1]
@@ -282,6 +297,8 @@ export function newDungeon(campaignId: string, rng: Rng): DungeonState {
     searchResult: null,
     environment: 'dungeon',
   }
+  // Roll the door table (R129) for the starting tile's door exits.
+  rollDoorsForTile(tile, rng, hcl)
   return {
     campaignId,
     gridW: GRID_W,
@@ -396,13 +413,21 @@ export function exploreThrough(
     searchResult: null,
     viaSecretDoor: false,
     environment: state.environment ?? 'dungeon',
+    // +1 treasure behind a sealed or iron door (R129).
+    bonusTreasure: doorGrantsBonusTreasure(exit.doorInfo) ? true : undefined,
   }
   // Link both sides.
   exit.toTileId = newTileId
   const back = newTile.exits.find(
     (e) => e.cell.row === placement.exitCell.row && e.cell.col === placement.exitCell.col,
   )
-  if (back) back.toTileId = tile.id
+  if (back) {
+    back.toTileId = tile.id
+    // The back exit is the same physical door as the one just crossed.
+    if (exit.doorInfo) back.doorInfo = { ...exit.doorInfo }
+  }
+  // Roll the door table (R129) for the new tile's other door exits.
+  rollDoorsForTile(newTile, rng, hcl, back?.id)
 
   // FADEE p.104: roll content as the party enters the tile.
   const contentRoll = rng.roll(2, 6, 0, `tile content 2d6 (FADEE p.152)`)
@@ -761,6 +786,10 @@ export function generateSecretDoorTile(
   const newTile = result.state.tiles[before]
   if (newTile) {
     newTile.viaSecretDoor = true
+    // True fog of war: the tile beyond a secret door is placed but NOT
+    // entered, so it stays unexplored — its contents are hidden from the
+    // map, the log and the journal until the party peeks or steps through.
+    newTile.explored = false
     const bonus = rollSecretDoorBonus(rng)
     result.state.secretDoor = {
       fromTileId: tile.id,
@@ -769,24 +798,19 @@ export function generateSecretDoorTile(
       safeExit: bonus.safeExit,
     }
     events.push(
-      `A secret door! Beyond it: ${describeTileContent(newTile)}.`,
+      'A secret door! Peek before you enter, or step through blind.',
       bonus.safeExit
         ? 'The door also hides a SAFE SHORTCUT OUT of the dungeon — no Wandering Monsters through it.'
         : 'Peek first, then decide whether to step through.',
     )
   }
-  return { state: result.state, toTileId: newTile?.id ?? null, events: [...result.events, ...events] }
-}
-
-function describeTileContent(tile: PlacedTile): string {
-  const c = tile.content
-  if (!c) return 'the entrance'
-  if (c.encounter) return `${c.encounter.count}× ${c.encounter.monster.name} (L${c.encounter.level})`
-  if (c.kind === 'treasure' || c.kind === 'treasureTrapped') return 'treasure'
-  if (c.kind === 'specialFeature') return 'a special feature'
-  if (c.kind === 'specialEvents') return 'a special event'
-  if (c.kind === 'secretPassage') return 'a secret passage'
-  return 'an empty tile'
+  // The explore events describe the new tile's contents (encounter, boss
+  // reveal, cavern feature) — all leaks while the tile is unexplored.
+  // Only the shape/placement lines may reach the log before a peek.
+  const safe = result.events.filter(
+    (e) => !e.startsWith('Encounter:') && !e.startsWith('THE FINAL BOSS') && !e.startsWith('Cavern feature:'),
+  )
+  return { state: result.state, toTileId: newTile?.id ?? null, events: [...safe, ...events] }
 }
 
 /** Hidden treasure (FADEE p.108): (2d6+HCL)² gp + complication d6. */

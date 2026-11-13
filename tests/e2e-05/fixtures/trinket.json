@@ -8,8 +8,8 @@
     "seed": 7,
     "rngState": "{\"state\":7,\"nextId\":1}",
     "clues": 0,
-    "createdAt": 1794513747842,
-    "lastModified": 1794513747842,
+    "createdAt": 1794527437984,
+    "lastModified": 1794527437984,
     "saveVersion": 2
   },
   "characters": [
@@ -43,7 +43,7 @@
       ],
       "conditions": [],
       "status": "active",
-      "createdAt": 1794513747834
+      "createdAt": 1794527437883
     },
     {
       "id": "fixture-trinket-cleric-818295",
@@ -70,7 +70,7 @@
       ],
       "conditions": [],
       "status": "active",
-      "createdAt": 1794513747834
+      "createdAt": 1794527437883
     },
     {
       "id": "fixture-trinket-wizard-133651",
@@ -102,7 +102,7 @@
       ],
       "conditions": [],
       "status": "active",
-      "createdAt": 1794513747834
+      "createdAt": 1794527437883
     },
     {
       "id": "fixture-trinket-rogue-927440",
@@ -131,7 +131,7 @@
       ],
       "conditions": [],
       "status": "active",
-      "createdAt": 1794513747835
+      "createdAt": 1794527437883
     }
   ],
   "dungeon": {

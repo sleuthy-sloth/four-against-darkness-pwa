@@ -6,6 +6,7 @@ import {
   floorVariant,
   fitScale,
   tileSummary,
+  tileContentVisible,
   hashString,
 } from '../../src/features/dungeon/mapStyle'
 import type { PlacedExit, PlacedTile } from '../../src/engine/dungeon/generate'
@@ -38,7 +39,7 @@ function tile(over: Partial<PlacedTile> = {}): PlacedTile {
   }
 }
 
-describe('doorState (C4)', () => {
+describe('doorState (C4 + locked doors R129)', () => {
   it('open when a tile was generated beyond the exit', () => {
     expect(doorState(exit({ toTileId: 't2' }))).toBe('open')
     expect(doorState(exit({ door: true, toTileId: 't2' }))).toBe('open')
@@ -49,21 +50,49 @@ describe('doorState (C4)', () => {
   it('opening for an unexplored plain opening', () => {
     expect(doorState(exit({ door: false }))).toBe('opening')
   })
+  it('renders each rolled door kind distinctly', () => {
+    const kinds = ['locked', 'sealed', 'iron', 'illusionary', 'trapped', 'lever'] as const
+    for (const kind of kinds) {
+      expect(doorState(exit({ door: true, doorInfo: { kind, level: 3 } }))).toBe(kind)
+    }
+    expect(doorState(exit({ door: true, doorInfo: { kind: 'unlocked', level: 0 } }))).toBe('closed')
+  })
+  it('older exits with no rolled state render as plain closed doors', () => {
+    expect(doorState(exit({ door: true }))).toBe('closed')
+  })
   it('every door state has a legend entry (C5 agreement)', () => {
     const states = new Set<ReturnType<typeof doorState>>([
       doorState(exit({ toTileId: 't2' })),
       doorState(exit({ door: true })),
       doorState(exit({ door: false })),
+      ...(['locked', 'sealed', 'iron', 'illusionary', 'trapped', 'lever'] as const).map((kind) =>
+        doorState(exit({ door: true, doorInfo: { kind, level: 3 } })),
+      ),
     ])
     for (const s of states) expect(DOOR_STATES).toContain(s)
     expect(states.size).toBe(DOOR_STATES.length)
   })
 })
 
-describe('fogState (C4)', () => {
-  it('current tile is torch-lit, every other placed tile is explored', () => {
+describe('fogState (C4 + true fog of war)', () => {
+  it('current tile is torch-lit, every other explored tile is explored', () => {
     expect(fogState(tile({ id: 't1' }), 't1')).toBe('current')
     expect(fogState(tile({ id: 't2' }), 't1')).toBe('explored')
+  })
+  it('a placed-but-unentered tile is unexplored; a peeked one is peeked', () => {
+    expect(fogState(tile({ id: 't2', explored: false }), 't1')).toBe('unexplored')
+    expect(fogState(tile({ id: 't2', explored: false }), 't1', true)).toBe('peeked')
+    expect(fogState(tile({ id: 't2', explored: true }), 't1', true)).toBe('explored')
+  })
+  it('unexplored tiles hide their contents from the map and the tooltip', () => {
+    const hidden = tile({ explored: false, content: { roll: 7, kind: 'minions' } })
+    expect(tileContentVisible(hidden, null)).toBe(false)
+    expect(tileSummary(hidden, false)).toBe('Tile 14 · unexplored')
+    expect(tileContentVisible(tile({ explored: true }), null)).toBe(true)
+    const peeked = tile({ explored: false })
+    expect(tileContentVisible(peeked, { toTileId: peeked.id, peeked: true })).toBe(true)
+    expect(tileContentVisible(peeked, { toTileId: peeked.id, peeked: false })).toBe(false)
+    expect(tileContentVisible(peeked, { toTileId: 'other', peeked: true })).toBe(false)
   })
 })
 

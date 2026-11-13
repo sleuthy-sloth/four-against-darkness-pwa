@@ -28,6 +28,7 @@ import {
   rollReactions,
   startCombat,
   xpDue,
+  canCast,
   castSpell,
   castHealing,
   castScroll,
@@ -45,6 +46,14 @@ import {
   type CombatState,
 } from '../engine/combat/combat'
 import { computeLight, darknessPenalty } from '../engine/light'
+import {
+  attemptBash,
+  attemptDisarm,
+  attemptLockpick,
+  attemptSealed,
+  doorNeedsAction,
+  triggerDoorTrap,
+} from '../engine/dungeon/doors'
 import { tierOf, tierTrainingCost, oldSchoolLevelCost, oldSchoolFoeXp, type XpSystem } from '../engine/xp'
 import {
   canUseWand,
@@ -98,6 +107,7 @@ import { QUEST_TABLE, QUEST_SOURCES, EPIC_REWARDS } from '../rulesets/expanded/q
 import {
   profileFor,
   tableKindFor,
+  type TableKind,
 } from '../rulesets/expanded/monsters'
 import {
   attemptPuzzle,
@@ -175,6 +185,16 @@ interface DungeonStoreState {
   buyPassage: (env: EnvironmentId) => Promise<void>
   peekSecretDoor: () => Promise<void>
   enterSecretDoor: () => Promise<void>
+  /** Locked doors (R129-R131): the dialog over a door exit. */
+  pendingDoor: { exitId: string } | null
+  openDoorDialog: (exitId: string) => void
+  closeDoorDialog: () => void
+  attemptDoor: (
+    exitId: string,
+    action: 'pick' | 'bash' | 'sealed' | 'iron' | 'illusionary' | 'lever' | 'disarm' | 'openTrapped',
+    pcId?: string,
+    spell?: 'lightning' | 'fireball',
+  ) => Promise<void>
   /** Cavern water pools (R142). */
   dipPool: (pcId: string) => Promise<void>
   /** Special-item uses (R153). */
@@ -264,6 +284,56 @@ function rollEncounterSimple(
   const events: string[] = []
   const enc = rollEncounter(state, rng, profile, hcl, events)
   if (profile.major) enc.isFinalBoss = false // WM Majors never Final Boss (p.104)
+  return enc
+}
+
+/**
+ * Start a surprise Wandering Monsters ambush combat from a rolled
+ * encounter (FADEE pp.104, 107). Shared by retracing (explore) and by a
+ * bash natural 1 (R130) — both resolve the same way: they strike first.
+ */
+async function beginAmbushCombat(
+  dungeon: DungeonState,
+  rng: Rng,
+  party: Character[],
+  campaign: { id: string; secrets?: string[] },
+  enc: EncounterRoll,
+): Promise<void> {
+  const enemies = [
+    makeEnemy(
+      enc.monster,
+      enc.table,
+      enc.level,
+      enc.count,
+      lifeFromFormula(enc.level, enc.monster.lifeFormula, enc.monster.flatLife),
+    ),
+  ]
+  const combat = startCombat(dungeon.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng, {
+    ...combatOpts(dungeon, party),
+    forceSurprise: true,
+    secrets: campaign.secrets,
+  })
+  dungeon.combat = combat
+  await persist(dungeon, rng, campaign.id)
+  useDungeonStore.setState({
+    dungeon: { ...dungeon },
+    log: [...useDungeonStore.getState().log, ...combat.log.map((l) => ({ ts: l.ts, text: l.text }))].slice(-100),
+  })
+  await appendEvents(campaign.id, 'combat', combat.log.map((l) => ({ ts: l.ts, text: l.text })))
+}
+
+/** Roll a Wandering Monsters encounter (d6 table, rerolling event-Foes and dragons). */
+function rollWanderingEncounter(state: DungeonState, rng: Rng, hcl: number): EncounterRoll {
+  const tableRoll = rng.d(6)
+  const table: TableKind =
+    tableRoll <= 2 ? 'vermin' : tableRoll <= 4 ? 'minions' : tableRoll === 5 ? 'weird' : 'boss'
+  const env = state.environment ?? 'dungeon'
+  let profile = profileForTable(env, table, tableRoll)
+  while (profile.category === 'Event' || profile.category === 'Dragon') {
+    profile = profileForTable(env, table, rng.d(6))
+  }
+  const enc = rollEncounterSimple(state, rng, profile, hcl)
+  enc.isFinalBoss = false
   return enc
 }
 
@@ -368,6 +438,28 @@ async function awardVictory(
     }
   }
   const carrier = party.find((p) => p.status !== 'dead')
+  // +1 treasure behind a sealed or iron door (R129): one extra loot roll
+  // on the encounter beyond such a door.
+  if (tile?.bonusTreasure) {
+    const extra = rollLoot(rng, mod, env)
+    if (extra.gold > 0) {
+      const living = party.filter((p) => p.status !== 'dead')
+      if (living.length) {
+        const each = Math.floor(extra.gold / living.length)
+        living.forEach((p) => (p.gold += each))
+      }
+    }
+    if (carrier && extra.scroll) carrier.equipment.push(`scroll of ${extra.scroll.spell}`)
+    if (carrier && extra.item) carrier.equipment.push(extra.item)
+    if (carrier && extra.rations) {
+      for (let i = 0; i < extra.rations; i++) carrier.equipment.push('rations')
+    }
+    loot.text += ` ${extra.text} (+1 treasure — beyond a sealed or iron door.)`
+    // The +1 is the treasure behind that door: spent on the first victory
+    // in the tile, not on every later victory here (e.g. a Wandering
+    // Monsters ambush while passing through).
+    tile.bonusTreasure = undefined
+  }
   if (carrier && loot.scroll) carrier.equipment.push(`scroll of ${loot.scroll.spell}`)
   if (carrier && loot.item) carrier.equipment.push(loot.item)
   if (carrier && loot.rations) {
@@ -657,6 +749,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
   confirmUndo: null,
   lastTreasure: null,
   pendingXp: null,
+  pendingDoor: null,
 
   ensureDungeon: async () => {
     const { campaign, party } = useCampaignStore.getState()
@@ -671,7 +764,8 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
         return
       }
       const rng = Rng.deserialize(JSON.parse(campaign.rngState))
-      const fresh = newDungeon(campaign.id, rng)
+      const hcl = Math.max(1, ...party.map((p) => p.level))
+      const fresh = newDungeon(campaign.id, rng, hcl)
       await persist(fresh, rng, campaign.id)
       const meta = await getCampaign(campaign.id)
       set({
@@ -704,6 +798,13 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     const hcl = Math.max(1, ...party.map((p) => p.level))
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     dungeon.combat = null // leaving any concluded fight behind
+    // A door that still needs an action (R129-R131) blocks the way: open
+    // the door dialog instead of walking through a locked door.
+    const hereExit = currentTile(dungeon).exits.find((e) => e.id === exitId)
+    if (hereExit && doorNeedsAction(hereExit)) {
+      set({ pendingDoor: { exitId } })
+      return
+    }
     const result = exploreThrough(dungeon, rng, exitId, hcl)
     // Torch life (R094): 6 rooms with a lit torch, then it burns out.
     if (result.state.torchLit && party.some((p) => p.status !== 'dead' && p.equipment.includes('torch'))) {
@@ -735,27 +836,7 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     if (result.state.pendingAmbush) {
       const enc = result.state.pendingAmbush
       result.state.pendingAmbush = null
-      const enemies = [
-        makeEnemy(
-          enc.monster,
-          enc.table,
-          enc.level,
-          enc.count,
-          lifeFromFormula(enc.level, enc.monster.lifeFormula, enc.monster.flatLife),
-        ),
-      ]
-      const combat = startCombat(dungeon.currentTileId, party.filter((p) => p.status !== 'dead'), enemies, rng, {
-        ...combatOpts(dungeon, party),
-        forceSurprise: true,
-        secrets: campaign.secrets,
-      })
-      dungeon.combat = combat
-      await persist(dungeon, rng, campaign.id)
-      set({
-        dungeon: { ...dungeon },
-        log: [...get().log, ...combat.log.map((l) => ({ ts: l.ts, text: l.text }))].slice(-100),
-      })
-      await appendEvents(campaign.id, 'combat', combat.log.map((l) => ({ ts: l.ts, text: l.text })))
+      await beginAmbushCombat(dungeon, rng, party, campaign, enc)
       return
     }
     // Special feature / special event resolution (FADEE pp.152-153).
@@ -1726,10 +1807,172 @@ export const useDungeonStore = create<DungeonStoreState>((set, get) => ({
     const fromId = dungeon.currentTileId
     if (fromId !== dungeon.secretDoor.fromTileId) return
     dungeon.currentTileId = toId
+    // Entering the tile ends its fog of war: it is explored now.
+    const entered = dungeon.tiles.find((t) => t.id === toId)
+    if (entered) entered.explored = true
     const rng = Rng.deserialize(JSON.parse(campaign.rngState))
     await persist(dungeon, rng, campaign.id)
     appendLog(['The party slips through the secret door — the Foes beyond are surprised (their L is -1 on turn 1).'])
     set({ dungeon: { ...dungeon } })
+  },
+
+  openDoorDialog: (exitId) => set({ pendingDoor: { exitId } }),
+
+  closeDoorDialog: () => set({ pendingDoor: null }),
+
+  /**
+   * One door action (R129-R131). Opening the door is a separate action
+   * from stepping through it: after a success the dialog closes and the
+   * player taps the exit again to explore. A failed pick leaves the door
+   * to be bashed; a failed bash can be retried unless its natural 1 drew
+   * Wandering Monsters, which attack at once.
+   */
+  attemptDoor: async (exitId, action, pcId, spell) => {
+    await snap('attemptDoor', useCampaignStore.getState().campaign?.id ?? '')
+    const { dungeon } = get()
+    const { campaign, party } = useCampaignStore.getState()
+    if (!dungeon || !campaign) return
+    const tile = dungeon.tiles.find((t) => t.id === dungeon.currentTileId)
+    const exit = tile?.exits.find((e) => e.id === exitId)
+    const info = exit?.doorInfo
+    if (!tile || !exit || !info || info.open) {
+      set({ pendingDoor: null })
+      return
+    }
+    const living = party.filter((p) => p.status !== 'dead')
+    const pc = pcId ? living.find((p) => p.id === pcId) : undefined
+    const rng = Rng.deserialize(JSON.parse(campaign.rngState))
+    const messages: string[] = []
+    let opened = false
+    let saveParty = false
+    let wandering = false
+
+    const spendClues = async (n: number, label: string): Promise<boolean> => {
+      const clues = campaign.clues ?? 0
+      if (clues < n) {
+        set({ error: `${label} costs ${n} Clue${n > 1 ? 's' : ''} (pool: ${clues}).` })
+        return false
+      }
+      await touchCampaign(campaign.id, { clues: clues - n })
+      syncCampaign({ clues: clues - n })
+      return true
+    }
+
+    switch (action) {
+      case 'pick': {
+        if (!pc || pc.classId !== 'rogue') {
+          set({ error: 'Only a rogue can pick a lock.' })
+          return
+        }
+        if (info.pickFailed) {
+          set({ error: 'The pick already failed — this door must be bashed.' })
+          return
+        }
+        const r = attemptLockpick(rng, pc, exit)
+        messages.push(...r.messages)
+        opened = r.success
+        break
+      }
+      case 'bash': {
+        if (!pc) {
+          set({ error: 'Choose who bashes the door.' })
+          return
+        }
+        const r = attemptBash(rng, pc, exit)
+        messages.push(...r.messages)
+        opened = r.success
+        wandering = r.wanderingMonsters === true
+        if (wandering) dungeon.pendingWanderingMonsters = Date.now()
+        break
+      }
+      case 'sealed': {
+        // Spellcaster = wizard or elf (the engine's canCast classes;
+        // cleric prayers are a separate system). No slot is spent — the
+        // roll is the attempt, and the door allows only one.
+        if (!pc || (pc.classId !== 'wizard' && pc.classId !== 'elf')) {
+          set({ error: 'Only a wizard or an elf can test a sealed door.' })
+          return
+        }
+        if ((info.attempts ?? 0) >= 1) {
+          set({ error: 'The sealed door allows only one attempt.' })
+          return
+        }
+        const r = attemptSealed(rng, pc, exit)
+        messages.push(...r.messages)
+        opened = r.success
+        saveParty = r.die === 1
+        break
+      }
+      case 'iron': {
+        if (!pc || !spell || !canCast(pc, spell)) {
+          set({ error: 'A memorized Lightning or Fireball is needed to destroy an iron door.' })
+          return
+        }
+        pc.spells.splice(pc.spells.indexOf(spell), 1)
+        info.open = true
+        opened = true
+        saveParty = true
+        messages.push(`${pc.name} casts ${spell} — the iron door is destroyed outright.`)
+        break
+      }
+      case 'illusionary': {
+        if (!(await spendClues(3, 'An illusionary door'))) return
+        info.open = true
+        opened = true
+        messages.push('3 Clues spent: the illusionary door dissolves — it was never really there.')
+        break
+      }
+      case 'lever': {
+        if (!(await spendClues(1, 'A lever door'))) return
+        info.open = true
+        opened = true
+        messages.push('1 Clue spent: the lever clicks and the door swings open.')
+        break
+      }
+      case 'disarm': {
+        if (!pc || pc.classId !== 'rogue') {
+          set({ error: 'Only a rogue can disarm the trap.' })
+          return
+        }
+        const r = attemptDisarm(rng, pc, exit)
+        messages.push(...r.messages)
+        opened = r.success
+        break
+      }
+      case 'openTrapped': {
+        const leader = living[0]
+        if (!leader) return
+        const r = triggerDoorTrap(rng, leader, exit)
+        messages.push(...r.messages)
+        opened = true
+        saveParty = !r.success
+        break
+      }
+    }
+
+    // Opening one side opens the other side too — same physical door.
+    if (opened && exit.toTileId) {
+      const beyond = dungeon.tiles.find((t) => t.id === exit.toTileId)
+      const back = beyond?.exits.find((e) => e.toTileId === tile.id)
+      if (back?.doorInfo) back.doorInfo.open = true
+    }
+    await persist(dungeon, rng, campaign.id)
+    if (saveParty) {
+      const { saveParty: persistParty } = await import('../database/repositories/campaignRepo')
+      await persistParty(campaign.id, party)
+    }
+    appendLog(messages)
+    await appendEvents(campaign.id, 'door', messages.map((text) => ({ ts: Date.now(), text })))
+    set({ dungeon: { ...dungeon }, pendingDoor: opened ? null : get().pendingDoor })
+    // A bash natural 1 (R130): the noise attracts Wandering Monsters —
+    // they attack at once, striking first.
+    if (wandering) {
+      dungeon.pendingWanderingMonsters = null
+      const hcl = Math.max(1, ...party.map((p) => p.level))
+      const enc = rollWanderingEncounter(dungeon, rng, hcl)
+      appendLog(['Wandering Monsters attack! They strike first.'])
+      await beginAmbushCombat(dungeon, rng, party, campaign, enc)
+    }
   },
 
   /** Dip in a cavern water pool (R142). */
